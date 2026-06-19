@@ -40,6 +40,7 @@
 | [Hyperliquid 官方文档缺口分析](docs/HYPERLIQUID-GAP-ANALYSIS.md) | 对照官方文档的遗漏清单（带 gitbook 引用），按严重度分级 |
 | **[中国大陆访问全面分析](docs/CHINA-ACCESS-ANALYSIS.md)** | **完整端点清单、GFW 屏蔽机制、各流量类型成功率、IP 限频应对、监控/法律策略** |
 | **[钱包方案对比与选型](docs/WALLET-SOLUTION-COMPARISON.md)** | **私钥方案四维度对比（安全/体验/技术/合规）+ 最终选型论证（Passkey 本地主推 + Privy 备选 + 自托管签名器）** |
+| **[产品功能方案（商用上线标准）](docs/PRODUCT-FEATURE-SPEC.md)** | **5 大板块逐一细化（功能/屏/状态/边界/HL API）+ 跨切面（通知/i18n/合规/客服/埋点/无障碍）+ 上线就绪清单 + P0/P1/P2 优先级** |
 | [Phase 1 实施计划：只读行情列表](docs/superpowers/plans/2026-06-17-hypersolid-markets-list.md) | 首个切片的 TDD 任务拆解（脚手架 + 实时市场列表） |
 | [视觉方向](docs/design/VISUAL-DIRECTION.md) | frontend-design 方法论产出的设计语言（默认主题 A） |
 | [视觉方向对比](docs/design/VISUAL-DIRECTION-COMPARISON.md) | A/B/C 三方向对比 |
