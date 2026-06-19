@@ -64,6 +64,22 @@
 
 **高可用核心原则**：手动交易始终可"设备本地签名直连 HL"，后端只做数据加速/推送/agentic 执行，**不在手动下单关键路径上**；后端降级时 App 自动回退直连 HL。
 
+### 3.1 信息架构（板块 / 底部导航）
+
+App 顶层 = **5 个底部 Tab** + 2 个跨切面流程。每个板块映射到对应 Phase，避免"按 Phase 列功能但无整体结构"的缺口。
+
+| # | 板块（Tab） | 职责 | 关键屏/功能 | Phase | 私钥 |
+|---|---|---|---|---|---|
+| 1 | 🏠 **行情 Markets** | 浏览/搜索市场 + 看盘 | 永续列表(按量/涨跌/资金费排序)、搜索、Market Detail(K线+盘口 l2Book+成交 trades) | 1 | 无 |
+| 2 | ⚡ **交易 Trade** | 下单与改仓 | 下单(市价/限价/ALO/IOC/reduce-only)、杠杆/保证金、TP/SL、撤改单 | 3 | 端上签名 |
+| 3 | 💼 **持仓 Positions** | 资产与盈亏 | 实时持仓盈亏(mark 价)、资金费(oracle 价)、成交/订单历史；**view-only 模式可零私钥预览** | 1(只读)/4 | 端上 |
+| 4 | 🤖 **策略 Agent** | 离线自动化(差异化卖点) | L1 规则(TP/SL/移动止损/DCA/网格/条件·定时单)、护栏、kill-switch、scheduleCancel、策略健康/授权健康 | 5 | 服务端 agent(trade-only) |
+| 5 | 👤 **钱包/我的 Account** | 资金与设置 | onboarding(三选一)、入金引导、提现/转账、安全(生物识别/私钥导出/助记词备份)、主题 A/B/C、主网/测试网开关、ToS/风险揭示 | 2 | 端上 |
+
+**跨切面流程（非 Tab）**：① **Onboarding 流**（首启动：Passkey 本地 / Privy / view-only 三选一 + approveAgent + approveBuilderFee + 入金引导）；② **全局态**（kill-switch、网络切换、合规 geo-block 拦截、Phase Pulse agent 心跳指示器贯穿各屏顶部）。
+
+**设计取舍**：Trade 板块也可不独立成 Tab，而由 Market Detail 唤起"下单抽屉"（见 §10 视觉稿）；二选一为待定 UI 决策，但功能边界如上不变。MVP 上架受合规闸门约束（§9/ADR-006）：闸门通过前公开版仅 Markets + view-only Positions，Trade/Agent 灰度或仅测试网。
+
 ---
 
 ## 4. Hyperliquid 集成规范（纳入官方文档缺口分析）
