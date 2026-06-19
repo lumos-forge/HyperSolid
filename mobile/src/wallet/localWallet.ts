@@ -18,6 +18,11 @@ export class LocalWalletService implements WalletService {
     return this.account.address;
   }
 
+  /** The underlying viem account — passed to @nktkas/hyperliquid ExchangeClient for EIP-712 signing. */
+  getViemAccount(): ReturnType<typeof mnemonicToAccount> {
+    return this.account;
+  }
+
   signMessage(message: string): Promise<Hex> {
     return this.account.signMessage({ message });
   }

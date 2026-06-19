@@ -1,4 +1,5 @@
 import {
+  ExchangeClient,
   HttpTransport,
   InfoClient,
   SubscriptionClient,
@@ -7,6 +8,7 @@ import {
 import type { Network } from "../../state/envStore";
 import { resolveIsTestnet } from "./network";
 import type { DetailInfoLike, DetailSubsLike, InfoLike, PositionsInfoLike, SubsLike } from "./types";
+import type { ExchangeLike } from "../../services/exchange";
 
 export function createInfoClient(network: Network): InfoLike {
   const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
@@ -57,4 +59,13 @@ export function createPositionsInfoClient(network: Network): PositionsInfoLike {
   return {
     clearinghouseState: (address) => info.clearinghouseState({ user: address }) as never,
   };
+}
+
+/**
+ * ExchangeClient signs L1/user actions with the provided viem account (EIP-712).
+ * `wallet` is the viem account from LocalWalletService.getViemAccount().
+ */
+export function createExchangeClient(network: Network, wallet: unknown): ExchangeLike {
+  const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
+  return new ExchangeClient({ wallet: wallet as never, transport }) as unknown as ExchangeLike;
 }
