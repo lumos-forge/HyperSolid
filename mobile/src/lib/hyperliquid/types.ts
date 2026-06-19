@@ -99,3 +99,17 @@ export interface Candle {
   low: number;
   volume: number;
 }
+
+// ---- Market Detail: injectable service interfaces ----
+export interface DetailInfoLike {
+  candleSnapshot(
+    coin: string,
+    interval: string,
+    startTime: number,
+    endTime: number,
+  ): Promise<RawCandle[]>;
+}
+export interface DetailSubsLike {
+  l2Book(coin: string, listener: (book: RawL2Book) => void): Promise<Subscription>;
+  trades(coin: string, listener: (trades: RawTrade[]) => void): Promise<Subscription>;
+}

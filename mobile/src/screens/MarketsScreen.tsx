@@ -5,7 +5,7 @@ import { useMarketStore } from "../state/marketStore";
 import { MarketRow } from "../components/MarketRow";
 import { useTheme } from "../theme/useTheme";
 
-export function MarketsScreen() {
+export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: string) => void }) {
   const theme = useTheme();
   const { tickers, loading, error } = useMarketStore();
 
@@ -23,7 +23,9 @@ export function MarketsScreen() {
         <FlashList
           data={tickers}
           keyExtractor={(t) => t.coin}
-          renderItem={({ item }) => <MarketRow ticker={item} theme={theme} />}
+          renderItem={({ item }) => (
+            <MarketRow ticker={item} theme={theme} onPress={() => onSelectMarket?.(item.coin)} />
+          )}
         />
       )}
     </View>

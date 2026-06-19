@@ -1,7 +1,7 @@
 import React from "react";
 import { Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { MarketsScreen } from "../screens/MarketsScreen";
+import { MarketsStack } from "./MarketsStack";
 import { TradeScreen } from "../screens/TradeScreen";
 import { PositionsScreen } from "../screens/PositionsScreen";
 import { AgentScreen } from "../screens/AgentScreen";
@@ -11,7 +11,7 @@ import { useTheme } from "../theme/useTheme";
 const Tab = createBottomTabNavigator();
 
 export const TABS = [
-  { name: "Markets", label: "行情", icon: "📈", component: MarketsScreen },
+  { name: "Markets", label: "行情", icon: "📈", component: MarketsStack },
   { name: "Trade", label: "交易", icon: "⚡", component: TradeScreen },
   { name: "Positions", label: "持仓", icon: "💼", component: PositionsScreen },
   { name: "Agent", label: "策略", icon: "🤖", component: AgentScreen },

@@ -1,13 +1,21 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import type { MarketTicker } from "../lib/hyperliquid/types";
 import type { ThemeTokens } from "../theme/tokens";
 import { PriceText, formatPct } from "./PriceText";
 
-export function MarketRow({ ticker, theme }: { ticker: MarketTicker; theme: ThemeTokens }) {
+export function MarketRow({
+  ticker,
+  theme,
+  onPress,
+}: {
+  ticker: MarketTicker;
+  theme: ThemeTokens;
+  onPress?: () => void;
+}) {
   const dirColor = ticker.changePct >= 0 ? theme.up : theme.down;
   return (
-    <View style={[styles.row, { borderBottomColor: theme.line }]}>
+    <Pressable onPress={onPress} style={[styles.row, { borderBottomColor: theme.line }]}>
       <View>
         <Text style={[styles.coin, { color: theme.text }]}>{ticker.coin}</Text>
         <Text style={[styles.sub, { color: theme.muted }]}>
@@ -18,7 +26,7 @@ export function MarketRow({ ticker, theme }: { ticker: MarketTicker; theme: Them
         <PriceText value={ticker.midPx} color={theme.text} />
         <Text style={[styles.chg, { color: dirColor }]}>{formatPct(ticker.changePct)}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
