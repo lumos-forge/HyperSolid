@@ -11,7 +11,10 @@ export async function unlockSession(
   manager: WalletManager,
   integrity: DeviceIntegrity,
 ): Promise<AuthResult> {
-  if ((await integrity.check()) === "compromised") return "compromised";
+  // Fail closed: only a positively-trusted device may unlock/sign. "compromised"
+  // (rooted/jailbroken) and "unknown" (detection failed/indeterminate — the state
+  // a tampered runtime can induce) both block before any biometric prompt or key load.
+  if ((await integrity.check()) !== "trusted") return "compromised";
   const result = await gate.authenticate({ reason: UNLOCK_REASON });
   if (result !== "success") return result;
   const wallet = await manager.loadWallet();

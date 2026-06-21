@@ -7,6 +7,7 @@ import type { WalletService } from "./types";
 const fakeWallet = { getAddress: () => "0xabc" } as unknown as WalletService;
 const trusted = new AlwaysTrustedIntegrity();
 const compromised = { check: async () => "compromised" as const };
+const unknown = { check: async () => "unknown" as const };
 
 beforeEach(() => {
   useAuthStore.setState({ status: "locked", lastActiveAt: 0 });
@@ -18,6 +19,16 @@ describe("sessionController", () => {
     const gate = { authenticate: jest.fn() };
     const manager = { loadWallet: jest.fn() };
     const r = await unlockSession(gate as never, manager as never, compromised as never);
+    expect(r).toBe("compromised");
+    expect(gate.authenticate).not.toHaveBeenCalled();
+    expect(manager.loadWallet).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().status).toBe("locked");
+  });
+
+  it("fails closed on 'unknown' integrity: blocks without prompting or loading", async () => {
+    const gate = { authenticate: jest.fn() };
+    const manager = { loadWallet: jest.fn() };
+    const r = await unlockSession(gate as never, manager as never, unknown as never);
     expect(r).toBe("compromised");
     expect(gate.authenticate).not.toHaveBeenCalled();
     expect(manager.loadWallet).not.toHaveBeenCalled();
