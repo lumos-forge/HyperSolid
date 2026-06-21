@@ -76,5 +76,5 @@ HyperSolid/
 ├── README.md            # 本文件（项目概览 + 文档索引）
 ├── docs/                # 设计文档、缺口分析、视觉方向与渲染图
 ├── mobile/              # Expo RN 客户端（✅ 已脚手架，Phase 0 起）
-└── backend/             # Node/TS BFF + agentic 执行引擎（规划中，Phase 5/6 起）
+└── backend/             # Go BFF + agentic 执行引擎 + 签名器（规划中，Phase 5/6 起；见 docs/BACKEND-ARCHITECTURE.md）
 ```
