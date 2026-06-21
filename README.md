@@ -15,7 +15,7 @@
 - 客户端：React Native + Expo + TypeScript；状态 Zustand + TanStack Query；列表 FlashList；动效 Reanimated 3。
 - Hyperliquid SDK：`@nktkas/hyperliquid`（InfoClient 只读 / SubscriptionClient WS / ExchangeClient 签名）。
 - 钱包：**Passkey 本地钱包**（设备生成私钥 + 生物识别 + 助记词/iCloud 备份，**主推**，ADR-011）+ **Privy 嵌入式**（便利性备选）+ view-only（**不接入 WalletConnect/外部钱包**，ADR-008）。
-- 后端（渐进式 BFF，高可用）：Node/TS + Redis + NATS/Redis Streams + Postgres；服务端 agent 签名器 **自托管 KMS/TEE（Turnkey 备选，ADR-010）**。
+- 后端（渐进式 BFF，高可用）：**Go**（HTTP: chi/gin · 编排: Temporal Go SDK · 扇出: NATS · 缓存: Redis · 存储: Postgres）；服务端 agent 签名器 **自托管 KMS/TEE（Nitro Enclave，Turnkey 备选，ADR-010）**。Hyperliquid action 编码/EIP-712 签名在 Go 侧重做，并与 TS 客户端用跨语言黄金向量对拍（ADR-013）。
 - 收入：Hyperliquid **Builder Codes**（链上可追溯返佣）。
 
 ## 路线图（详见 spec §2）
@@ -66,6 +66,7 @@
 - **ADR-010**：避免每用户双付费；agent 签名器默认自托管 KMS/TEE，仅服务离线自动化用户。
 - **ADR-011**：Passkey 本地钱包为最优主推方案（硬件级安全 + 真非托管 + 零厂商依赖），Privy 降为便利性备选。
 - **ADR-012（拟定/可选）**：云端备份可行，但仅限零知识客户端加密（Argon2id + AES-GCM，密文上云、明文与口令绝不上服务器），补齐 Android 跨设备恢复缺口。
+- **ADR-013（2026-06-21，用户决策）**：**后端语言 = Go**（替代原 Node/TS BFF 规划）。理由：goroutine 并发模型契合 connector 池/WS 扇出、Temporal/NATS 一等公民、静态二进制 + 小依赖面利于签名核与供应链安全。**代价（需缓解）**：失去与 TS 客户端的 SDK/类型复用 → HL action msgpack 哈希 + EIP-712 签名须在 Go 重做（go-ethereum crypto），并与 `@nktkas/hyperliquid`(TS) 客户端用**跨语言黄金测试向量逐字节对拍**（守住「精度/asset-id/cloid 三件套」零漂移）；Go 为 GC 语言，签名核密钥须 `defer` 显式清零并优先配 KMS/Nitro Enclave。**先决**：投入前先做「Go 下单 testnet 成功」spike 验证社区 Go SDK 成熟度。客户端（Expo RN + TS）与整体架构（降级直连、§4.7 路由、§5.1a 签名边界、§6.2 HA）不变；中国边缘代理仍可保留 Cloudflare Workers(JS)。
 
 ## 仓库结构（规划）
 
