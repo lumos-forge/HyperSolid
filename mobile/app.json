@@ -22,7 +22,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "使用 Face ID 解锁你的 HyperSolid 钱包并对交易签名。"
+        }
+      ]
     ]
   }
 }

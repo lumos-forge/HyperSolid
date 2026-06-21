@@ -30,7 +30,17 @@
 - 改为：**显式解锁一次** → 助记词解密、`LocalWalletService` 留在内存供本会话签名 → **自动锁定**（冷启动 / 后台 / 空闲超时）后需重新解锁。
 - 鉴权接口设计为 `authenticate({ reason, forceReauth })`，`forceReauth` 预留给未来「提现 / approveAgent」等高危主钱包操作（spec ADR-002 两层授权），本切片不实现高危再验 UI，但**不留返工**。
 
-**为什么不用 SecureStore 的 per-read 生物识别做主门禁**：它无法表达「解锁一次、会话内复用」，且每签必弹；显式 `LocalAuthentication` 给我们「可用性/录入检测 + 设备口令回退 + 会话/锁定 UX + Android Class 3 弱生物识别处理」的控制力（spec §5.5）。SecureStore 的 `requireAuthentication` 仍作为**储存层的硬件门禁底座**保留（解锁那一刻读取助记词时仍受硬件保护）。
+**为什么不用 SecureStore 的 per-read 生物识别做主门禁**：它无法表达「解锁一次、会话内复用」，且每签必弹；显式 `LocalAuthentication` 给我们「可用性/录入检测 + 会话/锁定 UX + Android Class 3 弱生物识别处理 + 强制生物识别（禁口令回退）」的控制力（spec §5.5）。SecureStore 的 `requireAuthentication` 仍作为**储存层的硬件门禁底座**保留（解锁那一刻读取助记词时仍受硬件保护）。
+
+### 2.1 安全模型澄清（用户要求：设备被 root 也不能签名）
+
+**硬约束（不可回避的硬件事实）**：HL/以太坊用 **secp256k1**，而 iOS Secure Enclave 仅支持 **P-256（secp256r1）** → **私钥无法常驻 TEE、签名无法在 enclave 内完成**（spec ADR-011 已明示「Passkey 仅作解锁门禁，真签名密钥是 secp256k1」）。viem 签名必然发生在 JS 内存。因此「设备被 root 也不能签名」**不能**靠「TEE 内签名」实现，而靠以下**三层纵深**：
+
+1. **硬件门禁存储**（已落地，`SecureStoreKeyStore` `requireAuthentication:true`）：SEP/StrongBox 硬件强制——完好设备上不过生物识别读不出助记词。
+2. **强制生物识别**（A3，本切片）：`disableDeviceFallback: true`，禁设备口令旁路。
+3. **设备完整性门禁 DeviceIntegrity（RASP）**：解锁与签名前检测 root/越狱；检测到 `compromised` → **拒绝解锁/签名**。这是「root 设备不能签名」的真正机制（root 削弱 keystore 保证，故检测到即拒绝运行）。
+   - 本切片落地**依赖无关的 `DeviceIntegrity` 接口 + 默认实现**（注入式、可测、Expo Go 可跑），把门禁接进 `unlockSession`。
+   - **真实 root/越狱检测**（native，如 jail-monkey，需 Expo config plugin + dev build）为**独立硬化切片**，凭此接口零返工接入（待依赖采纳决策）。
 
 ---
 
@@ -89,9 +99,10 @@ LockScreen「解锁」
 
 ## 5. 错误处理与边界
 
-- **设备无生物识别且无口令**：`isAvailable` 返回不可用 → 锁屏显示引导（去系统设置启用），不静默放行。
+- **设备完整性受损（root/越狱）**：`DeviceIntegrity.check()` 返回 `compromised` → 解锁/签名前即拒绝，锁屏显示安全警告，不读取助记词、不签名。
+- **设备无生物识别**：`isAvailable` 返回不可用 → 锁屏显示引导（去系统设置启用 Face ID/指纹），**不降级为设备口令**（A3 强制生物识别），不静默放行。
 - **生物识别失败/取消**：留在锁屏，可重试；不暴露助记词、不降级为明文。
-- **Android Class 3 警示**（spec §5.5）：弱人脸（Class 2）不可绑密钥 → 优先指纹/设备口令；文案提示。
+- **Android Class 3 警示**（spec §5.5）：弱人脸（Class 2）不可绑密钥 → 要求 Class 3 指纹/强生物识别；文案提示。
 - **SecureStore 读取仍受硬件门禁**：解锁时 `loadMnemonic()` 的 `requireAuthentication` 作为第二道底座（双重保险，不冲突）。
 - **锁定即清内存**：`lock()` 必须 `walletStore.reset()`，确保后台快照/内存中不留可签名 wallet。
 
@@ -100,10 +111,12 @@ LockScreen「解锁」
 ## 6. 测试策略（TDD）
 
 全部用注入式 mock，无真机依赖（沿用 jest-expo + @testing-library/react-native v14）：
-- `biometricGate.test.ts`：mock `LocalAuthentication` → 可用/无硬件/未录入/成功/失败/取消/设备口令回退 各分支。
+- `biometricGate.test.ts`：mock `LocalAuthentication` → 可用/无硬件/未录入/成功/失败/取消、**强制生物识别（disableDeviceFallback=true）** 各分支。
+- `deviceIntegrity.test.ts`：默认实现返回 `trusted`；接口可注入返回 `compromised`。
 - `authStore.test.ts`：`evaluate`（有/无钱包）、`unlock`/`lock` 状态迁移、`touch`。
+- `sessionController.test.ts`：完整性受损 → 拒绝（不调 gate/loadWallet）；生物识别成功 → loadWallet + unlock；失败 → 留锁定。
 - `useAutoLock.test.tsx`：mock `AppState` → 后台再返回超时触发 `lock`；未超时不锁。
-- `LockScreen.test.tsx`：locked 渲染解锁按钮；点击触发 gate；失败显示错误；unavailable 显示引导。
+- `LockScreen.test.tsx`：locked 渲染解锁按钮；点击触发 gate；失败显示错误；unavailable 显示引导；**compromised 显示安全警告**。
 - 启动重新水合集成：`hasWallet → locked → unlock → loadWallet → walletStore 填充`（mock gate + in-memory KeyStore）。
 - **质量门**：`tsc --noEmit` 零错、`jest` 全绿（≥ 166 + 新增）、改动源无 emoji/硬编码色。
 
@@ -117,18 +130,22 @@ LockScreen「解锁」
 
 ---
 
-## 8. 假设与待确认（用户审阅时请确认/否决）
+## 8. 决策记录（已由用户确认 / 自主决策）
 
-1. **门禁粒度 = 会话解锁（A）**，高危再验（C）留接口、本切片不做 UI。
-2. **自动锁定**：冷启动必锁 + 后台返回超时锁，**默认空闲超时 5 分钟**（常量可调；是否需要用户在设置里可配，留 Phase 2 后续）。
-3. **无生物识别时允许设备口令回退**；二者皆无则引导启用、不放行。
-4. **范围仅生物识别/会话/重新水合**；approveAgent/approveBuilderFee/入金为独立子切片。
-5. **签名仍由 `LocalWalletService`（viem）执行**，本切片只加「解锁门禁 + 会话」，不改签名实现。
+1. **门禁粒度 = 会话解锁（A）**，高危再验（C）留 `forceReauth` 接口、本切片不做 UI。
+2. **自动锁定**：冷启动必锁 + 后台返回超时锁，**默认空闲超时 5 分钟**（常量可调；用户可配留后续）。
+3. ✅**强制生物识别（用户决策 2026-06-21）**：`disableDeviceFallback: true`，**不允许设备口令回退**；无生物识别则引导启用、不放行。
+4. ✅**设备完整性门禁（用户决策 2026-06-21）**：解锁/签名前过 `DeviceIntegrity`；root/越狱即拒绝。本切片做依赖无关接口 + 默认实现；native RASP（jail-monkey，需 dev build）为独立硬化切片（待依赖采纳决策）。
+5. **TEE 硬约束**：secp256k1 无法在 Secure Enclave 内签名（SEP 仅 P-256）→ 安全靠「硬件门禁存储 + 强制生物识别 + RASP 拒绝」三层，而非 enclave 内签名（见 §2.1）。
+6. **范围仅生物识别/会话/重新水合/完整性门禁接口**；approveAgent/approveBuilderFee/入金为独立子切片。
+7. **签名仍由 `LocalWalletService`（viem）执行**，本切片只加「解锁门禁 + 会话 + 完整性检查」，不改签名实现。
 
 ---
 
 ## 9. 与 spec 对齐
 
-- ADR-011：Passkey 本地钱包硬件门禁（Secure Enclave/StrongBox）+ 生物识别解锁 ✅
-- §5.5：iOS Face ID（`NSFaceIDUsageDescription`）/ Android BiometricPrompt + Class 3 警示、设备口令回退 ✅
+- ADR-011：Passkey 本地钱包硬件门禁（Secure Enclave/StrongBox）+ 生物识别解锁；secp256k1 非 SEP 签名、仅门禁 ✅（见 §2.1）
+- §5.5：iOS Face ID（`NSFaceIDUsageDescription`）/ Android BiometricPrompt + Class 3 强生物识别；**强制生物识别、禁口令回退** ✅
 - ADR-002（预留）：两层授权 → 高危主钱包操作的 `forceReauth` 接口位 ✅（终态 C）
+- RASP/设备完整性：`DeviceIntegrity` 接口位，呼应 org 的 FinRASP 方向 ✅（native 实现为后续切片）
+

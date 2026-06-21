@@ -32,3 +32,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Git worktrees (local isolated workspaces)
+.worktrees/
