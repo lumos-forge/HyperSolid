@@ -30,7 +30,7 @@
 | 5 | Agentic 执行引擎（L1 规则自动化 + 护栏 + 签名器） | 待规划 |
 | 6 | 后端 HA 化 + 上架 | 待规划 |
 
-> ⚠️ **合规硬闸门**：perps/agentic 公开发布需法律意见先行（Apple §3.1.5(iv) 视永续为 futures 是存在性风险），否则公开发布只到 Phase 1 只读或现货优先（ADR-006）。
+> ⚠️ **合规硬闸门**：perps/agentic **公开发布**需法律意见先行（Apple §3.1.5(iv) 视永续为 futures 是存在性风险），否则公开发布只到 Phase 1 只读或现货优先（ADR-006）。**近期评估走 TestFlight**（非公开发布，不触发该闸门，ADR-014）；公开上架前仍须回到 ADR-006 流程。
 
 ## 文档索引
 
@@ -68,6 +68,7 @@
 - **ADR-011**：Passkey 本地钱包为最优主推方案（硬件级安全 + 真非托管 + 零厂商依赖），Privy 降为便利性备选。
 - **ADR-012（拟定/可选）**：云端备份可行，但仅限零知识客户端加密（Argon2id + AES-GCM，密文上云、明文与口令绝不上服务器），补齐 Android 跨设备恢复缺口。
 - **ADR-013（2026-06-21，用户决策）**：**后端语言 = Go**（替代原 Node/TS BFF 规划）。理由：goroutine 并发模型契合 connector 池/WS 扇出、Temporal/NATS 一等公民、静态二进制 + 小依赖面利于签名核与供应链安全。**代价（需缓解）**：失去与 TS 客户端的 SDK/类型复用 → HL action msgpack 哈希 + EIP-712 签名须在 Go 重做（go-ethereum crypto），并与 `@nktkas/hyperliquid`(TS) 客户端用**跨语言黄金测试向量逐字节对拍**（守住「精度/asset-id/cloid 三件套」零漂移）；Go 为 GC 语言，签名核密钥须 `defer` 显式清零并优先配 KMS/Nitro Enclave。**先决**：Hyperliquid **官方仅维护 Python SDK**（Rust/TS 均社区，**无官方 Go SDK**；第三方如 quiknode-labs 需自行审计）。故签名优先**自写最小 Go 签名核**（go-ethereum crypto + msgpack，依赖面最小），以官方 Python SDK / 社区 Rust SDK(infinitefield/hypersdk) 为权威参照，并先做「Go 下单 testnet 成功」spike 验证编码正确。客户端（Expo RN + TS）与整体架构（降级直连、§4.7 路由、§5.1a 签名边界、§6.2 HA）不变；中国边缘代理仍可保留 Cloudflare Workers(JS)。
+- **ADR-014（2026-06-21，用户决策）**：近期经 **TestFlight 评估**（非 App Store 公开发布），ADR-006 合规硬闸门暂缓至公开上架前。TestFlight Beta 不触发 §3.1.5(iv) 公开上架审查，可在受限范围放开 perps/agentic 做评估；但外部测试员仍需 Apple Beta App Review，构建 90 天过期且仅供测试。**ADR-006 不撤销**——公开上架（Phase 6）前仍须法律意见先行 + 地区策略。
 
 ## 仓库结构（规划）
 
