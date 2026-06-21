@@ -28,4 +28,16 @@ export class BiometricGate {
     ]);
     return { hasHardware, isEnrolled, supportedTypes };
   }
+
+  async authenticate(opts: { reason: string; forceReauth?: boolean }): Promise<AuthResult> {
+    const avail = await this.isAvailable();
+    if (!avail.hasHardware || !avail.isEnrolled) return "unavailable";
+    const res = await this.la.authenticateAsync({
+      promptMessage: opts.reason,
+      disableDeviceFallback: false,
+      cancelLabel: "取消",
+    });
+    if (res.success) return "success";
+    return res.error === "user_cancel" ? "cancelled" : "failed";
+  }
 }
