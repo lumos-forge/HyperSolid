@@ -1,5 +1,4 @@
 import React from "react";
-import { Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { MarketsStack } from "./MarketsStack";
 import { TradeScreen } from "../screens/TradeScreen";
@@ -7,16 +6,22 @@ import { PositionsScreen } from "../screens/PositionsScreen";
 import { AgentScreen } from "../screens/AgentScreen";
 import { AccountScreen } from "../screens/AccountScreen";
 import { useTheme } from "../theme/useTheme";
+import { Icon, type IconName } from "../components/Icon";
 
 const Tab = createBottomTabNavigator();
 
-export const TABS = [
-  { name: "Markets", label: "行情", icon: "📈", component: MarketsStack },
-  { name: "Trade", label: "交易", icon: "⚡", component: TradeScreen },
-  { name: "Positions", label: "持仓", icon: "💼", component: PositionsScreen },
-  { name: "Agent", label: "策略", icon: "🤖", component: AgentScreen },
-  { name: "Account", label: "钱包", icon: "👤", component: AccountScreen },
-] as const;
+export const TABS: {
+  name: string;
+  label: string;
+  icon: IconName;
+  component: React.ComponentType<object>;
+}[] = [
+  { name: "Markets", label: "行情", icon: "markets", component: MarketsStack },
+  { name: "Trade", label: "交易", icon: "trade", component: TradeScreen },
+  { name: "Positions", label: "持仓", icon: "positions", component: PositionsScreen },
+  { name: "Agent", label: "策略", icon: "agent", component: AgentScreen },
+  { name: "Account", label: "钱包", icon: "account", component: AccountScreen },
+];
 
 export function RootNavigator() {
   const theme = useTheme();
@@ -37,7 +42,9 @@ export function RootNavigator() {
           component={t.component}
           options={{
             tabBarLabel: t.label,
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>{t.icon}</Text>,
+            tabBarIcon: ({ color, focused }) => (
+              <Icon name={t.icon} color={color} active={focused} size={24} />
+            ),
           }}
         />
       ))}

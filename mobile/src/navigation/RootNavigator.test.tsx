@@ -24,6 +24,6 @@ describe("RootNavigator", () => {
         <RootNavigator />
       </NavigationContainer>,
     );
-    expect(screen.getByText("Markets")).toBeTruthy();
+    expect(screen.getByText("SIGNAL · LIVE")).toBeTruthy();
   });
 });

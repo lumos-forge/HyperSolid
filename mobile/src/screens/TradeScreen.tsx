@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
@@ -7,6 +7,8 @@ import { useMarketStore } from "../state/marketStore";
 import { ExchangeService } from "../services/exchange";
 import { createExchangeClient } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
+import { ScreenScaffold } from "../components/ScreenScaffold";
+import { Pill } from "../components/Pill";
 import type { LocalWalletService } from "../wallet/localWallet";
 import type { OrderSide } from "../lib/hyperliquid/buildOrder";
 import { validateOrder } from "../lib/hyperliquid/order";
@@ -68,20 +70,20 @@ export function TradeScreen() {
     }
   }
 
+  const networkPill = <Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />;
+
   if (mode !== "local") {
     return (
-      <View style={[styles.center, { backgroundColor: theme.bg }]}>
-        <Text style={[styles.title, { color: theme.text }]}>交易 Trade</Text>
+      <ScreenScaffold theme={theme} statusTitle="HYPERSOLID" pill={networkPill} heading="交易 Trade">
         <Text style={[styles.msg, { color: theme.muted }]}>
           {mode === "viewOnly" ? "只读模式不能交易，请在「钱包」创建本地钱包。" : "请先在「钱包」连接钱包后交易。"}
         </Text>
-      </View>
+      </ScreenScaffold>
     );
   }
 
   return (
-    <ScrollView style={[styles.root, { backgroundColor: theme.bg }]} contentContainerStyle={styles.content}>
-      <Text style={[styles.title, { color: theme.text }]}>交易 Trade</Text>
+    <ScreenScaffold theme={theme} statusTitle="HYPERSOLID" pill={networkPill} heading="交易 Trade">
       <Text style={[styles.net, { color: theme.muted }]}>网络：{network}（仅测试网可下真单）</Text>
 
       <View style={styles.sideRow}>
@@ -119,7 +121,7 @@ export function TradeScreen() {
       >
         {busy ? <ActivityIndicator color={theme.bg} /> : <Text style={[styles.submitText, { color: theme.bg }]}>提交订单</Text>}
       </Pressable>
-    </ScrollView>
+    </ScreenScaffold>
   );
 }
 
@@ -153,12 +155,8 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, paddingTop: 24 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  title: { fontSize: 24, fontWeight: "700", marginBottom: 6 },
+  msg: { fontSize: 14, marginTop: 10 },
   net: { fontSize: 12, marginBottom: 14 },
-  msg: { fontSize: 14, textAlign: "center", marginTop: 10 },
   sideRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
   sideBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center", borderWidth: 1 },
   field: { marginBottom: 12 },

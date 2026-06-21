@@ -26,7 +26,7 @@ export function MarketsStack() {
       <Stack.Screen
         name="MarketDetail"
         component={MarketDetailScreen}
-        options={({ route }) => ({ title: `${route.params.coin}-PERP` })}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

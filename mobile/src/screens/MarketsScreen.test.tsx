@@ -1,7 +1,8 @@
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, fireEvent } from "@testing-library/react-native";
 import { MarketsScreen } from "./MarketsScreen";
 import { useMarketStore } from "../state/marketStore";
+import { useEnvStore } from "../state/envStore";
 import type { MarketTicker } from "../lib/hyperliquid/types";
 
 const tickers: MarketTicker[] = [
@@ -10,7 +11,10 @@ const tickers: MarketTicker[] = [
 ];
 
 describe("MarketsScreen", () => {
-  beforeEach(() => useMarketStore.setState({ tickers: [], loading: true, error: null }));
+  beforeEach(() => {
+    useMarketStore.setState({ tickers: [], loading: true, error: null });
+    useEnvStore.setState({ network: "mainnet" });
+  });
 
   it("shows a loading state initially", () => {
     render(<MarketsScreen />);
@@ -28,5 +32,25 @@ describe("MarketsScreen", () => {
     useMarketStore.getState().setError("network down");
     render(<MarketsScreen />);
     expect(screen.getByText(/network down/i)).toBeTruthy();
+  });
+
+  it("renders the phosphor chrome: status title, signal readout and search", () => {
+    render(<MarketsScreen />);
+    expect(screen.getByText("HYPERSOLID")).toBeTruthy();
+    expect(screen.getByText("SIGNAL · LIVE")).toBeTruthy();
+    expect(screen.getByPlaceholderText("search markets")).toBeTruthy();
+  });
+
+  it("shows the active network in the status pill", () => {
+    render(<MarketsScreen />);
+    expect(screen.getByText("◷ MAINNET")).toBeTruthy();
+  });
+
+  it("filters rows by the search query", () => {
+    useMarketStore.getState().setMarkets(tickers);
+    render(<MarketsScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText("search markets"), "btc");
+    expect(screen.getByText("BTC")).toBeTruthy();
+    expect(screen.queryByText("ETH")).toBeNull();
   });
 });

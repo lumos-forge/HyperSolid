@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import type { MarketTicker } from "../lib/hyperliquid/types";
 import type { ThemeTokens } from "../theme/tokens";
 import { PriceText, formatPct } from "./PriceText";
+import { Icon } from "./Icon";
 
 export function MarketRow({
   ticker,
@@ -22,14 +23,20 @@ export function MarketRow({
     <Pressable onPress={onPress} style={[styles.row, { borderBottomColor: theme.line }]}>
       <View style={styles.left}>
         {onToggleFavorite && (
-          <Text
+          <Pressable
             onPress={onToggleFavorite}
             accessibilityRole="button"
             accessibilityLabel={`favorite-${ticker.coin}`}
-            style={[styles.star, { color: isFavorite ? theme.brand : theme.muted }]}
+            hitSlop={8}
+            style={styles.star}
           >
-            {isFavorite ? "★" : "☆"}
-          </Text>
+            <Icon
+              name="star"
+              active={isFavorite}
+              color={isFavorite ? theme.brand : theme.muted}
+              size={20}
+            />
+          </Pressable>
         )}
         <View>
           <Text style={[styles.coin, { color: theme.text }]}>{ticker.coin}</Text>
@@ -55,7 +62,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   left: { flexDirection: "row", alignItems: "center" },
-  star: { fontSize: 18, marginRight: 10 },
+  star: { marginRight: 10, alignItems: "center", justifyContent: "center" },
   coin: { fontSize: 16, fontWeight: "700" },
   sub: { fontSize: 11, marginTop: 3 },
   right: { alignItems: "flex-end" },

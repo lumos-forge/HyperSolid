@@ -1,11 +1,15 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, Alert } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { WalletManager } from "../wallet/walletManager";
 import { SecureStoreKeyStore } from "../wallet/secureKeyStore";
 import { isValidAddress } from "../hooks/useViewOnlyPortfolio";
+import { Icon } from "../components/Icon";
+import { ScreenScaffold } from "../components/ScreenScaffold";
+import { Pill } from "../components/Pill";
+import { SectionLabel } from "../components/SectionLabel";
 
 export function AccountScreen() {
   const theme = useTheme();
@@ -63,14 +67,18 @@ export function AccountScreen() {
     setNewMnemonic(null);
   }
 
+  const networkPill = <Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />;
+
   if (mode !== "none") {
     return (
-      <ScrollView style={[styles.root, { backgroundColor: theme.bg }]} contentContainerStyle={styles.content}>
-        <Text style={[styles.title, { color: theme.text }]}>钱包 Account</Text>
+      <ScreenScaffold theme={theme} statusTitle="HYPERSOLID" pill={networkPill} heading="钱包 Account">
         <View style={[styles.card, { borderColor: theme.line }]}>
-          <Text style={[styles.label, { color: theme.muted }]}>
-            {mode === "local" ? "🔐 本地钱包（非托管）" : "👁️ 仅查看"}
-          </Text>
+          <View style={styles.labelRow}>
+            <Icon name={mode === "local" ? "lock" : "eye"} color={theme.muted} size={14} />
+            <Text style={[styles.label, { color: theme.muted }]}>
+              {mode === "local" ? "本地钱包（非托管）" : "仅查看"}
+            </Text>
+          </View>
           <Text style={[styles.addr, { color: theme.text }]} numberOfLines={1} ellipsizeMode="middle">
             {address}
           </Text>
@@ -78,7 +86,12 @@ export function AccountScreen() {
 
         {newMnemonic ? (
           <View style={[styles.card, { borderColor: theme.brand }]}>
-            <Text style={[styles.warn, { color: theme.brand }]}>⚠️ 请立即备份助记词（仅显示一次，禁止截图）</Text>
+            <View style={styles.warnRow}>
+              <Icon name="alert" color={theme.brand} size={16} />
+              <Text style={[styles.warn, { color: theme.brand }]}>
+                请立即备份助记词（仅显示一次，禁止截图）
+              </Text>
+            </View>
             <Text style={[styles.mnemonic, { color: theme.text }]}>{newMnemonic}</Text>
             <Pressable onPress={() => setNewMnemonic(null)} accessibilityRole="button">
               <Text style={[styles.link, { color: theme.muted }]}>我已安全备份</Text>
@@ -88,26 +101,31 @@ export function AccountScreen() {
 
         <Pressable onPress={toggleNetwork} accessibilityRole="button" style={[styles.settingRow, { borderColor: theme.line }]}>
           <Text style={[styles.label, { color: theme.muted }]}>网络</Text>
-          <Text style={[styles.value, { color: theme.text }]}>{network} ⇄</Text>
+          <View style={styles.valueRow}>
+            <Text style={[styles.value, { color: theme.text }]}>{network}</Text>
+            <Icon name="swap" color={theme.muted} size={16} />
+          </View>
         </Pressable>
 
         <Pressable onPress={onSignOut} accessibilityRole="button" style={[styles.btnOutline, { borderColor: theme.down }]}>
           <Text style={[styles.btnOutlineText, { color: theme.down }]}>退出 / 切换钱包</Text>
         </Pressable>
-      </ScrollView>
+      </ScreenScaffold>
     );
   }
 
   return (
-    <ScrollView style={[styles.root, { backgroundColor: theme.bg }]} contentContainerStyle={styles.content}>
-      <Text style={[styles.title, { color: theme.text }]}>欢迎使用 HyperSolid</Text>
+    <ScreenScaffold theme={theme} statusTitle="HYPERSOLID" pill={networkPill} heading="欢迎使用 HyperSolid">
       <Text style={[styles.subtitle, { color: theme.muted }]}>选择一种方式开始（非托管，私钥永不离开设备）</Text>
 
       <Pressable disabled={busy} onPress={onCreate} accessibilityRole="button" style={[styles.btn, { backgroundColor: theme.brand }]}>
-        <Text style={[styles.btnText, { color: theme.bg }]}>🌟 创建本地钱包（推荐）</Text>
+        <View style={styles.btnInner}>
+          <Icon name="star" active color={theme.bg} size={18} />
+          <Text style={[styles.btnText, { color: theme.bg }]}>创建本地钱包（推荐）</Text>
+        </View>
       </Pressable>
 
-      <Text style={[styles.section, { color: theme.text }]}>用助记词恢复</Text>
+      <SectionLabel theme={theme}>用助记词恢复</SectionLabel>
       <TextInput
         value={mnemonicInput}
         onChangeText={setMnemonicInput}
@@ -117,10 +135,13 @@ export function AccountScreen() {
         style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
       />
       <Pressable disabled={busy} onPress={onRestore} accessibilityRole="button" style={[styles.btnOutline, { borderColor: theme.brand }]}>
-        <Text style={[styles.btnOutlineText, { color: theme.brand }]}>🔑 恢复钱包</Text>
+        <View style={styles.btnInner}>
+          <Icon name="key" color={theme.brand} size={18} />
+          <Text style={[styles.btnOutlineText, { color: theme.brand }]}>恢复钱包</Text>
+        </View>
       </Pressable>
 
-      <Text style={[styles.section, { color: theme.text }]}>仅查看（零私钥）</Text>
+      <SectionLabel theme={theme}>仅查看（零私钥）</SectionLabel>
       <TextInput
         value={addrInput}
         onChangeText={setAddrInput}
@@ -130,23 +151,26 @@ export function AccountScreen() {
         style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
       />
       <Pressable onPress={onViewOnly} accessibilityRole="button" style={[styles.btnOutline, { borderColor: theme.line }]}>
-        <Text style={[styles.btnOutlineText, { color: theme.text }]}>👁️ 以只读模式进入</Text>
+        <View style={styles.btnInner}>
+          <Icon name="eye" color={theme.text} size={18} />
+          <Text style={[styles.btnOutlineText, { color: theme.text }]}>以只读模式进入</Text>
+        </View>
       </Pressable>
-    </ScrollView>
+    </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, paddingTop: 24 },
-  title: { fontSize: 24, fontWeight: "700", marginBottom: 6 },
   subtitle: { fontSize: 13, marginBottom: 18 },
-  section: { fontSize: 14, fontWeight: "700", marginTop: 20, marginBottom: 8 },
   card: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 12 },
   label: { fontSize: 11, marginBottom: 4 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+  warnRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 8 },
+  valueRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  btnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   value: { fontSize: 14, fontWeight: "600" },
   addr: { fontSize: 14, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  warn: { fontSize: 12, fontWeight: "700", marginBottom: 8 },
+  warn: { flex: 1, fontSize: 12, fontWeight: "700" },
   mnemonic: { fontSize: 15, lineHeight: 24, marginBottom: 10 },
   link: { fontSize: 13, textDecorationLine: "underline" },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },

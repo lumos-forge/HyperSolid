@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useEnvStore } from "../state/envStore";
 import { PositionsService } from "../services/positionsData";
 import { createPositionsInfoClient } from "../lib/hyperliquid/client";
 import { useViewOnlyPortfolio } from "../hooks/useViewOnlyPortfolio";
 import { PositionRow } from "../components/PositionRow";
+import { ScreenScaffold } from "../components/ScreenScaffold";
+import { Pill } from "../components/Pill";
+import { Icon } from "../components/Icon";
 import { formatCompact } from "../lib/hyperliquid/format";
 
 export function PositionsScreen() {
@@ -18,11 +21,18 @@ export function PositionsScreen() {
   const pnlColor = (portfolio?.summary.totalUnrealizedPnl ?? 0) >= 0 ? theme.up : theme.down;
 
   return (
-    <ScrollView style={[styles.root, { backgroundColor: theme.bg }]} contentContainerStyle={styles.content}>
-      <Text style={[styles.title, { color: theme.text }]}>持仓 Positions</Text>
-      <Text style={[styles.banner, { color: theme.muted, borderColor: theme.line }]}>
-        👁️ view-only 预览：输入任意地址查看其持仓（零私钥）。连接钱包后将自动填充。
-      </Text>
+    <ScreenScaffold
+      theme={theme}
+      statusTitle="HYPERSOLID"
+      pill={<Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />}
+      heading="持仓 Positions"
+    >
+      <View style={[styles.banner, { borderColor: theme.line }]}>
+        <Icon name="eye" color={theme.muted} size={16} />
+        <Text style={[styles.bannerText, { color: theme.muted }]}>
+          view-only 预览：输入任意地址查看其持仓（零私钥）。连接钱包后将自动填充。
+        </Text>
+      </View>
 
       <View style={styles.inputRow}>
         <TextInput
@@ -65,7 +75,7 @@ export function PositionsScreen() {
           )}
         </>
       ) : null}
-    </ScrollView>
+    </ScreenScaffold>
   );
 }
 
@@ -89,10 +99,8 @@ function Summary({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, paddingTop: 24 },
-  title: { fontSize: 24, fontWeight: "700", marginBottom: 10 },
-  banner: { fontSize: 12, lineHeight: 18, borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 12 },
+  banner: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 12 },
+  bannerText: { flex: 1, fontSize: 12, lineHeight: 18 },
   inputRow: { flexDirection: "row", gap: 8 },
   input: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },
   btn: { paddingHorizontal: 18, borderRadius: 8, alignItems: "center", justifyContent: "center" },
