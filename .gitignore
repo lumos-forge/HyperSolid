@@ -1,6 +1,34 @@
+# Dependencies
 node_modules/
-.expo/
+
+# Build output
 dist/
+
+# Expo / Metro caches (app-level rules live in mobile/.gitignore)
+.expo/
+
+# Logs & debug
 *.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Test coverage
+coverage/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env*.local
+*.pem
+
+# OS files
 .DS_Store
-mobile/node_modules/
+Thumbs.db
+
+# Editor / IDE
+.idea/
+*.swp
+*.swo
