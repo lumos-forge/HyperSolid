@@ -13,6 +13,13 @@ describe("authStore", () => {
     expect(useAuthStore.getState().status).toBe("locked");
   });
 
+  it("evaluate fails closed to locked when the existence check throws", async () => {
+    await useAuthStore.getState().evaluate(async () => {
+      throw new Error("keychain error");
+    });
+    expect(useAuthStore.getState().status).toBe("locked");
+  });
+
   it("unlock sets status to unlocked and stamps lastActiveAt", () => {
     useAuthStore.getState().unlock();
     expect(useAuthStore.getState().status).toBe("unlocked");

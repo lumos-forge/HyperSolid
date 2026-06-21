@@ -31,4 +31,13 @@ describe("LockScreen", () => {
     fireEvent.press(screen.getByText("解锁"));
     await waitFor(() => expect(screen.getByText(/设备安全检查未通过/)).toBeTruthy());
   });
+
+  it("re-enables and shows an error if onUnlock throws", async () => {
+    const onUnlock = jest.fn().mockRejectedValue(new Error("boom"));
+    render(<LockScreen onUnlock={onUnlock} />);
+    fireEvent.press(screen.getByText("解锁"));
+    await waitFor(() => expect(screen.getByText(/验证失败/)).toBeTruthy());
+    fireEvent.press(screen.getByText("解锁"));
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledTimes(2));
+  });
 });

@@ -53,6 +53,14 @@ describe("sessionController", () => {
     expect(useAuthStore.getState().status).toBe("locked");
   });
 
+  it("returns 'failed' when loading the wallet rejects (e.g. read prompt cancelled)", async () => {
+    const gate = { authenticate: jest.fn().mockResolvedValue("success") };
+    const manager = { loadWallet: jest.fn().mockRejectedValue(new Error("user cancel")) };
+    const r = await unlockSession(gate as never, manager as never, trusted);
+    expect(r).toBe("failed");
+    expect(useAuthStore.getState().status).toBe("locked");
+  });
+
   it("lockSession clears in-memory wallet and locks", () => {
     useWalletStore.setState({ mode: "local", wallet: fakeWallet, address: "0xabc" });
     useAuthStore.setState({ status: "unlocked", lastActiveAt: 1 });

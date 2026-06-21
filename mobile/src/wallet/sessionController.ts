@@ -17,7 +17,12 @@ export async function unlockSession(
   if ((await integrity.check()) !== "trusted") return "compromised";
   const result = await gate.authenticate({ reason: UNLOCK_REASON });
   if (result !== "success") return result;
-  const wallet = await manager.loadWallet();
+  let wallet;
+  try {
+    wallet = await manager.loadWallet();
+  } catch {
+    return "failed";
+  }
   if (!wallet) return "failed";
   useWalletStore.getState().setLocalWallet(wallet);
   useAuthStore.getState().unlock();

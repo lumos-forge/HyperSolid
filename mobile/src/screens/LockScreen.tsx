@@ -12,12 +12,17 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
   async function handle() {
     setBusy(true);
     setMsg(null);
-    const r = await onUnlock();
-    setBusy(false);
-    if (r === "failed") setMsg("验证失败，请重试");
-    else if (r === "cancelled") setMsg("已取消");
-    else if (r === "unavailable") setMsg("未检测到生物识别，请在系统设置中启用 Face ID/指纹");
-    else if (r === "compromised") setMsg("设备安全检查未通过：检测到 root/越狱风险，为保护你的资产已禁止解锁。");
+    try {
+      const r = await onUnlock();
+      if (r === "failed") setMsg("验证失败，请重试");
+      else if (r === "cancelled") setMsg("已取消");
+      else if (r === "unavailable") setMsg("未检测到生物识别，请在系统设置中启用 Face ID/指纹");
+      else if (r === "compromised") setMsg("设备安全检查未通过：检测到 root/越狱风险，为保护你的资产已禁止解锁。");
+    } catch {
+      setMsg("验证失败，请重试");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

@@ -14,7 +14,13 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   status: "unknown",
   lastActiveAt: 0,
-  evaluate: async (hasWallet) => set({ status: (await hasWallet()) ? "locked" : "noWallet" }),
+  evaluate: async (hasWallet) => {
+    try {
+      set({ status: (await hasWallet()) ? "locked" : "noWallet" });
+    } catch {
+      set({ status: "locked" });
+    }
+  },
   unlock: () => set({ status: "unlocked", lastActiveAt: Date.now() }),
   lock: () => set({ status: "locked" }),
   touch: () => set({ lastActiveAt: Date.now() }),
