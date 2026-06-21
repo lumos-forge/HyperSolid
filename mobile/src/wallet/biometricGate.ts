@@ -34,7 +34,7 @@ export class BiometricGate {
     if (!avail.hasHardware || !avail.isEnrolled) return "unavailable";
     const res = await this.la.authenticateAsync({
       promptMessage: opts.reason,
-      disableDeviceFallback: false,
+      disableDeviceFallback: true,
       cancelLabel: "取消",
     });
     if (res.success) return "success";

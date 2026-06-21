@@ -34,12 +34,12 @@ describe("BiometricGate.authenticate", () => {
     expect(la.authenticateAsync).not.toHaveBeenCalled();
   });
 
-  it("returns 'success' on successful auth and passes the reason + device fallback", async () => {
+  it("returns 'success' on successful auth and forces biometric (no device passcode fallback)", async () => {
     const la = mockLA();
     const gate = new BiometricGate(la as never);
     expect(await gate.authenticate({ reason: "解锁钱包" })).toBe("success");
     expect(la.authenticateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ promptMessage: "解锁钱包", disableDeviceFallback: false }),
+      expect.objectContaining({ promptMessage: "解锁钱包", disableDeviceFallback: true }),
     );
   });
 
