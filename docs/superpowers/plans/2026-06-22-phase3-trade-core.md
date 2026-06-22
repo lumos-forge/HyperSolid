@@ -55,12 +55,13 @@
 
 ## 单元清单（按顺序执行）
 
-### - [ ] 单元 1：精度校验加固（`order.ts`）
+### - [x] 单元 1：精度校验加固（`order.ts`）
 
-- [ ] `roundSize`：size 按资产 `szDecimals` 取整（核对既有实现/补边界）。
-- [ ] `formatPrice`：price 同时满足「≤5 有效数字（整数价例外）」且「小数位 ≤ (perp 6 / spot 8 − szDecimals)」；签名前 `stripTrailingZeros`。
-- [ ] `validateOrder`：精度/最小名义/价带等前置校验，违规返回 `OrderRejection`。
-- [ ] 补全边界测试（5 有效数字临界、整数价、szDecimals 不同档、perp vs spot 小数上限、去尾零）。
+- [x] `roundSize`：size 按资产 `szDecimals` 取整（核对既有实现/补边界）。
+- [x] `formatPrice`：price 同时满足「≤5 有效数字（整数价例外）」且「小数位 ≤ (perp 6 / spot 8 − szDecimals)」；签名前 `stripTrailingZeros`。
+- [x] `validateOrder`：精度/最小名义/价带等前置校验，违规返回 `OrderRejection`。
+- [x] 补全边界测试（5 有效数字临界、整数价、szDecimals 不同档、perp vs spot 小数上限、去尾零）。
+**实现说明：** 主缺口是 spot 支持——`formatPrice` 原硬编码 perp 6 位小数；新增 `MarketKind = "perp"|"spot"` 参数 + `maxPriceDecimals()`（spot 用 8，clamp 至 0），默认 perp 保持向后兼容。validateOrder 既有逻辑（正性/最小名义$10/取整后为零）正确，未改。
 
 ### - [ ] 单元 2：asset-id 解析（`assetId.ts`）
 
@@ -147,3 +148,4 @@
 > 每完成一个单元追加一行：`YYYY-MM-DD · 单元 N · 测试数 · 一句话结论`
 
 - 2026-06-22 · 单元 0（计划创建）· — · 建立可重入计划与 10 单元拆分，下一轮从「单元 1：精度校验加固」开始。
+- 2026-06-22 · 单元 1（精度校验加固）· +3（193→196）· formatPrice 新增 MarketKind(perp/spot) 支持 spot 8 位小数上限 + clamp，补边界测试；tsc 零错、jest 全绿、order.ts 无 emoji/硬编码色。下一轮从「单元 2：asset-id 解析」开始。

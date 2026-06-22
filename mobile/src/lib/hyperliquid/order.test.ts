@@ -29,12 +29,26 @@ describe("formatPrice", () => {
     // szDecimals 0 -> maxDecimals 6; 5 sig figs binds
     expect(formatPrice(1.234567, 0)).toBe("1.2346");
   });
-  it("respects max decimals = 6 - szDecimals", () => {
+  it("respects perp max decimals = 6 - szDecimals", () => {
     // szDecimals 5 -> maxDecimals 1
     expect(formatPrice(0.123456, 5)).toBe("0.1");
   });
   it("strips trailing zeros", () => {
     expect(formatPrice(2.5, 4)).toBe("2.5");
+  });
+  it("uses spot max decimals = 8 - szDecimals", () => {
+    // spot, szDecimals 5 -> maxDecimals 3; 5 sig figs not binding here
+    expect(formatPrice(0.123456, 5, "spot")).toBe("0.123");
+  });
+  it("spot still caps at 5 significant figures", () => {
+    // spot, szDecimals 0 -> maxDecimals 8, but 5 sig figs binds
+    expect(formatPrice(1.234567, 0, "spot")).toBe("1.2346");
+  });
+  it("clamps max decimals to 0 when szDecimals >= base", () => {
+    // perp, szDecimals 6 -> maxDecimals 0 -> rounds to integer-ish
+    expect(formatPrice(1.49, 6)).toBe("1");
+    // spot, szDecimals 8 -> maxDecimals 0
+    expect(formatPrice(2.6, 8, "spot")).toBe("3");
   });
 });
 

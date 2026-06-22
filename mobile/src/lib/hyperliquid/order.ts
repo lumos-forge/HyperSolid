@@ -4,8 +4,12 @@
  */
 
 const PERP_MAX_DECIMALS = 6;
+const SPOT_MAX_DECIMALS = 8;
 const MAX_SIG_FIGS = 5;
 const MIN_NOTIONAL_USD = 10;
+
+/** Hyperliquid market kind — perp prices allow ≤6 decimals, spot ≤8 (before szDecimals). */
+export type MarketKind = "perp" | "spot";
 
 /** Round a size to the asset's szDecimals (lot size). */
 export function roundSize(size: number, szDecimals: number): number {
@@ -19,15 +23,21 @@ export function stripTrailingZeros(s: string): string {
   return s.replace(/0+$/, "").replace(/\.$/, "");
 }
 
+/** Max price decimals allowed: (perp 6 / spot 8) − szDecimals, clamped at 0. */
+function maxPriceDecimals(szDecimals: number, kind: MarketKind): number {
+  const base = kind === "spot" ? SPOT_MAX_DECIMALS : PERP_MAX_DECIMALS;
+  return Math.max(0, base - szDecimals);
+}
+
 /**
- * Format a perp price per HL rules:
+ * Format a price per HL rules (§4.2):
  * - integer prices are always allowed (e.g. 123456),
- * - otherwise ≤ MAX_SIG_FIGS significant figures AND ≤ (MAX_DECIMALS - szDecimals) decimals.
+ * - otherwise ≤ MAX_SIG_FIGS significant figures AND ≤ (perp 6 / spot 8 − szDecimals) decimals.
  * Returns a trailing-zero-stripped string.
  */
-export function formatPrice(price: number, szDecimals: number): string {
+export function formatPrice(price: number, szDecimals: number, kind: MarketKind = "perp"): string {
   if (Number.isInteger(price)) return String(price);
-  const maxDecimals = Math.max(0, PERP_MAX_DECIMALS - szDecimals);
+  const maxDecimals = maxPriceDecimals(szDecimals, kind);
   // significant-figure rounding
   const sig = Number(price.toPrecision(MAX_SIG_FIGS));
   const fixed = sig.toFixed(maxDecimals);
