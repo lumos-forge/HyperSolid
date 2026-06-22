@@ -100,11 +100,11 @@
 - [x] 与 cloid 账本对账（撤/改后更新状态）。
 - [x] 测试覆盖：cancelByCloid 字段名断言、modify、账本联动。
 
-### - [ ] 单元 8：ExchangeService 编排加固
+### - [x] 单元 8：ExchangeService 编排加固
 
-- [ ] `placeOrder` 串起：精度校验 → cloid 账本(pending) → buildOrder(+builder) → 签名提交 → 状态码归一化 → 账本对账。
-- [ ] 可注入（client/ledger/index），**绝不触真网/真单**。
-- [ ] 测试覆盖：成功路径、拒绝码归一化、重试同 cloid、注入 mock 不触网。
+- [x] `placeOrder` 串起：精度校验 → cloid 账本(pending) → buildOrder(+builder) → 签名提交 → 状态码归一化 → 账本对账。
+- [x] 可注入（client/ledger/index），**绝不触真网/真单**。
+- [x] 测试覆盖：成功路径、拒绝码归一化、重试同 cloid、注入 mock 不触网。
 
 ### - [ ] 单元 9：TradeScreen 接入加固层
 
@@ -155,3 +155,4 @@
 - 2026-06-22 · 单元 5（订单构建扩展）· +7（243→250）· buildOrder 扩展 t 联合类型（limit/trigger）+ market→Ioc + Grouping/Tpsl 类型；新增 buildBracketOrder（entry + TP/SL sibling：closing 侧 + reduceOnly + normalTpsl 默认/positionTpsl，逐腿独立 cloid）；字段/精度按 @nktkas SDK schema 核对（r 为必填布尔，omit-not-false 仅适用 builder 等可选字段，已测）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 6：builder 字段 + approveBuilderFee」开始。
 - 2026-06-22 · 单元 6（builder 字段 + approveBuilderFee）· +10（250→260）· 新增 builderFee.ts：费率上限校验（perps 100/spot 1000 tenth-bps）+ tenthBpsToPercent（f=10→0.01%）+ buildApproveBuilderFee（{maxFeeRate:"x%",builder}，对齐 @nktkas ApproveBuilderFeeParameters）；assetId 新增 marketKindForAssetId（spot 区间 [10000,100000)，builder-perp≥100000 归 perp）；buildOrder/buildBracketOrder 经 DRY builderField 校验 fee 上限超限拒单（builderFeeRejected，已加中文）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 7：撤改单 gotchas」开始。
 - 2026-06-22 · 单元 7（撤改单 gotchas）· +10（260→270）· 新增 cancel.ts：buildCancel({a,o})、buildCancelByCloid（**字段名 asset 非 a**，断言 "a" 不在）、buildModify（{oid,order}，复用 buildOrder 做 DRY 校验/编码，oid 支持 number 或 cloid）；IntentLedger 新增 markCanceled（撤/改后置 canceled，单调不覆盖 filled/已终态）。字段名全部对照本地 @nktkas valibot schema 核对。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 8：ExchangeService 编排加固」开始。
+- 2026-06-22 · 单元 8（ExchangeService 编排加固）· +6（270→276）· ExchangeService 注入 IntentLedger（默认内存）；placeOrder 串起 buildOrder(精度/asset/builder) → ledger.open(pending,签名前) → markSubmitted → client.order → normalizeOrderStatus → reconcile，shouldSubmit 去重重试同 cloid（client.order 仅一次）；OrderRequest 加可选 cloid（重试复用）；新增 cancelOrderByCloid/modifyOrder（复用 Unit7 builders）+ cancelOrder 经 getByOid 对账 markCanceled；ExchangeLike 加 cancelByCloid/modify。全注入、绝不触真网。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 9：TradeScreen 接入加固层」开始。

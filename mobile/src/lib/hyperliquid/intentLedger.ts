@@ -121,6 +121,11 @@ export class IntentLedger {
     return this.store.get(cloid);
   }
 
+  /** Find an intent by its exchange-assigned order id (set during reconcile). */
+  getByOid(oid: number): OrderIntent | undefined {
+    return this.store.values().find((i) => i.oid === oid);
+  }
+
   markSubmitted(cloid: string): OrderIntent | undefined {
     return this.transition(cloid, "submitted");
   }

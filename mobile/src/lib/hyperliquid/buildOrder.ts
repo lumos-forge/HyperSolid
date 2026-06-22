@@ -28,6 +28,8 @@ export interface OrderRequest {
   market?: boolean;
   /** When set, this is a trigger (stop/TP) order: `t` becomes `{ trigger }` instead of `{ limit }`. */
   trigger?: TriggerSpec;
+  /** Reuse an existing cloid (retry idempotency). Generated if absent. */
+  cloid?: `0x${string}`;
   /** Optional builder code fee attachment. */
   builder?: { address: `0x${string}`; feeTenthBps: number };
 }
@@ -122,7 +124,7 @@ export function buildOrder(req: OrderRequest, index: AssetIndex): BuildResult {
   const bf = builderField(req.builder, asset);
   if (bf && "rejection" in bf) return { ok: false, rejection: bf.rejection };
 
-  const cloid = generateCloid();
+  const cloid = req.cloid ?? generateCloid();
   const params: HlOrderParams = {
     orders: [orderTuple(req, asset, szDecimals, cloid)],
     grouping: "na",
@@ -145,7 +147,7 @@ export function buildBracketOrder(req: BracketRequest, index: AssetIndex): Build
   const entryRejection = validateOrder({ price: entry.price, size: entry.size, szDecimals });
   if (entryRejection) return { ok: false, rejection: entryRejection };
 
-  const entryCloid = generateCloid();
+  const entryCloid = entry.cloid ?? generateCloid();
   const orders: HlOrderTuple[] = [orderTuple(entry, asset, szDecimals, entryCloid)];
 
   const closeSide: OrderSide = entry.side === "buy" ? "sell" : "buy";
