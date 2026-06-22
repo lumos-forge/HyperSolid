@@ -82,11 +82,11 @@
 - [x] HTTP/WS 不确定回执用 cloid 去重，杜绝重复/孤儿单。
 - [x] 测试覆盖：重试复用同 cloid、对账状态迁移、去重。
 
-### - [ ] 单元 5：订单构建扩展（`buildOrder.ts`）
+### - [x] 单元 5：订单构建扩展（`buildOrder.ts`）
 
-- [ ] `reduce-only` `r`；市价(IOC)；TP/SL trigger{triggerPx,isMarket,tpsl} + sibling 配对 + grouping(na/normalTpsl/positionTpsl)。
-- [ ] **布尔标志缺省时省略而非置 false**（hash 一致性）。
-- [ ] 测试覆盖：limit Gtc/Ioc/Alo、市价 IOC、reduce-only、TP/SL 配对、布尔省略断言。
+- [x] `reduce-only` `r`；市价(IOC)；TP/SL trigger{triggerPx,isMarket,tpsl} + sibling 配对 + grouping(na/normalTpsl/positionTpsl)。
+- [x] **布尔标志缺省时省略而非置 false**（hash 一致性）。
+- [x] 测试覆盖：limit Gtc/Ioc/Alo、市价 IOC、reduce-only、TP/SL 配对、布尔省略断言。
 
 ### - [ ] 单元 6：builder 字段 + approveBuilderFee
 
@@ -152,3 +152,4 @@
 - 2026-06-22 · 单元 2（asset-id 解析）· +7（196→203）· 新增 buildSpotAssetIndex（spot 资产 id = 10000 + spotInfo.index，按官方文档用显式 index 字段而非数组下标）+ SPOT_ASSET_ID_OFFSET 常量；perp/spot 解析均 case-insensitive、未知 coin 返回 null；DRY 抽出 makeAssetIndex/normalizeCoin 复用。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 3：状态码映射」开始。
 - 2026-06-22 · 单元 3（状态码映射）· +27（203→230）· 补全 STATUS_MESSAGES（open/filled/canceled/triggered/marginCanceled/reduceOnlyCanceled/siblingFilledCanceled/scheduledCancel/openInterestCapCanceled/liquidatedCanceled）+ REJECTION_MESSAGES 补 unknownAsset；新增纯函数 normalizeOrderStatus 解析官方 status 形态（resting/filled/error/waitingForFill/waitingForTrigger + bare 字符串）→ {kind,message,code?,oid?,cloid?,totalSz?,avgPx?}，error 串内嵌码与 $10 英文短语均可归一。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 4：cloid 幂等 + 意图账本」开始。
 - 2026-06-22 · 单元 4（cloid 幂等 + 意图账本）· +13（230→243）· 新增 intentLedger.ts：注入式 IntentLedger(store/clock/cloidFactory) + MemoryIntentStore（可换持久化）；open() 先持久化 pending cloid 再签名、同 cloid 重试仅 bump attempts 不重复建单；reconcile() 按 NormalizedStatus.kind 对账 open/filled/rejected/canceled 且单调不回退（防乱序 WS）；shouldSubmit/isSettled/pending 用 cloid 去重杜绝重复/孤儿单。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 5：订单构建扩展」开始。
+- 2026-06-22 · 单元 5（订单构建扩展）· +7（243→250）· buildOrder 扩展 t 联合类型（limit/trigger）+ market→Ioc + Grouping/Tpsl 类型；新增 buildBracketOrder（entry + TP/SL sibling：closing 侧 + reduceOnly + normalTpsl 默认/positionTpsl，逐腿独立 cloid）；字段/精度按 @nktkas SDK schema 核对（r 为必填布尔，omit-not-false 仅适用 builder 等可选字段，已测）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 6：builder 字段 + approveBuilderFee」开始。
