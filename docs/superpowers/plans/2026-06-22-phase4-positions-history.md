@@ -61,11 +61,11 @@
 - [x] 归一化纯函数：→ `Fill[]` / `FundingEvent[]` / `OpenOrder[]`；fill 按 `tid` 去重、order 按 `oid` 去重。
 - [x] 测试覆盖：字段映射、去重、空输入、方向(B/A)与符号。
 
-### - [ ] 单元 2：mark 价 PnL 语义（`positions.ts`，§4.5）
+### - [x] 单元 2：mark 价 PnL 语义（`positions.ts`，§4.5）
 
-- [ ] 用 `markPx`（allMids）重算 `unrealizedPnl` / 保证金率 / 距清算%；**禁用 last-trade**。
-- [ ] 纯函数 + 注入 mids；边界：空仓 / 多头 / 空头 / 零价 / 缺 mark。
-- [ ] 测试覆盖：long/short PnL 正负、保证金率、距清算、缺价回退既有值。
+- [x] 用 `markPx`（allMids）重算 `unrealizedPnl` / 保证金率 / 距清算%；**禁用 last-trade**。
+- [x] 纯函数 + 注入 mids；边界：空仓 / 多头 / 空头 / 零价 / 缺 mark。
+- [x] 测试覆盖：long/short PnL 正负、保证金率、距清算、缺价回退既有值。
 
 ### - [ ] 单元 3：资金费（oracle 价）
 
@@ -138,3 +138,4 @@
 
 - 2026-06-22 · 单元 0（计划创建）· — · 建立可重入计划与 9 单元拆分（只读消费链路），下一轮从「单元 1：用户级原始类型 + 归一化器」开始。
 - 2026-06-22 · 单元 1（用户级原始类型 + 归一化器）· +8（283→291）· types.ts 新增 RawUserFill/RawFunding/RawOpenOrder + 归一化 Fill/FundingEvent/OpenOrder（字段对照本地 @nktkas commonSchemas：UserFillSchema/UserFundingResponse/OpenOrderSchema）；新增 history.ts（normalizeFills 按 tid 去重+newest first+side B/A→buy/sell+builderFee 缺省 0；normalizeFundings 展开 delta+signed usdc；normalizeOpenOrders 按 oid 去重+cloid null/reduceOnly false 缺省）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。RawOrderUpdate/orderUpdates 归入单元 6。下一轮从「单元 2：mark 价 PnL 语义」开始。
+- 2026-06-22 · 单元 2（mark 价 PnL 语义）· +10（291→301）· 新增 markPnl.ts 纯函数：unrealizedPnlFromMark（long (mark-entry)*size / short (entry-mark)*size，**用 mark 非 last-trade**）、distanceToLiqPct、roePct（DRY 替代 PositionRow 内联 ROE）、marginRatioPct（账户级）、applyMarks（按 marks 重算每仓 uPnl+positionValue 与账户 totalUnrealizedPnl/totalNtlPos，缺/非法 mark 回退快照值，接受 string|number marks）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 3：资金费（oracle 价）」开始。
