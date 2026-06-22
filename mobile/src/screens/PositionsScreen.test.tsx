@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import { PositionsScreen } from "./PositionsScreen";
 import { useEnvStore } from "../state/envStore";
 import { useWalletStore } from "../state/walletStore";
+import { useLedgerStore } from "../state/ledgerStore";
+import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { PositionsService } from "../services/positionsData";
 import type { FillsService } from "../services/fillsData";
 import type { OrdersService } from "../services/ordersData";
@@ -33,6 +35,7 @@ describe("PositionsScreen", () => {
   beforeEach(() => {
     useEnvStore.setState({ network: "mainnet" });
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
+    useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
   });
 
   it("renders the phosphor chrome, view-only banner and query control", () => {
@@ -42,6 +45,17 @@ describe("PositionsScreen", () => {
     expect(screen.getByText("持仓 Positions")).toBeTruthy();
     expect(screen.getByText(/view-only 预览/)).toBeTruthy();
     expect(screen.getByText("查询")).toBeTruthy();
+  });
+
+  it("surfaces unconfirmed intents from the persistent ledger as a disclosure-only banner", () => {
+    const ledger = new IntentLedger();
+    const a = ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    ledger.markSubmitted(a.cloid);
+    useLedgerStore.setState({ ledger, scope: "0xabc:mainnet", revision: 1 });
+    render(<PositionsScreen deps={fakeDeps} />);
+    expect(screen.getByTestId("unconfirmed-banner")).toBeTruthy();
+    expect(screen.getByText(/1 笔未确认/)).toBeTruthy();
+    expect(screen.queryByTestId("unconfirmed-review")).toBeNull();
   });
 
   it("shows a format error for an invalid address without hitting the network", () => {

@@ -39,4 +39,16 @@ describe("ledgerStore", () => {
     useLedgerStore.getState().reset();
     expect(useLedgerStore.getState().ledger).toBeNull();
   });
+
+  it("bumps revision on init / bump / reset so derived UI re-renders", () => {
+    const before = useLedgerStore.getState().revision;
+    useLedgerStore.getState().init(new FakeSqlDb(), "0xAbc", "mainnet");
+    const afterInit = useLedgerStore.getState().revision;
+    expect(afterInit).toBeGreaterThan(before);
+    useLedgerStore.getState().bump();
+    const afterBump = useLedgerStore.getState().revision;
+    expect(afterBump).toBeGreaterThan(afterInit);
+    useLedgerStore.getState().reset();
+    expect(useLedgerStore.getState().revision).toBeGreaterThan(afterBump);
+  });
 });

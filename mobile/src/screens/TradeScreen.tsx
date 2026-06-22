@@ -6,10 +6,12 @@ import { useEnvStore } from "../state/envStore";
 import { useMarketStore } from "../state/marketStore";
 import { useLedgerStore } from "../state/ledgerStore";
 import { useExchangeStore } from "../state/exchangeStore";
+import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
 import { createExchangeClient } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { Pill } from "../components/Pill";
+import { UnconfirmedBanner } from "../components/UnconfirmedBanner";
 import type { LocalWalletService } from "../wallet/localWallet";
 import type { OrderSide } from "../lib/hyperliquid/buildOrder";
 import { validateOrder, rejectionMessage } from "../lib/hyperliquid/order";
@@ -21,6 +23,7 @@ export function TradeScreen() {
   const network = useEnvStore((s) => s.network);
   const tickers = useMarketStore((s) => s.tickers);
   const ledger = useLedgerStore((s) => s.ledger);
+  const { count: unconfirmedCount, intents: unconfirmedIntents } = useUnconfirmedIntents();
 
   const [coin, setCoin] = useState("BTC");
   const [side, setSide] = useState<OrderSide>("buy");
@@ -114,8 +117,18 @@ export function TradeScreen() {
     } catch (e) {
       Alert.alert("下单异常", e instanceof Error ? e.message : String(e));
     } finally {
+      // The ledger mutated (open/markSubmitted/reconcile) — refresh the unconfirmed banner.
+      useLedgerStore.getState().bump();
       setBusy(false);
     }
+  }
+
+  // Banner "review" action: prime a retry of the most recent unconfirmed intent (same cloid).
+  function reviewLatest() {
+    if (unconfirmedIntents.length === 0) return;
+    const latest = unconfirmedIntents.reduce((a, b) => (a.updatedAt >= b.updatedAt ? a : b));
+    setRetryCloid(latest.cloid);
+    setUncertain(true);
   }
 
   const networkPill = <Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />;
@@ -132,6 +145,12 @@ export function TradeScreen() {
 
   return (
     <ScreenScaffold theme={theme} statusTitle="HYPERSOLID" pill={networkPill} heading="交易 Trade">
+      <UnconfirmedBanner
+        theme={theme}
+        count={unconfirmedCount}
+        onReview={reviewLatest}
+        reviewLabel="重试最近一笔"
+      />
       <Text style={[styles.net, { color: theme.muted }]}>网络：{network}（仅测试网可下真单）</Text>
 
       <View style={styles.sideRow}>

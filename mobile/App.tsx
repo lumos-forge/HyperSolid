@@ -44,7 +44,8 @@ export default function App() {
       // crash/kill mid-submit can't leave duplicate or orphan orders. Best-effort; never blocks UI.
       const ledger = useLedgerStore.getState().ledger;
       if (ledger) {
-        void reconcilePendingIntents(ledger, createOrderStatusInfoClient(network), walletAddress);
+        void reconcilePendingIntents(ledger, createOrderStatusInfoClient(network), walletAddress)
+          .finally(() => useLedgerStore.getState().bump());
       }
     } else {
       useLedgerStore.getState().reset();

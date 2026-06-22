@@ -12,9 +12,11 @@ import {
   createOrdersInfoClient,
 } from "../lib/hyperliquid/client";
 import { useViewOnlyPortfolio, isValidAddress } from "../hooks/useViewOnlyPortfolio";
+import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
 import { PositionRow } from "../components/PositionRow";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { Pill } from "../components/Pill";
+import { UnconfirmedBanner } from "../components/UnconfirmedBanner";
 import { Icon } from "../components/Icon";
 import { formatCompact } from "../lib/hyperliquid/format";
 import type { ThemeTokens } from "../theme/tokens";
@@ -44,6 +46,7 @@ export function PositionsScreen({ deps }: { deps?: PositionsScreenDeps } = {}) {
   );
 
   const { portfolio, loading, error, load } = useViewOnlyPortfolio(services.positions);
+  const { count: unconfirmedCount } = useUnconfirmedIntents();
   const [address, setAddress] = useState(walletAddress ?? "");
   const [tab, setTab] = useState<Tab>("positions");
   const [fills, setFills] = useState<Fill[]>([]);
@@ -66,6 +69,7 @@ export function PositionsScreen({ deps }: { deps?: PositionsScreenDeps } = {}) {
       pill={<Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />}
       heading="持仓 Positions"
     >
+      <UnconfirmedBanner theme={theme} count={unconfirmedCount} />
       <View style={[styles.banner, { borderColor: theme.line }]}>
         <Icon name="eye" color={theme.muted} size={16} />
         <Text style={[styles.bannerText, { color: theme.muted }]}>

@@ -5,6 +5,8 @@ import { TradeScreen } from "./TradeScreen";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { useMarketStore } from "../state/marketStore";
+import { useLedgerStore } from "../state/ledgerStore";
+import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { MarketTicker } from "../lib/hyperliquid/types";
 
 const mockPlaceOrder = jest.fn();
@@ -33,6 +35,7 @@ describe("TradeScreen", () => {
     useEnvStore.setState({ network: "mainnet" });
     useMarketStore.setState({ tickers: [btc], loading: false, error: null });
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
+    useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
     mockPlaceOrder.mockReset();
     jest.spyOn(Alert, "alert").mockReset().mockImplementation(() => {});
   });
@@ -211,5 +214,20 @@ describe("TradeScreen", () => {
 
     fireEvent.changeText(screen.getByTestId("field-size"), "0.02");
     expect(screen.queryByTestId("retry-order")).toBeNull();
+  });
+
+  it("shows the persistent unconfirmed banner and primes a retry of the latest intent", () => {
+    const ledger = new IntentLedger();
+    const a = ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    ledger.markSubmitted(a.cloid);
+    useLedgerStore.setState({ ledger, scope: "0xabc:mainnet", revision: 1 });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+
+    expect(screen.getByTestId("unconfirmed-banner")).toBeTruthy();
+    expect(screen.getByText(/1 笔未确认/)).toBeTruthy();
+    // "重试最近一笔" engages the same-cloid retry UI (Unit 5 notice).
+    fireEvent.press(screen.getByTestId("unconfirmed-review"));
+    expect(screen.getByTestId("retry-order")).toBeTruthy();
   });
 });
