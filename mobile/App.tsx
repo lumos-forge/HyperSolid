@@ -8,14 +8,19 @@ import { LockScreen } from "./src/screens/LockScreen";
 import { useLiveMarkets } from "./src/hooks/useLiveMarkets";
 import { MarketDataService } from "./src/services/marketData";
 import { createInfoClient, createSubsClient } from "./src/lib/hyperliquid/client";
+import { createSqlDb } from "./src/lib/storage/expoSqlDb";
 import { useEnvStore } from "./src/state/envStore";
 import { useAuthStore } from "./src/state/authStore";
+import { useWalletStore } from "./src/state/walletStore";
+import { useLedgerStore } from "./src/state/ledgerStore";
 import { useAutoLock } from "./src/wallet/useAutoLock";
 import { unlockSession } from "./src/wallet/sessionController";
 import { BiometricGate } from "./src/wallet/biometricGate";
 import { AlwaysTrustedIntegrity } from "./src/wallet/deviceIntegrity";
 import { WalletManager } from "./src/wallet/walletManager";
 import { SecureStoreKeyStore } from "./src/wallet/secureKeyStore";
+
+const INTENT_DB_NAME = "hypersolid-intents.db";
 
 export default function App() {
   const network = useEnvStore((s) => s.network);
@@ -25,6 +30,19 @@ export default function App() {
   );
   useLiveMarkets(service);
   useAutoLock();
+
+  // Persistent intent ledger (spec §6.2): one SQLite DB, hydrated/scoped by wallet × network so a
+  // cloid idempotency ledger survives restarts. Re-scope when the active wallet or network changes.
+  const walletMode = useWalletStore((s) => s.mode);
+  const walletAddress = useWalletStore((s) => s.address);
+  const intentDb = useMemo(() => createSqlDb(INTENT_DB_NAME), []);
+  useEffect(() => {
+    if (walletMode === "local" && walletAddress) {
+      useLedgerStore.getState().init(intentDb, walletAddress, network);
+    } else {
+      useLedgerStore.getState().reset();
+    }
+  }, [intentDb, walletMode, walletAddress, network]);
 
   const status = useAuthStore((s) => s.status);
   const manager = useMemo(() => new WalletManager(new SecureStoreKeyStore()), []);

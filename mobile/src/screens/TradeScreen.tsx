@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { useMarketStore } from "../state/marketStore";
-import { ExchangeService } from "../services/exchange";
+import { useLedgerStore } from "../state/ledgerStore";
+import { useExchangeStore } from "../state/exchangeStore";
 import { createExchangeClient } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -19,12 +20,15 @@ export function TradeScreen() {
   const wallet = useWalletStore((s) => s.wallet);
   const network = useEnvStore((s) => s.network);
   const tickers = useMarketStore((s) => s.tickers);
+  const ledger = useLedgerStore((s) => s.ledger);
 
   const [coin, setCoin] = useState("BTC");
   const [side, setSide] = useState<OrderSide>("buy");
   const [size, setSize] = useState("");
   const [price, setPrice] = useState("");
   const [busy, setBusy] = useState(false);
+  // Reused on a retry so the same cloid dedupes; cleared when the order is edited or succeeds.
+  const [retryCloid, setRetryCloid] = useState<`0x${string}` | null>(null);
 
   const ticker = tickers.find((t) => t.coin === coin.toUpperCase());
   const index = useMemo(() => {
@@ -34,12 +38,39 @@ export function TradeScreen() {
     });
   }, [tickers]);
 
+  const client = useMemo(() => {
+    if (mode !== "local" || !wallet) return null;
+    const local = wallet as Partial<LocalWalletService>;
+    if (typeof local.getViemAccount !== "function") return null;
+    return createExchangeClient(network, local.getViemAccount());
+  }, [mode, wallet, network]);
+
+  // Wire the long-lived singleton ExchangeService to the persistent ledger; re-init when the
+  // client/index/ledger change (the SAME ledger instance keeps cloid dedup working across submits).
+  useEffect(() => {
+    if (!client || !index) {
+      useExchangeStore.getState().reset();
+      return;
+    }
+    useExchangeStore.getState().init(client, index, ledger ?? undefined);
+  }, [client, index, ledger]);
+
   const notional = (Number(size) || 0) * (Number(price) || 0);
   const canSubmit =
     mode === "local" && !!wallet && Number(size) > 0 && Number(price) > 0 && notional >= 10;
 
+  // Editing the order means a new intent — drop any retry cloid so we never reuse it cross-order.
+  function edit<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setRetryCloid(null);
+      setter(v);
+    };
+  }
+
   async function onSubmit() {
     if (!wallet || mode !== "local" || !index) return;
+    const svc = useExchangeStore.getState().service;
+    if (!svc) return;
     const szDec = index.szDecimals(coin.toUpperCase()) ?? 2;
     const rej = validateOrder({ price: Number(price), size: Number(size), szDecimals: szDec });
     if (rej) {
@@ -48,20 +79,22 @@ export function TradeScreen() {
     }
     setBusy(true);
     try {
-      const account = (wallet as LocalWalletService).getViemAccount();
-      const client = createExchangeClient(network, account);
-      const svc = new ExchangeService(client, index);
+      // §6.2: placeOrder persists the (pending) cloid BEFORE signing and dedupes by cloid.
       const res = await svc.placeOrder({
         coin: coin.toUpperCase(),
         side,
         size: Number(size),
         price: Number(price),
+        cloid: retryCloid ?? undefined,
       });
       if (res.ok) {
+        setRetryCloid(null);
         const note = res.status?.message ?? "已提交";
         Alert.alert("下单成功", `${note} · cloid ${res.cloid.slice(0, 10)}…`);
         setSize("");
       } else {
+        // Keep the cloid so the next attempt reuses it instead of orphaning a duplicate.
+        if (res.cloid) setRetryCloid(res.cloid);
         Alert.alert("下单失败", res.error);
       }
     } catch (e) {
@@ -91,7 +124,10 @@ export function TradeScreen() {
         {(["buy", "sell"] as const).map((s) => (
           <Pressable
             key={s}
-            onPress={() => setSide(s)}
+            onPress={() => {
+              setRetryCloid(null);
+              setSide(s);
+            }}
             accessibilityRole="button"
             style={[
               styles.sideBtn,
@@ -105,10 +141,10 @@ export function TradeScreen() {
         ))}
       </View>
 
-      <Field label="标的" value={coin} onChange={setCoin} theme={theme} autoCap testID="field-coin" />
+      <Field label="标的" value={coin} onChange={edit(setCoin)} theme={theme} autoCap testID="field-coin" />
       {ticker ? <Text style={[styles.hint, { color: theme.muted }]}>当前价 {ticker.midPx}</Text> : null}
-      <Field label="数量" value={size} onChange={setSize} theme={theme} keyboard testID="field-size" />
-      <Field label="价格" value={price} onChange={setPrice} theme={theme} keyboard testID="field-price" />
+      <Field label="数量" value={size} onChange={edit(setSize)} theme={theme} keyboard testID="field-size" />
+      <Field label="价格" value={price} onChange={edit(setPrice)} theme={theme} keyboard testID="field-price" />
 
       <Text style={[styles.hint, { color: notional >= 10 ? theme.muted : theme.down }]}>
         名义价值 ${notional.toFixed(2)} {notional < 10 ? "（需 ≥ $10）" : ""}

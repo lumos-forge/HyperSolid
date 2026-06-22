@@ -126,4 +126,39 @@ describe("TradeScreen", () => {
     await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalled());
     expect(Alert.alert).not.toHaveBeenCalledWith("订单无效", expect.anything());
   });
+
+  it("reuses the cloid on a retry after a failed submit (no orphan duplicate)", async () => {
+    const failCloid = ("0x" + "b".repeat(32)) as `0x${string}`;
+    mockPlaceOrder
+      .mockResolvedValueOnce({ ok: false, error: "网络超时", cloid: failCloid })
+      .mockResolvedValueOnce({ ok: true, cloid: failCloid, status: { kind: "resting", message: "订单已挂单" } });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(1));
+    expect(mockPlaceOrder.mock.calls[0][0].cloid).toBeUndefined();
+
+    // Retry without editing the form must reuse the same cloid (ledger dedupe).
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(2));
+    expect(mockPlaceOrder.mock.calls[1][0].cloid).toBe(failCloid);
+  });
+
+  it("drops the retry cloid once the order is edited (new intent gets a fresh cloid)", async () => {
+    const failCloid = ("0x" + "c".repeat(32)) as `0x${string}`;
+    mockPlaceOrder.mockResolvedValue({ ok: false, error: "网络超时", cloid: failCloid });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(1));
+
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.02");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(2));
+    expect(mockPlaceOrder.mock.calls[1][0].cloid).toBeUndefined();
+  });
 });
