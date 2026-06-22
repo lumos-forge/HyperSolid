@@ -63,11 +63,11 @@
 - [x] 补全边界测试（5 有效数字临界、整数价、szDecimals 不同档、perp vs spot 小数上限、去尾零）。
 **实现说明：** 主缺口是 spot 支持——`formatPrice` 原硬编码 perp 6 位小数；新增 `MarketKind = "perp"|"spot"` 参数 + `maxPriceDecimals()`（spot 用 8，clamp 至 0），默认 perp 保持向后兼容。validateOrder 既有逻辑（正性/最小名义$10/取整后为零）正确，未改。
 
-### - [ ] 单元 2：asset-id 解析（`assetId.ts`）
+### - [x] 单元 2：asset-id 解析（`assetId.ts`）
 
-- [ ] perp 索引解析 + **spot 偏移 10000**；`resolveAssetId` 覆盖 perp/spot。
-- [ ] 未知 coin 返回 `null`；大小写/symbol 归一。
-- [ ] 测试覆盖 perp、spot（+10000）、未知。
+- [x] perp 索引解析 + **spot 偏移 10000**；`resolveAssetId` 覆盖 perp/spot。
+- [x] 未知 coin 返回 `null`；大小写/symbol 归一。
+- [x] 测试覆盖 perp、spot（+10000）、未知。
 
 ### - [ ] 单元 3：状态码映射（`order.ts`）
 
@@ -149,3 +149,4 @@
 
 - 2026-06-22 · 单元 0（计划创建）· — · 建立可重入计划与 10 单元拆分，下一轮从「单元 1：精度校验加固」开始。
 - 2026-06-22 · 单元 1（精度校验加固）· +3（193→196）· formatPrice 新增 MarketKind(perp/spot) 支持 spot 8 位小数上限 + clamp，补边界测试；tsc 零错、jest 全绿、order.ts 无 emoji/硬编码色。下一轮从「单元 2：asset-id 解析」开始。
+- 2026-06-22 · 单元 2（asset-id 解析）· +7（196→203）· 新增 buildSpotAssetIndex（spot 资产 id = 10000 + spotInfo.index，按官方文档用显式 index 字段而非数组下标）+ SPOT_ASSET_ID_OFFSET 常量；perp/spot 解析均 case-insensitive、未知 coin 返回 null；DRY 抽出 makeAssetIndex/normalizeCoin 复用。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 3：状态码映射」开始。
