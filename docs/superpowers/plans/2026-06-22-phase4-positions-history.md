@@ -67,11 +67,11 @@
 - [x] 纯函数 + 注入 mids；边界：空仓 / 多头 / 空头 / 零价 / 缺 mark。
 - [x] 测试覆盖：long/short PnL 正负、保证金率、距清算、缺价回退既有值。
 
-### - [ ] 单元 3：资金费（oracle 价）
+### - [x] 单元 3：资金费（oracle 价）
 
-- [ ] 归一化 `userFundings`；按 coin 聚合累计已付/应计；**不混用 mark 价**。
-- [ ] 纯函数；时间窗聚合（如近 24h / 累计）。
-- [ ] 测试覆盖：聚合求和、正负费、按 coin 分组、空输入。
+- [x] 归一化 `userFundings`；按 coin 聚合累计已付/应计；**不混用 mark 价**。
+- [x] 纯函数；时间窗聚合（如近 24h / 累计）。
+- [x] 测试覆盖：聚合求和、正负费、按 coin 分组、空输入。
 
 ### - [ ] 单元 4：实时持仓服务加固（`positionsData.ts`）
 
@@ -139,3 +139,4 @@
 - 2026-06-22 · 单元 0（计划创建）· — · 建立可重入计划与 9 单元拆分（只读消费链路），下一轮从「单元 1：用户级原始类型 + 归一化器」开始。
 - 2026-06-22 · 单元 1（用户级原始类型 + 归一化器）· +8（283→291）· types.ts 新增 RawUserFill/RawFunding/RawOpenOrder + 归一化 Fill/FundingEvent/OpenOrder（字段对照本地 @nktkas commonSchemas：UserFillSchema/UserFundingResponse/OpenOrderSchema）；新增 history.ts（normalizeFills 按 tid 去重+newest first+side B/A→buy/sell+builderFee 缺省 0；normalizeFundings 展开 delta+signed usdc；normalizeOpenOrders 按 oid 去重+cloid null/reduceOnly false 缺省）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。RawOrderUpdate/orderUpdates 归入单元 6。下一轮从「单元 2：mark 价 PnL 语义」开始。
 - 2026-06-22 · 单元 2（mark 价 PnL 语义）· +10（291→301）· 新增 markPnl.ts 纯函数：unrealizedPnlFromMark（long (mark-entry)*size / short (entry-mark)*size，**用 mark 非 last-trade**）、distanceToLiqPct、roePct（DRY 替代 PositionRow 内联 ROE）、marginRatioPct（账户级）、applyMarks（按 marks 重算每仓 uPnl+positionValue 与账户 totalUnrealizedPnl/totalNtlPos，缺/非法 mark 回退快照值，接受 string|number marks）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 3：资金费（oracle 价）」开始。
+- 2026-06-22 · 单元 3（资金费 oracle 价）· +6（301→307）· 新增 funding.ts 纯函数：aggregateFundingByCoin（按 coin 聚合 net/paid/received/count，按 |net| 降序）、totalFunding（净额）、fundingSince（时间窗净额）；usdc 为 oracle 结算签名值，**不混用 mark 价**。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 4：实时持仓服务加固」开始。
