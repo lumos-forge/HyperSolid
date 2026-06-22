@@ -77,11 +77,12 @@ function orderTuple(
   szDecimals: number,
   cloid: `0x${string}`,
 ): HlOrderTuple {
+  const kind = marketKindForAssetId(asset);
   const t: OrderType = req.trigger
     ? {
         trigger: {
           isMarket: req.trigger.isMarket,
-          triggerPx: formatPrice(req.trigger.triggerPx, szDecimals),
+          triggerPx: formatPrice(req.trigger.triggerPx, szDecimals, kind),
           tpsl: req.trigger.tpsl,
         },
       }
@@ -89,7 +90,7 @@ function orderTuple(
   return {
     a: asset,
     b: req.side === "buy",
-    p: formatPrice(req.price, szDecimals),
+    p: formatPrice(req.price, szDecimals, kind),
     s: String(roundSize(req.size, szDecimals)),
     r: req.reduceOnly ?? false,
     t,

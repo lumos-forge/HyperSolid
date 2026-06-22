@@ -129,6 +129,42 @@ describe("buildOrder", () => {
     expect(r.params.orders[0].s).toBe("0.12346"); // szDecimals 5
     expect(r.params.orders[0].p).toBe("60001"); // 5 sig figs
   });
+
+  it("formats spot prices with spot (8-decimal) precision, not perp", () => {
+    // TINY/USDC at asset id 10005 -> marketKindForAssetId => "spot" (8 decimals, not perp 6)
+    const tinySpot = buildSpotAssetIndex({
+      universe: [{ name: "TINY/USDC", index: 5, szDecimals: 0 }],
+    });
+    const r = buildOrder(
+      { coin: "TINY/USDC", side: "buy", size: 1000000, price: 0.0000123 },
+      tinySpot,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // spot allows 8 decimals -> "0.0000123"; perp (6) would wrongly truncate to "0.000012"
+    expect(r.params.orders[0].p).toBe("0.0000123");
+  });
+
+  it("formats spot trigger prices with spot precision too", () => {
+    const tinySpot = buildSpotAssetIndex({
+      universe: [{ name: "TINY/USDC", index: 5, szDecimals: 0 }],
+    });
+    const r = buildOrder(
+      {
+        coin: "TINY/USDC",
+        side: "sell",
+        size: 1000000,
+        price: 0.0000123,
+        reduceOnly: true,
+        trigger: { triggerPx: 0.0000119, isMarket: true, tpsl: "sl" },
+      },
+      tinySpot,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const t = r.params.orders[0].t;
+    expect("trigger" in t && t.trigger.triggerPx).toBe("0.0000119");
+  });
 });
 
 describe("buildOrder — trigger (TP/SL) single order", () => {
