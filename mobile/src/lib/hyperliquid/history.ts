@@ -4,8 +4,11 @@ import type {
   OpenOrder,
   RawFunding,
   RawOpenOrder,
+  RawOrderUpdate,
   RawUserFill,
 } from "./types";
+import { normalizeOrderStatus, type OrderStatusKind } from "./order";
+import type { IntentStatus } from "./intentLedger";
 
 /** HL order side encoding: "B" = bid/buy, "A" = ask/sell. */
 function sideFromBA(side: "B" | "A"): "buy" | "sell" {
@@ -85,4 +88,47 @@ export function normalizeOpenOrders(raw: RawOpenOrder[]): OpenOrder[] {
     });
   }
   return out;
+}
+
+/** Normalized orderUpdates event: order + raw status + statusTimestamp + status normalization (§4.4). */
+export interface OrderUpdate {
+  order: OpenOrder;
+  status: string;
+  statusTimestamp: number;
+  kind: OrderStatusKind;
+  message: string;
+}
+
+/** Normalize orderUpdates, reusing normalizeOrderStatus (Phase 3) for the status -> {kind, message}. */
+export function normalizeOrderUpdates(raw: RawOrderUpdate[]): OrderUpdate[] {
+  return raw.map((u) => {
+    const [order] = normalizeOpenOrders([u.order]);
+    const ns = normalizeOrderStatus(u.status);
+    return {
+      order,
+      status: u.status,
+      statusTimestamp: u.statusTimestamp,
+      kind: ns.kind,
+      message: ns.message,
+    };
+  });
+}
+
+/** An open order annotated with whether a local intent (Phase 3 cloid ledger) tracks it. */
+export interface TrackedOpenOrder extends OpenOrder {
+  tracked: boolean;
+  intentStatus: IntentStatus | null;
+}
+
+/** Minimal read-only view of the intent ledger (we never write to it from Phase 4). */
+export interface IntentLookup {
+  get(cloid: string): { status: IntentStatus } | undefined;
+}
+
+/** Reconcile open orders against the cloid ledger — READ-ONLY (no ledger writes). */
+export function reconcileOpenOrders(orders: OpenOrder[], ledger: IntentLookup): TrackedOpenOrder[] {
+  return orders.map((o) => {
+    const intent = o.cloid ? ledger.get(o.cloid) : undefined;
+    return { ...o, tracked: !!intent, intentStatus: intent?.status ?? null };
+  });
 }

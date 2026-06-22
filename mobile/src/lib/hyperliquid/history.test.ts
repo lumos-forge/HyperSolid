@@ -1,5 +1,13 @@
-import { normalizeFills, normalizeFundings, normalizeOpenOrders, mergeFills } from "./history";
-import type { RawUserFill, RawFunding, RawOpenOrder } from "./types";
+import {
+  normalizeFills,
+  normalizeFundings,
+  normalizeOpenOrders,
+  normalizeOrderUpdates,
+  reconcileOpenOrders,
+  mergeFills,
+} from "./history";
+import type { RawUserFill, RawFunding, RawOpenOrder, RawOrderUpdate } from "./types";
+import { IntentLedger } from "./intentLedger";
 
 const fill = (over: Partial<RawUserFill>): RawUserFill => ({
   coin: "BTC",
@@ -120,5 +128,59 @@ describe("normalizeOpenOrders (openOrders)", () => {
 
   it("handles empty input", () => {
     expect(normalizeOpenOrders([])).toEqual([]);
+  });
+});
+
+describe("normalizeOrderUpdates (orderUpdates WS)", () => {
+  const upd = (over: Partial<RawOrderUpdate>): RawOrderUpdate => ({
+    order: openOrder({}),
+    status: "open",
+    statusTimestamp: 2000,
+    ...over,
+  });
+
+  it("normalizes the order and maps status -> kind + Chinese message (DRY normalizeOrderStatus)", () => {
+    const [u] = normalizeOrderUpdates([upd({ status: "filled" })]);
+    expect(u.order.coin).toBe("BTC");
+    expect(u.status).toBe("filled");
+    expect(u.statusTimestamp).toBe(2000);
+    expect(u.kind).toBe("filled");
+    expect(u.message).toMatch(/[\u4e00-\u9fa5]/);
+  });
+
+  it("maps cancellation statuses", () => {
+    const [u] = normalizeOrderUpdates([upd({ status: "marginCanceled" })]);
+    expect(u.kind).toBe("canceled");
+  });
+});
+
+describe("reconcileOpenOrders (read-only consumption of the cloid ledger)", () => {
+  it("annotates orders that have a tracked local intent by cloid", () => {
+    const ledger = new IntentLedger();
+    const cloid = ("0x" + "a".repeat(32)) as `0x${string}`;
+    ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000, cloid });
+
+    const orders = normalizeOpenOrders([
+      openOrder({ oid: 1, cloid }),
+      openOrder({ oid: 2 }), // no cloid -> untracked
+    ]);
+    const out = reconcileOpenOrders(orders, ledger);
+
+    const tracked = out.find((o) => o.oid === 1)!;
+    const untracked = out.find((o) => o.oid === 2)!;
+    expect(tracked.tracked).toBe(true);
+    expect(tracked.intentStatus).toBe("pending");
+    expect(untracked.tracked).toBe(false);
+    expect(untracked.intentStatus).toBeNull();
+  });
+
+  it("treats unknown cloids as untracked", () => {
+    const ledger = new IntentLedger();
+    const orders = normalizeOpenOrders([
+      openOrder({ oid: 3, cloid: ("0x" + "b".repeat(32)) as `0x${string}` }),
+    ]);
+    const [o] = reconcileOpenOrders(orders, ledger);
+    expect(o.tracked).toBe(false);
+    expect(o.intentStatus).toBeNull();
   });
 });

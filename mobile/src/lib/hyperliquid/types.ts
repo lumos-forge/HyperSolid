@@ -221,6 +221,11 @@ export interface RawOpenOrder {
   cloid?: `0x${string}`;
   reduceOnly?: true;
 }
+export interface RawOrderUpdate {
+  order: RawOpenOrder;
+  status: string; // open/filled/canceled/triggered/rejected/marginCanceled/...
+  statusTimestamp: number;
+}
 
 // ---- User history: normalized model ----
 export interface Fill {
