@@ -35,3 +35,7 @@ Thumbs.db
 
 # Git worktrees (local isolated workspaces)
 .worktrees/
+
+# design render tooling (puppeteer-core)
+docs/design/renders/node_modules/
+docs/design/renders/package-lock.json
