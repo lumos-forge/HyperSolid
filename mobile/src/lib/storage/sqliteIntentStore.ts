@@ -4,6 +4,9 @@ import type { SqlDb, SqlRow } from "./sqlDb";
 /** Bump when the `intents` table shape changes; add a migration branch below. */
 export const INTENT_SCHEMA_VERSION = 1;
 
+const TERMINAL: ReadonlySet<IntentStatus> = new Set(["filled", "rejected", "canceled"]);
+const TERMINAL_SQL = "status IN ('filled', 'rejected', 'canceled')";
+
 const UPSERT_SQL =
   "INSERT INTO intents " +
   "(scope, cloid, coin, side, size, price, status, attempts, oid, reason, createdAt, updatedAt) " +
@@ -111,5 +114,32 @@ export class SqliteIntentStore implements IntentStore {
       this.cache.set(intent.cloid, intent);
     }
     return this;
+  }
+
+  /**
+   * Retention cleanup (run at startup): delete terminal intents older than `maxAgeMs`, then cap the
+   * terminal count to `maxRows` (newest kept). pending/submitted are never pruned. DB + cache stay
+   * consistent. Non-terminal intents are always retained until reconciled.
+   */
+  prune(now: number, maxAgeMs: number, maxRows = 2000): void {
+    const cutoff = now - maxAgeMs;
+    // 1) age-based: terminal older than cutoff
+    this.db.run(`DELETE FROM intents WHERE scope = ? AND ${TERMINAL_SQL} AND updatedAt < ?`, [
+      this.scope,
+      cutoff,
+    ]);
+    for (const [k, v] of this.cache) {
+      if (TERMINAL.has(v.status) && v.updatedAt < cutoff) this.cache.delete(k);
+    }
+    // 2) count cap: keep newest `maxRows` terminal, drop the rest
+    this.db.run(
+      `DELETE FROM intents WHERE scope = ? AND ${TERMINAL_SQL} AND cloid NOT IN ` +
+        `(SELECT cloid FROM intents WHERE scope = ? AND ${TERMINAL_SQL} ORDER BY updatedAt DESC LIMIT ?)`,
+      [this.scope, this.scope, maxRows],
+    );
+    const terminal = [...this.cache.values()]
+      .filter((i) => TERMINAL.has(i.status))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const i of terminal.slice(maxRows)) this.cache.delete(i.cloid);
   }
 }

@@ -91,6 +91,45 @@ describe("SqliteIntentStore — write-through CRUD", () => {
   });
 });
 
+describe("SqliteIntentStore — prune (retention)", () => {
+  it("deletes terminal intents older than maxAgeMs (DB + cache), keeps pending + recent terminal", () => {
+    const db = new FakeSqlDb();
+    const store = new SqliteIntentStore(db, SCOPE);
+    const cl = (n: string) => ("0x" + n.repeat(32)) as `0x${string}`;
+    store.set(cl("1"), intent({ cloid: cl("1"), status: "pending", updatedAt: 1000 }));
+    store.set(cl("2"), intent({ cloid: cl("2"), status: "filled", updatedAt: 100 })); // old terminal
+    store.set(cl("3"), intent({ cloid: cl("3"), status: "filled", updatedAt: 900 })); // recent terminal
+    db.runCalls.length = 0;
+
+    store.prune(1000, 200); // cutoff = 800
+
+    expect(store.get(cl("2"))).toBeUndefined(); // old terminal pruned
+    expect(store.get(cl("1"))).toBeDefined(); // pending kept
+    expect(store.get(cl("3"))).toBeDefined(); // recent terminal kept
+
+    const ageDelete = db.runCalls.find((c) => /updatedAt < \?/.test(c.sql))!;
+    expect(ageDelete.sql).toMatch(/status IN \('filled', ?'rejected', ?'canceled'\)/);
+    expect(ageDelete.params).toEqual([SCOPE, 800]);
+  });
+
+  it("caps terminal count to maxRows (evicts oldest terminal beyond cap)", () => {
+    const db = new FakeSqlDb();
+    const store = new SqliteIntentStore(db, SCOPE);
+    const cl = (n: string) => ("0x" + n.repeat(32)) as `0x${string}`;
+    store.set(cl("a"), intent({ cloid: cl("a"), status: "filled", updatedAt: 100 }));
+    store.set(cl("b"), intent({ cloid: cl("b"), status: "filled", updatedAt: 200 }));
+    store.set(cl("c"), intent({ cloid: cl("c"), status: "filled", updatedAt: 300 }));
+
+    store.prune(10_000, 10_000, 2); // no age pruning; cap to 2 newest terminal
+
+    expect(store.get(cl("a"))).toBeUndefined(); // oldest dropped
+    expect(store.get(cl("b"))).toBeDefined();
+    expect(store.get(cl("c"))).toBeDefined();
+    const capDelete = db.runCalls.find((c) => /ORDER BY updatedAt DESC LIMIT \?/.test(c.sql))!;
+    expect(capDelete.params).toEqual([SCOPE, SCOPE, 2]);
+  });
+});
+
 describe("SqliteIntentStore — hydrate (load scope into cache)", () => {
   it("loads this scope's rows and maps them to OrderIntent (null oid/reason -> undefined)", () => {
     const db = new FakeSqlDb();

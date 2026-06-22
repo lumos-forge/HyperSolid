@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.default-data-protection": "NSFileProtectionCompleteUntilFirstUnlock"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +31,8 @@
         {
           "faceIDPermission": "使用 Face ID 解锁你的 HyperSolid 钱包并对交易签名。"
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }
