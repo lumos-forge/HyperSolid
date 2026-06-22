@@ -7,12 +7,13 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { LockScreen } from "./src/screens/LockScreen";
 import { useLiveMarkets } from "./src/hooks/useLiveMarkets";
 import { MarketDataService } from "./src/services/marketData";
-import { createInfoClient, createSubsClient } from "./src/lib/hyperliquid/client";
+import { createInfoClient, createSubsClient, createOrderStatusInfoClient } from "./src/lib/hyperliquid/client";
 import { createSqlDb } from "./src/lib/storage/expoSqlDb";
 import { useEnvStore } from "./src/state/envStore";
 import { useAuthStore } from "./src/state/authStore";
 import { useWalletStore } from "./src/state/walletStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
+import { reconcilePendingIntents } from "./src/services/ledgerRecovery";
 import { useAutoLock } from "./src/wallet/useAutoLock";
 import { unlockSession } from "./src/wallet/sessionController";
 import { BiometricGate } from "./src/wallet/biometricGate";
@@ -39,6 +40,12 @@ export default function App() {
   useEffect(() => {
     if (walletMode === "local" && walletAddress) {
       useLedgerStore.getState().init(intentDb, walletAddress, network);
+      // §6.2 startup recovery: reconcile any pending/submitted intents by cloid against HL, so a
+      // crash/kill mid-submit can't leave duplicate or orphan orders. Best-effort; never blocks UI.
+      const ledger = useLedgerStore.getState().ledger;
+      if (ledger) {
+        void reconcilePendingIntents(ledger, createOrderStatusInfoClient(network), walletAddress);
+      }
     } else {
       useLedgerStore.getState().reset();
     }

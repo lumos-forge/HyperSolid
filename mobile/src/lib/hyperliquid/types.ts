@@ -183,6 +183,20 @@ export interface OrdersInfoLike {
   openOrders(address: string): Promise<RawOpenOrder[]>;
 }
 
+/**
+ * HL order-status response (query by oid OR cloid) — `info.orderStatus`. Mirrors @nktkas
+ * `OrderStatusResponse`: an `"order"` envelope (with an HL processing-status code) or `"unknownOid"`
+ * when the exchange has no record (an orphan / unconfirmed intent).
+ */
+export type RawOrderStatus =
+  | { status: "order"; order: { status: string; statusTimestamp?: number; order?: { oid?: number } } }
+  | { status: "unknownOid" };
+
+/** Injectable single-order status surface (startup reconciliation by cloid). */
+export interface OrderStatusInfoLike {
+  orderStatus(user: string, oidOrCloid: number | `0x${string}`): Promise<RawOrderStatus>;
+}
+
 /** Injectable funding-history info surface. */
 export interface FundingsInfoLike {
   userFunding(address: string, startTime: number, endTime?: number): Promise<RawFunding[]>;
