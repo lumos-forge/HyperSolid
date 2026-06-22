@@ -11,7 +11,7 @@ import { ScreenScaffold } from "../components/ScreenScaffold";
 import { Pill } from "../components/Pill";
 import type { LocalWalletService } from "../wallet/localWallet";
 import type { OrderSide } from "../lib/hyperliquid/buildOrder";
-import { validateOrder } from "../lib/hyperliquid/order";
+import { validateOrder, rejectionMessage } from "../lib/hyperliquid/order";
 
 export function TradeScreen() {
   const theme = useTheme();
@@ -43,7 +43,7 @@ export function TradeScreen() {
     const szDec = index.szDecimals(coin.toUpperCase()) ?? 2;
     const rej = validateOrder({ price: Number(price), size: Number(size), szDecimals: szDec });
     if (rej) {
-      Alert.alert("订单无效", rej);
+      Alert.alert("订单无效", rejectionMessage(rej));
       return;
     }
     setBusy(true);
@@ -58,7 +58,8 @@ export function TradeScreen() {
         price: Number(price),
       });
       if (res.ok) {
-        Alert.alert("下单成功", `cloid ${res.cloid.slice(0, 10)}…`);
+        const note = res.status?.message ?? "已提交";
+        Alert.alert("下单成功", `${note} · cloid ${res.cloid.slice(0, 10)}…`);
         setSize("");
       } else {
         Alert.alert("下单失败", res.error);
@@ -104,10 +105,10 @@ export function TradeScreen() {
         ))}
       </View>
 
-      <Field label="标的" value={coin} onChange={setCoin} theme={theme} autoCap />
+      <Field label="标的" value={coin} onChange={setCoin} theme={theme} autoCap testID="field-coin" />
       {ticker ? <Text style={[styles.hint, { color: theme.muted }]}>当前价 {ticker.midPx}</Text> : null}
-      <Field label="数量" value={size} onChange={setSize} theme={theme} keyboard />
-      <Field label="价格" value={price} onChange={setPrice} theme={theme} keyboard />
+      <Field label="数量" value={size} onChange={setSize} theme={theme} keyboard testID="field-size" />
+      <Field label="价格" value={price} onChange={setPrice} theme={theme} keyboard testID="field-price" />
 
       <Text style={[styles.hint, { color: notional >= 10 ? theme.muted : theme.down }]}>
         名义价值 ${notional.toFixed(2)} {notional < 10 ? "（需 ≥ $10）" : ""}
@@ -117,6 +118,7 @@ export function TradeScreen() {
         disabled={!canSubmit || busy}
         onPress={onSubmit}
         accessibilityRole="button"
+        testID="submit-order"
         style={[styles.submit, { backgroundColor: canSubmit ? theme.brand : theme.line }]}
       >
         {busy ? <ActivityIndicator color={theme.bg} /> : <Text style={[styles.submitText, { color: theme.bg }]}>提交订单</Text>}
@@ -132,6 +134,7 @@ function Field({
   theme,
   keyboard,
   autoCap,
+  testID,
 }: {
   label: string;
   value: string;
@@ -139,6 +142,7 @@ function Field({
   theme: { text: string; muted: string; line: string; surface: string };
   keyboard?: boolean;
   autoCap?: boolean;
+  testID?: string;
 }) {
   return (
     <View style={styles.field}>
@@ -146,6 +150,7 @@ function Field({
       <TextInput
         value={value}
         onChangeText={onChange}
+        testID={testID}
         keyboardType={keyboard ? "decimal-pad" : "default"}
         autoCapitalize={autoCap ? "characters" : "none"}
         style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
