@@ -7,7 +7,7 @@ const cloidA = ("0x" + "a".repeat(32)) as `0x${string}`;
 const cloidB = ("0x" + "b".repeat(32)) as `0x${string}`;
 const cloidC = ("0x" + "c".repeat(32)) as `0x${string}`;
 
-/** info.orderStatus fake keyed by cloid → programmed response. */
+/** info.orderStatus fake keyed by cloid -> programmed response. */
 function fakeInfo(byCloid: Record<string, RawOrderStatus>, onErr?: Set<string>): {
   info: OrderStatusInfoLike;
   calls: { user: string; oid: number | `0x${string}` }[];
@@ -33,7 +33,7 @@ describe("reconcilePendingIntents (startup recovery)", () => {
     ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000, cloid: cloidA });
     ledger.markSubmitted(cloidA);
     ledger.open({ coin: "ETH", side: "buy", size: 1, price: 3000, cloid: cloidB });
-    ledger.reconcile(cloidB, { kind: "filled", message: "已成交" }); // terminal → skipped
+    ledger.reconcile(cloidB, { kind: "filled", message: "已成交" }); // terminal -> skipped
     const { info, calls } = fakeInfo({ [cloidA]: order("open", 111) });
 
     await reconcilePendingIntents(ledger, info, USER);
@@ -74,7 +74,7 @@ describe("reconcilePendingIntents (startup recovery)", () => {
     const ledger = new IntentLedger();
     ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000, cloid: cloidA });
     ledger.markSubmitted(cloidA);
-    const { info } = fakeInfo({}); // every lookup → unknownOid
+    const { info } = fakeInfo({}); // every lookup -> unknownOid
 
     const summary = await reconcilePendingIntents(ledger, info, USER);
 
@@ -101,7 +101,7 @@ describe("reconcilePendingIntents (startup recovery)", () => {
     ledger.markSubmitted(cloidA);
     ledger.open({ coin: "ETH", side: "buy", size: 1, price: 3000, cloid: cloidB });
     ledger.markSubmitted(cloidB);
-    const { info } = fakeInfo({ [cloidA]: order("filled", 222) }); // B → orphan
+    const { info } = fakeInfo({ [cloidA]: order("filled", 222) }); // B -> orphan
 
     const events: string[] = [];
     await reconcilePendingIntents(ledger, info, USER, (e) => events.push(e));

@@ -5,6 +5,7 @@ import type { OrderIntent } from "../hyperliquid/intentLedger";
 class FakeSqlDb implements SqlDb {
   execCalls: string[] = [];
   runCalls: { sql: string; params: SqlParam[] }[] = [];
+  allCalls: { sql: string; params: SqlParam[] }[] = [];
   allResult: SqlRow[] = [];
   pragmaVersion = 0;
   exec(sql: string) {
@@ -13,7 +14,8 @@ class FakeSqlDb implements SqlDb {
   run(sql: string, params: SqlParam[] = []) {
     this.runCalls.push({ sql, params });
   }
-  all<T extends SqlRow = SqlRow>(sql: string, _params: SqlParam[] = []): T[] {
+  all<T extends SqlRow = SqlRow>(sql: string, params: SqlParam[] = []): T[] {
+    this.allCalls.push({ sql, params });
     if (sql.includes("PRAGMA user_version")) return [{ user_version: this.pragmaVersion }] as unknown as T[];
     return this.allResult as T[];
   }
@@ -48,6 +50,40 @@ describe("SqliteIntentStore — schema/migration", () => {
     db.pragmaVersion = INTENT_SCHEMA_VERSION;
     new SqliteIntentStore(db, SCOPE);
     expect(db.execCalls.join("\n")).not.toMatch(/CREATE TABLE/);
+  });
+
+  it("is forward-safe: an existing v1 DB is not re-created and still serves reads/writes", () => {
+    const db = new FakeSqlDb();
+    db.pragmaVersion = INTENT_SCHEMA_VERSION; // existing migrated DB on app upgrade
+    const store = new SqliteIntentStore(db, SCOPE);
+    expect(db.execCalls.join("\n")).not.toMatch(/CREATE TABLE/); // no destructive re-create
+    const i = intent();
+    store.set(i.cloid, i);
+    expect(store.get(i.cloid)).toEqual(i); // store still operates against the existing schema
+  });
+});
+
+describe("SqliteIntentStore — scope isolation", () => {
+  it("hydrate reads only this scope's rows (scope bound to the SELECT)", () => {
+    const db = new FakeSqlDb();
+    db.allResult = [];
+    const store = new SqliteIntentStore(db, SCOPE);
+    store.hydrate();
+    const select = db.allCalls.find((c) => /SELECT \* FROM intents WHERE scope = \?/.test(c.sql))!;
+    expect(select).toBeDefined();
+    expect(select.params).toEqual([SCOPE]);
+  });
+
+  it("two scopes in one DB keep independent caches (no cross-wallet/network leak)", () => {
+    const db = new FakeSqlDb();
+    const a = new SqliteIntentStore(db, "0xaaa:mainnet");
+    const b = new SqliteIntentStore(db, "0xbbb:testnet");
+    const i = intent();
+    a.set(i.cloid, i);
+    expect(a.get(i.cloid)).toBeDefined();
+    expect(b.get(i.cloid)).toBeUndefined(); // different scope -> not visible
+    const upsert = db.runCalls.find((c) => /INSERT INTO intents/.test(c.sql))!;
+    expect(upsert.params[0]).toBe("0xaaa:mainnet"); // write carries the owning scope
   });
 });
 

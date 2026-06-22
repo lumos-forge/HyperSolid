@@ -17,7 +17,7 @@ describe("useUnconfirmedIntents", () => {
     const a = ledger.open({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
     ledger.markSubmitted(a.cloid);
     const b = ledger.open({ coin: "ETH", side: "buy", size: 1, price: 3000 });
-    ledger.reconcile(b.cloid, { kind: "filled", message: "已成交" }); // terminal → not counted
+    ledger.reconcile(b.cloid, { kind: "filled", message: "已成交" }); // terminal -> not counted
     act(() => useLedgerStore.setState({ ledger, scope: "x", revision: 1 }));
 
     const { result } = renderHook(() => useUnconfirmedIntents());
