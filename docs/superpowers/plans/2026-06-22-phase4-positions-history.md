@@ -73,12 +73,12 @@
 - [x] 纯函数；时间窗聚合（如近 24h / 累计）。
 - [x] 测试覆盖：聚合求和、正负费、按 coin 分组、空输入。
 
-### - [ ] 单元 4：实时持仓服务加固（`positionsData.ts`）
+### - [x] 单元 4：实时持仓服务加固（`positionsData.ts`）
 
-- [ ] 注入式 WS 订阅（clearinghouseState/webData3）+ allMids `markPx` 合并；保留 one-shot，新增 live。
-- [ ] **重连 `isSnapshot:true` 正常恢复不重复计**；60s 无消息 ping 纪律（可注入计时器）。
-- [ ] 订阅句柄可注入可测，**绝不触真网**。
-- [ ] 测试覆盖：live 推送更新、snapshot 不重复累计、unsubscribe、mark 合并。
+- [x] 注入式 WS 订阅（clearinghouseState/webData3）+ allMids `markPx` 合并；保留 one-shot，新增 live。
+- [x] **重连 `isSnapshot:true` 正常恢复不重复计**；60s 无消息 ping 纪律（可注入计时器）。
+- [x] 订阅句柄可注入可测，**绝不触真网**。
+- [x] 测试覆盖：live 推送更新、snapshot 不重复累计、unsubscribe、mark 合并。
 
 ### - [ ] 单元 5：成交历史服务（`userFills`）
 
@@ -140,3 +140,4 @@
 - 2026-06-22 · 单元 1（用户级原始类型 + 归一化器）· +8（283→291）· types.ts 新增 RawUserFill/RawFunding/RawOpenOrder + 归一化 Fill/FundingEvent/OpenOrder（字段对照本地 @nktkas commonSchemas：UserFillSchema/UserFundingResponse/OpenOrderSchema）；新增 history.ts（normalizeFills 按 tid 去重+newest first+side B/A→buy/sell+builderFee 缺省 0；normalizeFundings 展开 delta+signed usdc；normalizeOpenOrders 按 oid 去重+cloid null/reduceOnly false 缺省）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。RawOrderUpdate/orderUpdates 归入单元 6。下一轮从「单元 2：mark 价 PnL 语义」开始。
 - 2026-06-22 · 单元 2（mark 价 PnL 语义）· +10（291→301）· 新增 markPnl.ts 纯函数：unrealizedPnlFromMark（long (mark-entry)*size / short (entry-mark)*size，**用 mark 非 last-trade**）、distanceToLiqPct、roePct（DRY 替代 PositionRow 内联 ROE）、marginRatioPct（账户级）、applyMarks（按 marks 重算每仓 uPnl+positionValue 与账户 totalUnrealizedPnl/totalNtlPos，缺/非法 mark 回退快照值，接受 string|number marks）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 3：资金费（oracle 价）」开始。
 - 2026-06-22 · 单元 3（资金费 oracle 价）· +6（301→307）· 新增 funding.ts 纯函数：aggregateFundingByCoin（按 coin 聚合 net/paid/received/count，按 |net| 降序）、totalFunding（净额）、fundingSince（时间窗净额）；usdc 为 oracle 结算签名值，**不混用 mark 价**。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 4：实时持仓服务加固」开始。
+- 2026-06-22 · 单元 4（实时持仓服务加固）· +5（307→312）· types.ts 加 PositionsSubsLike/ClearinghouseStateEvent；positionsData.ts 新增 subscribeLive（注入式订阅 clearinghouseState + allMids，经 applyMarks mark 合并；保留 one-shot loadPortfolio）。clearinghouseState 为 replace-state，**重连快照重放不重复计**（已测）；订阅句柄可注入、全 fake 测试、绝不触真网；60s ping/keepalive 由 @nktkas WebSocketTransport 负责（非本服务）。tsc 零错、jest 全绿、改动文件无 emoji/硬编码色。下一轮从「单元 5：成交历史服务」开始。

@@ -159,6 +159,19 @@ export interface PositionsInfoLike {
   clearinghouseState(address: string): Promise<RawClearinghouseState>;
 }
 
+/** WS clearinghouseState event (replace-state; reconnect snapshots simply re-replace). */
+export interface ClearinghouseStateEvent {
+  clearinghouseState: RawClearinghouseState;
+}
+/** Injectable user-position subscription surface (clearinghouseState + allMids marks). */
+export interface PositionsSubsLike {
+  clearinghouseState(
+    address: string,
+    listener: (e: ClearinghouseStateEvent) => void,
+  ): Promise<Subscription>;
+  allMids(listener: (data: { mids: Mids }) => void): Promise<Subscription>;
+}
+
 // ---- User history: raw shapes (mirror @nktkas/hyperliquid commonSchemas) ----
 export interface RawUserFill {
   coin: string;
