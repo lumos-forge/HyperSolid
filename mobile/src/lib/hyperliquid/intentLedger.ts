@@ -125,6 +125,17 @@ export class IntentLedger {
     return this.transition(cloid, "submitted");
   }
 
+  /** Mark an intent canceled after a cancel/modify. Won't override a settled (terminal) state. */
+  markCanceled(cloid: string): OrderIntent | undefined {
+    const i = this.store.get(cloid);
+    if (!i) return undefined;
+    if (isTerminalStatus(i.status)) return i;
+    i.status = "canceled";
+    i.updatedAt = this.clock();
+    this.store.set(cloid, i);
+    return i;
+  }
+
   /** Reconcile a persisted intent against a normalized HL status (monotonic toward terminal). */
   reconcile(cloid: string, status: NormalizedStatus): OrderIntent | undefined {
     const intent = this.store.get(cloid);

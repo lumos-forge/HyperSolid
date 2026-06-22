@@ -129,6 +129,28 @@ describe("IntentLedger — dedup uncertain receipts", () => {
   });
 });
 
+describe("IntentLedger.markCanceled (cancel reconciliation)", () => {
+  it("transitions an open order to canceled (settled)", () => {
+    const { ledger } = makeLedger();
+    const i = ledger.open({ coin: "BTC", side: "buy", size: 0.1, price: 60000 });
+    ledger.reconcile(i.cloid, status({ kind: "resting", message: "挂单" }));
+    expect(ledger.markCanceled(i.cloid)?.status).toBe("canceled");
+    expect(ledger.isSettled(i.cloid)).toBe(true);
+  });
+
+  it("does NOT override an already-filled order (can't cancel a fill)", () => {
+    const { ledger } = makeLedger();
+    const i = ledger.open({ coin: "BTC", side: "buy", size: 0.1, price: 60000 });
+    ledger.reconcile(i.cloid, status({ kind: "filled", message: "成交" }));
+    expect(ledger.markCanceled(i.cloid)?.status).toBe("filled");
+  });
+
+  it("returns undefined for an unknown cloid", () => {
+    const { ledger } = makeLedger();
+    expect(ledger.markCanceled("0xabsent")).toBeUndefined();
+  });
+});
+
 describe("MemoryIntentStore", () => {
   it("supports get/set/delete/values", () => {
     const store = new MemoryIntentStore();
