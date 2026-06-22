@@ -24,7 +24,7 @@ export interface ExchangeLike {
 
 export type SubmitResult =
   | { ok: true; cloid: `0x${string}`; response?: unknown; status?: NormalizedStatus }
-  | { ok: false; error: string; cloid?: `0x${string}` };
+  | { ok: false; error: string; cloid?: `0x${string}`; uncertain?: boolean };
 
 /** Placeholder for actions that don't carry a client order id (cancel-by-oid, leverage). */
 const NO_CLOID = "0x" as `0x${string}`;
@@ -68,7 +68,10 @@ export class ExchangeService {
       if (status.kind === "rejected") return { ok: false, error: status.message, cloid };
       return { ok: true, cloid, response, status };
     } catch (e) {
-      return { ok: false, error: errorMessage(e), cloid };
+      // Uncertain receipt (network/timeout): the order may or may not have reached HL. We keep the
+      // intent `submitted` (already markSubmitted) and never assume rejection (§6.1). The caller
+      // offers an explicit retry that REUSES this cloid, so HL dedupes instead of orphaning a dup.
+      return { ok: false, error: errorMessage(e), cloid, uncertain: true };
     }
   }
 

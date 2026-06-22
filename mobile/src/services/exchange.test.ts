@@ -121,6 +121,63 @@ describe("ExchangeService.placeOrder", () => {
     if (res.ok) return;
     expect(res.error).toMatch(/network down/);
   });
+
+  it("flags a thrown receipt as uncertain and keeps the intent submitted (not rejected)", async () => {
+    const client = fakeClient(async () => {
+      throw new Error("network timeout");
+    });
+    const ledger = new IntentLedger();
+    const svc = new ExchangeService(client, index, ledger);
+    const res = await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.uncertain).toBe(true);
+    // §6.1/§6.2: never assume a rejection on an uncertain receipt — keep it submitted.
+    expect(res.cloid && ledger.get(res.cloid)?.status).toBe("submitted");
+  });
+
+  it("retry after an uncertain receipt reuses the same cloid and re-submits", async () => {
+    let calls = 0;
+    const client = fakeClient(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("timeout");
+      return { status: "ok", response: { data: { statuses: [{ resting: { oid: 7 } }] } } };
+    });
+    const ledger = new IntentLedger();
+    const svc = new ExchangeService(client, index, ledger);
+    const first = await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(first.uncertain).toBe(true);
+
+    const firstCloid = first.cloid!;
+    const retry = await svc.placeOrder({
+      coin: "BTC",
+      side: "buy",
+      size: 0.01,
+      price: 60000,
+      cloid: firstCloid,
+    });
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.cloid).toBe(firstCloid);
+    expect(ledger.get(firstCloid)?.status).toBe("open");
+    expect(calls).toBe(2);
+  });
+
+  it("does NOT flag a definite HL rejection as uncertain (terminal rejected)", async () => {
+    const client = fakeClient(async () => ({
+      status: "ok",
+      response: { data: { statuses: [{ error: "minTradeNtlRejected" }] } },
+    }));
+    const ledger = new IntentLedger();
+    const svc = new ExchangeService(client, index, ledger);
+    const res = await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.uncertain).toBeFalsy();
+    expect(res.cloid && ledger.get(res.cloid)?.status).toBe("rejected");
+  });
 });
 
 describe("ExchangeService.cancelOrder / setLeverage", () => {

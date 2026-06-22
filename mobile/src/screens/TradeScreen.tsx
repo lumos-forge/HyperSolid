@@ -29,6 +29,8 @@ export function TradeScreen() {
   const [busy, setBusy] = useState(false);
   // Reused on a retry so the same cloid dedupes; cleared when the order is edited or succeeds.
   const [retryCloid, setRetryCloid] = useState<`0x${string}` | null>(null);
+  // The last submit got an uncertain (network/timeout) receipt — exposure is ambiguous (§6.1).
+  const [uncertain, setUncertain] = useState(false);
 
   const ticker = tickers.find((t) => t.coin === coin.toUpperCase());
   const index = useMemo(() => {
@@ -59,10 +61,11 @@ export function TradeScreen() {
   const canSubmit =
     mode === "local" && !!wallet && Number(size) > 0 && Number(price) > 0 && notional >= 10;
 
-  // Editing the order means a new intent — drop any retry cloid so we never reuse it cross-order.
+  // Editing the order means a new intent — drop any retry cloid / uncertain notice.
   function edit<T>(setter: (v: T) => void) {
     return (v: T) => {
       setRetryCloid(null);
+      setUncertain(false);
       setter(v);
     };
   }
@@ -89,12 +92,23 @@ export function TradeScreen() {
       });
       if (res.ok) {
         setRetryCloid(null);
+        setUncertain(false);
         const note = res.status?.message ?? "已提交";
         Alert.alert("下单成功", `${note} · cloid ${res.cloid.slice(0, 10)}…`);
         setSize("");
+      } else if (res.uncertain && res.cloid) {
+        // Uncertain receipt: keep the cloid so an explicit retry reuses it (HL dedupes), and tell
+        // the user honestly that the order MAY already be live — never silently assume failure.
+        setRetryCloid(res.cloid);
+        setUncertain(true);
+        Alert.alert(
+          "回执不确定",
+          `${res.error}。订单可能已提交到交易所，请勿重复手动下单；点「重试」会用同一编号(cloid)安全重试。`,
+        );
       } else {
-        // Keep the cloid so the next attempt reuses it instead of orphaning a duplicate.
-        if (res.cloid) setRetryCloid(res.cloid);
+        // Definite rejection — terminal. Start fresh next time.
+        setRetryCloid(null);
+        setUncertain(false);
         Alert.alert("下单失败", res.error);
       }
     } catch (e) {
@@ -126,6 +140,7 @@ export function TradeScreen() {
             key={s}
             onPress={() => {
               setRetryCloid(null);
+              setUncertain(false);
               setSide(s);
             }}
             accessibilityRole="button"
@@ -149,6 +164,28 @@ export function TradeScreen() {
       <Text style={[styles.hint, { color: notional >= 10 ? theme.muted : theme.down }]}>
         名义价值 ${notional.toFixed(2)} {notional < 10 ? "（需 ≥ $10）" : ""}
       </Text>
+
+      {uncertain ? (
+        <View style={[styles.uncertain, { borderColor: theme.down, backgroundColor: theme.surface }]}>
+          <Text style={[styles.uncertainTitle, { color: theme.down }]}>上一笔回执不确定</Text>
+          <Text style={[styles.uncertainBody, { color: theme.muted }]}>
+            网络/超时导致回执不确定，订单可能已提交到交易所。请勿重复手动下单；点「重试」会用同一编号(cloid)安全重试，由交易所按 cloid 去重。
+          </Text>
+          <Pressable
+            disabled={busy}
+            onPress={onSubmit}
+            accessibilityRole="button"
+            testID="retry-order"
+            style={[styles.retry, { borderColor: theme.brand }]}
+          >
+            {busy ? (
+              <ActivityIndicator color={theme.brand} />
+            ) : (
+              <Text style={[styles.retryText, { color: theme.brand }]}>重试（复用同一 cloid）</Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <Pressable
         disabled={!canSubmit || busy}
@@ -204,6 +241,11 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   hint: { fontSize: 12, marginBottom: 10 },
+  uncertain: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 },
+  uncertainTitle: { fontSize: 13, fontWeight: "700", marginBottom: 4 },
+  uncertainBody: { fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  retry: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: "center" },
+  retryText: { fontSize: 14, fontWeight: "700" },
   submit: { paddingVertical: 15, borderRadius: 10, alignItems: "center", marginTop: 10 },
   submitText: { fontSize: 16, fontWeight: "700" },
 });

@@ -130,7 +130,7 @@ describe("TradeScreen", () => {
   it("reuses the cloid on a retry after a failed submit (no orphan duplicate)", async () => {
     const failCloid = ("0x" + "b".repeat(32)) as `0x${string}`;
     mockPlaceOrder
-      .mockResolvedValueOnce({ ok: false, error: "网络超时", cloid: failCloid })
+      .mockResolvedValueOnce({ ok: false, error: "网络超时", cloid: failCloid, uncertain: true })
       .mockResolvedValueOnce({ ok: true, cloid: failCloid, status: { kind: "resting", message: "订单已挂单" } });
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
     render(<TradeScreen />);
@@ -148,7 +148,7 @@ describe("TradeScreen", () => {
 
   it("drops the retry cloid once the order is edited (new intent gets a fresh cloid)", async () => {
     const failCloid = ("0x" + "c".repeat(32)) as `0x${string}`;
-    mockPlaceOrder.mockResolvedValue({ ok: false, error: "网络超时", cloid: failCloid });
+    mockPlaceOrder.mockResolvedValue({ ok: false, error: "网络超时", cloid: failCloid, uncertain: true });
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
     render(<TradeScreen />);
     fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
@@ -160,5 +160,56 @@ describe("TradeScreen", () => {
     fireEvent.press(screen.getByTestId("submit-order"));
     await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(2));
     expect(mockPlaceOrder.mock.calls[1][0].cloid).toBeUndefined();
+  });
+
+  it("shows an uncertain-receipt notice + retry that reuses the same cloid", async () => {
+    const cloid = ("0x" + "d".repeat(32)) as `0x${string}`;
+    mockPlaceOrder
+      .mockResolvedValueOnce({ ok: false, error: "网络超时", cloid, uncertain: true })
+      .mockResolvedValueOnce({ ok: true, cloid, status: { kind: "resting", message: "订单已挂单" } });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+
+    await waitFor(() => expect(screen.getByTestId("retry-order")).toBeTruthy());
+    expect(screen.getByText(/上一笔回执不确定/)).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId("retry-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(2));
+    expect(mockPlaceOrder.mock.calls[1][0].cloid).toBe(cloid);
+    // success clears the uncertain notice
+    await waitFor(() => expect(screen.queryByTestId("retry-order")).toBeNull());
+  });
+
+  it("does not show a retry button on a definite rejection", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      ok: false,
+      error: "订单名义价值低于最小 $10",
+      cloid: ("0x" + "e".repeat(32)) as `0x${string}`,
+      uncertain: false,
+    });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalled());
+    expect(screen.queryByTestId("retry-order")).toBeNull();
+  });
+
+  it("clears the uncertain notice when the order is edited", async () => {
+    const cloid = ("0x" + "f".repeat(32)) as `0x${string}`;
+    mockPlaceOrder.mockResolvedValue({ ok: false, error: "网络超时", cloid, uncertain: true });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(screen.getByTestId("retry-order")).toBeTruthy());
+
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.02");
+    expect(screen.queryByTestId("retry-order")).toBeNull();
   });
 });
