@@ -946,7 +946,10 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 > `withdraw3` (validate-before-sign, uncertain-receipt honesty); Deposit address + Copy
 > (expo-clipboard) + Arbitrum-bridge explainer. jest 424→431, tsc 0, Metro bundle OK. Commits:
 > spec ddf79f1 · B1a d530adb · B1b/B2a f1036b4. **Deferred:** B2b (in-app Arbitrum transfer) +
-> deposit QR — still need their own spec (notes below stand).
+> deposit QR. **UPDATE: B2b (in-app Arbitrum deposit) SHIPPED 2026-06-23** — spec
+> `2026-06-23-deposit-arbitrum-bridge-design.md`, commits 3cb6f4e + dced7e1 (user-confirmed bridge
+> constants, viem ERC-20 transfer to Bridge2, mainnet two-step confirm; requires the user's RPC key
+> via EXPO_PUBLIC_ARBITRUM_RPC_*). QR intentionally dropped (invites wrong-sender deposits on HL).
 
 > **Gate:** Do **not** start Phase B as bite-sized tasks yet. Money movement crosses the Phase 2 wallet-security boundary and moves real funds. Run `superpowers:brainstorming` to produce a dedicated spec first, then a separate plan. The notes below define scope, the known-good API surface, and acceptance — they are the input to that brainstorm, not implementation steps.
 

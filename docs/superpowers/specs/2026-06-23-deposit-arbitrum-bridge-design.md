@@ -1,10 +1,14 @@
 # Deposit via Arbitrum Bridge (Phase B2b) — Design
 
-> **Status:** Design for Phase B2b (in-app Hyperliquid deposit). User chose **Option A** (build in-app
-> transfer, skip QR) and the three sub-decisions: **RPC = user's own provider key (configurable, never
-> hardcoded)**, **contract addresses pasted for the user to verify before use**, **mainnet adds a
-> second confirmation**. **GATE: the contract constants below are PENDING USER VERIFICATION — do not
-> write them into the money-moving transfer path until the user confirms.**
+> **Status:** ✅ **SHIPPED 2026-06-23.** User chose **Option A** and confirmed the contract addresses.
+> Built via TDD: `bridge.ts` (verified constants), `deposit.ts` (validator), `DepositService`
+> (validate + mainnet second-confirm + transfer, fake-client tested), isolated viem `client.ts`, and
+> the AccountScreen deposit form with the mainnet two-step confirm. jest →445, tsc 0, Metro bundle OK.
+> Commits: spec/validator 3cb6f4e · impl dced7e1.
+>
+> **⚠️ Remaining user action (required before real use):** set your Arbitrum RPC provider key in the
+> app config — `EXPO_PUBLIC_ARBITRUM_RPC_MAINNET` and `EXPO_PUBLIC_ARBITRUM_RPC_TESTNET`. The code
+> never hardcodes it; deposits throw a clear "RPC 未配置" error until these are set.
 
 ## Goal
 
