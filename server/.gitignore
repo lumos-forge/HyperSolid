@@ -1,2 +1,7 @@
 node_modules
 dist
+strategies.db
+strategies.db-*
+*.db
+*.db-shm
+*.db-wal

@@ -1,7 +1,8 @@
 import { generatePrivateKey } from "viem/accounts";
 import { Auth } from "./auth/auth";
 import { AgentManager, MemoryAgentStore } from "./agent/agentManager";
-import { MemoryStrategyStore, type StrategyStore } from "./strategies/store";
+import { SqliteStrategyStore } from "./strategies/sqliteStore";
+import type { StrategyStore } from "./strategies/store";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
 import { makeHlPlacer } from "./agent/placer";
 import { tick } from "./engine/scheduler";
@@ -31,7 +32,7 @@ export async function main(): Promise<void> {
   const now = () => Date.now();
   const auth = new Auth({ secret: authSecret });
   const agents = new AgentManager(new MemoryAgentStore(), generatePrivateKey);
-  const store: StrategyStore = new MemoryStrategyStore(now);
+  const store: StrategyStore = SqliteStrategyStore.open(process.env.DB_PATH ?? "strategies.db", now);
 
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
