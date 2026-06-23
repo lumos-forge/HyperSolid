@@ -12,6 +12,7 @@ type FakeClient = ExchangeLike & {
   cancelArg?: unknown;
   cancelByCloidArg?: unknown;
   modifyArg?: { oid: number | `0x${string}`; order: { a: number } };
+  withdrawArg?: unknown;
 };
 
 function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
@@ -33,6 +34,10 @@ function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
       return { status: "ok", response: { data: { statuses: [{ resting: { oid: 2 } }] } } };
     }),
     updateLeverage: jest.fn(async () => ({ status: "ok" })),
+    withdraw3: jest.fn(async (p: unknown) => {
+      self.withdrawArg = p;
+      return { status: "ok", response: { type: "default" } };
+    }),
   };
   return self;
 }
@@ -301,5 +306,46 @@ describe("ExchangeService.placeBracket", () => {
     });
     expect(res.ok).toBe(false);
     expect(client.order).not.toHaveBeenCalled();
+  });
+});
+
+describe("ExchangeService.withdrawUsdc", () => {
+  const ADDR = "0x" + "1".repeat(40);
+
+  it("submits a valid withdrawal with the amount as a string", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.withdrawUsdc({ destination: ADDR, amount: 100, withdrawable: 800 });
+    expect(res.ok).toBe(true);
+    expect(client.withdraw3).toHaveBeenCalled();
+    expect(client.withdrawArg).toEqual({ destination: ADDR, amount: "100" });
+  });
+
+  it("rejects an invalid destination without hitting the network", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.withdrawUsdc({ destination: "0xabc", amount: 100, withdrawable: 800 });
+    expect(res.ok).toBe(false);
+    expect(client.withdraw3).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive or over-balance amount without hitting the network", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    expect((await svc.withdrawUsdc({ destination: ADDR, amount: 0, withdrawable: 800 })).ok).toBe(false);
+    expect((await svc.withdrawUsdc({ destination: ADDR, amount: 900, withdrawable: 800 })).ok).toBe(false);
+    expect(client.withdraw3).not.toHaveBeenCalled();
+  });
+
+  it("treats a thrown (network/timeout) receipt as uncertain, not failed", async () => {
+    const client = fakeClient();
+    client.withdraw3 = jest.fn(async () => {
+      throw new Error("network down");
+    });
+    const svc = new ExchangeService(client, index);
+    const res = await svc.withdrawUsdc({ destination: ADDR, amount: 100, withdrawable: 800 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.uncertain).toBe(true);
   });
 });

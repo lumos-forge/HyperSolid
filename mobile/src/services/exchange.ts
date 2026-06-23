@@ -27,11 +27,17 @@ export interface ExchangeLike {
   cancelByCloid(params: { cancels: { asset: number; cloid: `0x${string}` }[] }): Promise<unknown>;
   modify(params: { oid: number | `0x${string}`; order: unknown }): Promise<unknown>;
   updateLeverage(params: { asset: number; isCross: boolean; leverage: number }): Promise<unknown>;
+  withdraw3(params: { destination: string; amount: string }): Promise<unknown>;
 }
 
 export type SubmitResult =
   | { ok: true; cloid: `0x${string}`; response?: unknown; status?: NormalizedStatus }
   | { ok: false; error: string; cloid?: `0x${string}`; uncertain?: boolean };
+
+/** Result of a withdrawal request. Like orders, an uncertain receipt is never treated as success. */
+export type WithdrawResult =
+  | { ok: true; response?: unknown }
+  | { ok: false; error: string; uncertain?: boolean };
 
 /** Placeholder for actions that don't carry a client order id (cancel-by-oid, leverage). */
 const NO_CLOID = "0x" as `0x${string}`;
@@ -169,6 +175,28 @@ export class ExchangeService {
       return { ok: true, cloid: NO_CLOID, response };
     } catch (e) {
       return { ok: false, error: errorMessage(e) };
+    }
+  }
+
+  /**
+   * Withdraw USDC from Hyperliquid to `destination` (spec §B1). Validation runs BEFORE any signing
+   * so an invalid/over-balance request never hits the network. A thrown (network/timeout) receipt is
+   * surfaced as uncertain — never assumed to have failed — mirroring the order-submit honesty rule.
+   */
+  async withdrawUsdc(req: { destination: string; amount: number; withdrawable: number }): Promise<WithdrawResult> {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(req.destination)) {
+      return { ok: false, error: "目标地址无效（需 0x + 40 位十六进制）" };
+    }
+    if (!(req.amount > 0)) return { ok: false, error: "提现金额需大于 0" };
+    if (req.amount > req.withdrawable) return { ok: false, error: "提现金额超过可提现余额" };
+    try {
+      const response = await this.client.withdraw3({
+        destination: req.destination,
+        amount: String(req.amount),
+      });
+      return { ok: true, response };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e), uncertain: true };
     }
   }
 }
