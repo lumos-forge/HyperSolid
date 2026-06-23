@@ -10,6 +10,7 @@ import { DetailDataService } from "../services/detailData";
 import { createDetailInfoClient, createDetailSubsClient } from "../lib/hyperliquid/client";
 import { CandleChart } from "../components/CandleChart";
 import { MultiPeriodReturns } from "../components/MultiPeriodReturns";
+import { RsiPanel } from "../components/RsiPanel";
 import { OrderbookView } from "../components/OrderbookView";
 import { TradesList } from "../components/TradesList";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -21,7 +22,7 @@ import { Icon } from "../components/Icon";
 import { fonts } from "../theme/fonts";
 import { formatCompact, formatFundingPct } from "../lib/hyperliquid/format";
 import { periodReturns } from "../lib/hyperliquid/performance";
-import { sma, ema, bollinger } from "../lib/hyperliquid/indicators";
+import { sma, ema, bollinger, rsi } from "../lib/hyperliquid/indicators";
 
 type Props = NativeStackScreenProps<MarketsStackParamList, "MarketDetail">;
 
@@ -173,6 +174,8 @@ export function MarketDetailScreen({ route, navigation }: Props) {
       <CandleChart candles={candles} theme={theme} currentPrice={price} overlays={overlays} />
 
       <MultiPeriodReturns theme={theme} data={perf} />
+
+      <RsiPanel values={rsi(closes, 14)} theme={theme} />
 
       <View style={[styles.bookTabs, { borderBottomColor: theme.line }]}>
         {BOOK_TABS.map((tab) => (
