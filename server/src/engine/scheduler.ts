@@ -53,7 +53,7 @@ export async function tick(
 ): Promise<void> {
   for (const s of dueStrategies(store.listAll(), now)) {
     const notionalUsdc = s.params.quoteAmountUsdc;
-    if (!withinCaps({ notionalUsdc, killSwitch }, limits).ok) continue;
+    if (!withinCaps({ notionalUsdc, killSwitch, coin: s.params.coin }, limits).ok) continue;
     const cloid = cloidFor(s.id, s.nextRunAt);
     const res = await placer.place({ owner: s.owner, coin: s.params.coin, sizeUsdc: notionalUsdc, cloid });
     if (res.ok) {

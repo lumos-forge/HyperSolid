@@ -64,4 +64,18 @@ describe("scheduler tick", () => {
     await tick(store, failing, limits, false, 2000, activity);
     expect(activity.list("0xo", s.id)).toHaveLength(1);
   });
+
+  it("skips a strategy whose coin is over its per-coin cap while another coin still fires", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const btc = store.create("0xo", { coin: "BTC", side: "buy", quoteAmountUsdc: 200, intervalHours: 24 });
+    const eth = store.create("0xo", { coin: "ETH", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
+    const placer = placerFake();
+
+    await tick(store, placer, { maxNotionalUsdc: 1000, perCoinMaxNotionalUsdc: { BTC: 100 } }, false, 2000);
+
+    // ETH fired (under global), BTC skipped (over its tighter per-coin cap)
+    expect(placer.calls).toHaveLength(1);
+    expect(store.get(eth.id)!.nextRunAt).toBeGreaterThan(1000);
+    expect(store.get(btc.id)!.nextRunAt).toBe(1000);
+  });
 });

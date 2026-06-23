@@ -19,6 +19,23 @@ function requireEnv(name: string): string {
   return v;
 }
 
+/** Parse `PER_COIN_CAPS` JSON (e.g. {"BTC":500}) into numeric caps; ignores malformed input. */
+function parsePerCoinCaps(raw: string | undefined): Record<string, number> | undefined {
+  if (!raw) return undefined;
+  try {
+    const obj = JSON.parse(raw) as Record<string, unknown>;
+    const caps: Record<string, number> = {};
+    for (const [coin, v] of Object.entries(obj)) {
+      if (typeof v === "number" && Number.isFinite(v)) caps[coin] = v;
+    }
+    return Object.keys(caps).length ? caps : undefined;
+  } catch {
+    // eslint-disable-next-line no-console
+    console.error("ignoring malformed PER_COIN_CAPS");
+    return undefined;
+  }
+}
+
 /**
  * Composition root: wire auth + agent custody + strategy store + the agent-signed HL placer, start the
  * scheduler interval, and serve the contract. Secrets come from env (never hard-coded); the network
@@ -31,6 +48,7 @@ export async function main(): Promise<void> {
   const agentEncKey = deriveKey(requireEnv("AGENT_ENC_KEY"));
   const slippageBps = Number(process.env.SLIPPAGE_BPS ?? 50);
   const maxNotionalUsdc = Number(process.env.MAX_NOTIONAL_USDC ?? 1000);
+  const perCoinMaxNotionalUsdc = parsePerCoinCaps(process.env.PER_COIN_CAPS);
   const tickMs = Number(process.env.TICK_MS ?? 60_000);
   const dbPath = process.env.DB_PATH ?? "strategies.db";
 
@@ -50,7 +68,7 @@ export async function main(): Promise<void> {
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const timer = setInterval(() => {
-    void tick(store, placer, { maxNotionalUsdc }, killSwitch, now(), activity).catch((e) =>
+    void tick(store, placer, { maxNotionalUsdc, perCoinMaxNotionalUsdc }, killSwitch, now(), activity).catch((e) =>
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
     );
