@@ -102,4 +102,12 @@ describe("HTTP app", () => {
     expect(list).toEqual([{ id: expect.any(String), time: 1500, coin: "BTC", side: "buy", sz: 0.001, px: 50000 }]);
     await app.close();
   });
+
+  it("serves a public /health with version and no auth required", async () => {
+    const app = build();
+    const res = await app.inject({ method: "GET", url: "/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, version: "0.1.0" });
+    await app.close();
+  });
 });

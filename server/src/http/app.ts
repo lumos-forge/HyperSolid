@@ -13,6 +13,10 @@ export interface AppDeps {
   now?: () => number;
   /** Agent approval lifetime applied on confirm (default ~90 days). */
   agentTtlMs?: number;
+  /** Reported by GET /health. */
+  version?: string;
+  /** Enable Fastify request logging (off by default). */
+  logger?: boolean;
 }
 
 interface StrategyDto {
@@ -37,7 +41,11 @@ function toDto(s: DcaStrategy): StrategyDto {
 export function buildApp(deps: AppDeps): FastifyInstance {
   const now = deps.now ?? (() => Date.now());
   const agentTtlMs = deps.agentTtlMs ?? 90 * 24 * 3600 * 1000;
-  const app = Fastify({ logger: false });
+  const version = deps.version ?? "0.1.0";
+  const app = Fastify({ logger: deps.logger ?? false });
+
+  // --- health (public) ---
+  app.get("/health", async () => ({ ok: true, version }));
 
   const ownerOf = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const header = req.headers.authorization;

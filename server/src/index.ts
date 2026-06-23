@@ -75,7 +75,7 @@ export async function main(): Promise<void> {
   }, tickMs);
   timer.unref?.();
 
-  const app = buildApp({ auth, agents, store, activity, now });
+  const app = buildApp({ auth, agents, store, activity, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1" });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);
