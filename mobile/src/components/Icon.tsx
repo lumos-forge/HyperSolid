@@ -12,10 +12,16 @@ export type IconName =
   | "alert"
   | "swap"
   | "chevron"
+  | "chevronRight"
   | "arrowRight"
   | "eye"
   | "lock"
-  | "search";
+  | "search"
+  | "grid"
+  | "repeat"
+  | "bolt"
+  | "shield"
+  | "plus";
 
 export interface IconProps {
   name: IconName;
@@ -132,6 +138,37 @@ function renderGlyph(
       );
     case "chevron":
       return <Path d="M14.5 6 9 12l5.5 6" />;
+    case "chevronRight":
+      return <Path d="M9 6l6 6-6 6" />;
+    case "grid":
+      return (
+        <>
+          <Rect x={3} y={3} width={7} height={7} rx={1.5} />
+          <Rect x={14} y={3} width={7} height={7} rx={1.5} />
+          <Rect x={3} y={14} width={7} height={7} rx={1.5} />
+          <Rect x={14} y={14} width={7} height={7} rx={1.5} />
+        </>
+      );
+    case "repeat":
+      return (
+        <>
+          <Path d="M4 9a6 6 0 0 1 6-6h7" />
+          <Path d="M14 1l3 2-3 2" />
+          <Path d="M20 15a6 6 0 0 1-6 6H7" />
+          <Path d="M10 23l-3-2 3-2" />
+        </>
+      );
+    case "bolt":
+      return <Path d="M13 2 5 13h6l-1 9 8-12h-6z" {...(active ? fillSolid : {})} />;
+    case "shield":
+      return (
+        <>
+          <Path d="M12 3 19 6v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6Z" />
+          <Path d="M9 12l2 2 4-4" />
+        </>
+      );
+    case "plus":
+      return <Path d="M12 5v14M5 12h14" />;
     case "arrowRight":
       return (
         <>

@@ -2,110 +2,161 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { ScreenScaffold } from "../components/ScreenScaffold";
-import { Pill } from "../components/Pill";
-import { SectionLabel } from "../components/SectionLabel";
+import { NetworkWarning } from "../components/NetworkWarning";
+import { SurfaceCard } from "../components/SurfaceCard";
+import { ReturnCurve } from "../components/ReturnCurve";
+import { ChangeText } from "../components/ChangeText";
 import { Toggle } from "../components/Toggle";
+import { Icon, type IconName } from "../components/Icon";
+import { fonts } from "../theme/fonts";
+import { withAlpha } from "../theme/color";
+import type { ThemeTokens } from "../theme/tokens";
 
-// Mock strategies for the UI shell. TODO: source from a real agent/strategy
-// store and wire enable/disable + kill-switch to the execution layer.
+// Mock strategy shell. TODO: source from a real agent/strategy store and wire enable/disable
+// + the new-strategy flow to the execution layer.
 const STRATEGIES = [
-  { kind: "TP/SL", market: "BTC", params: "+3% / −1.5%", on: true },
-  { kind: "GRID", market: "ETH", params: "2.9k–3.2k ×8", on: true },
-  { kind: "DCA", market: "BTC", params: "$50 / 8h", on: false },
-] as const;
+  { kind: "GRID", icon: "grid" as IconName, desc: "BTC-USDC · Running", ret: 5.82, on: true },
+  { kind: "DCA", icon: "repeat" as IconName, desc: "ETH · Every Monday", ret: 1.24, on: true },
+  { kind: "TP/SL", icon: "shield" as IconName, desc: "BTC · Armed", ret: 0, on: false },
+];
+
+const TEMPLATES: Array<[IconName, string]> = [
+  ["grid", "Grid"],
+  ["repeat", "DCA"],
+  ["bolt", "TWAP"],
+  ["shield", "TP-SL"],
+];
+
+const RETURN_SHAPE = [0.46, 0.4, 0.52, 0.47, 0.58, 0.5, 0.62, 0.7, 0.63, 0.76, 0.71, 0.82, 0.88, 0.8, 0.93, 1.0];
 
 export function AgentScreen() {
   const theme = useTheme();
   const [enabled, setEnabled] = useState<boolean[]>(STRATEGIES.map((s) => s.on));
+  const runningCount = enabled.filter(Boolean).length;
 
   return (
-    <ScreenScaffold
-      theme={theme}
-      showTrace
-      traceProps={{ amp: 10, seed: 2.2, height: 34 }}
-      statusTitle="YOUR AGENT"
-      pill={<Pill theme={theme} label="◉ ARMED" variant="up" />}
-    >
-      <View style={[styles.head, { borderColor: theme.line, backgroundColor: theme.surface }]}>
-        <Text style={[styles.headTitle, { color: theme.brand }]}>PHOSPHOR TRACE · ACTIVE</Text>
-        <Text style={[styles.sub, { color: theme.muted }]}>trade-only · 无提现权限 · 离线也运行</Text>
+    <ScreenScaffold theme={theme} statusTitle="Strategy" pill={<NetworkWarning variant="chip" />}>
+      <SurfaceCard theme={theme} style={styles.hero}>
+        <Text style={[styles.heroLabel, { color: theme.muted }]}>30D strategy return</Text>
+        <ChangeText theme={theme} value={7.06} size={28} />
+        <Text style={[styles.heroSub, { color: theme.faint }]}>
+          {runningCount} running · risk-bounded
+        </Text>
+        <View style={styles.curve}>
+          <ReturnCurve points={RETURN_SHAPE} theme={theme} color={theme.up} />
+        </View>
+      </SurfaceCard>
+
+      <Text style={[styles.eyebrow, { color: theme.faint }]}>Templates</Text>
+      <View style={styles.templates}>
+        {TEMPLATES.map(([icon, name]) => (
+          <Pressable
+            key={name}
+            accessibilityRole="button"
+            style={[styles.tmpl, { borderColor: theme.line, backgroundColor: theme.surface }]}
+          >
+            <Icon name={icon} color={theme.brand} size={16} />
+            <Text style={[styles.tmplText, { color: theme.text }]}>{name}</Text>
+          </Pressable>
+        ))}
       </View>
 
-      <SectionLabel theme={theme}>STRATEGIES</SectionLabel>
+      <Text style={[styles.eyebrow, { color: theme.faint }]}>My strategies</Text>
       {STRATEGIES.map((s, i) => (
-        <View key={s.kind} style={[styles.srow, { borderBottomColor: theme.line }]}>
-          <View style={styles.srowLeft}>
-            <View style={styles.snameRow}>
-              <Text style={[styles.sname, { color: theme.text }]}>{s.kind}</Text>
-              <Text style={[styles.smkt, { color: theme.muted }]}> {s.market}</Text>
-            </View>
-            <Text style={[styles.sub, { color: theme.muted }]}>{s.params}</Text>
-          </View>
-          <Toggle
-            theme={theme}
-            value={enabled[i]}
-            onValueChange={(next) =>
-              setEnabled((prev) => prev.map((v, idx) => (idx === i ? next : v)))
-            }
-            accessibilityLabel={`strategy-${s.kind}`}
-          />
-        </View>
+        <StrategyCard
+          key={s.kind}
+          theme={theme}
+          strategy={s}
+          on={enabled[i]}
+          onToggle={(next) => setEnabled((prev) => prev.map((v, idx) => (idx === i ? next : v)))}
+        />
       ))}
 
-      <View style={styles.guard}>
-        <Text style={[styles.sub, { color: theme.muted }]}>GUARDRAILS</Text>
-        <Text style={[styles.guardValue, { color: theme.text }]}>max 5× · 日内 −$200</Text>
-      </View>
-
-      <View style={styles.ladder}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            /* TODO: wire kill-switch to the execution/automation layer */
-          }}
-          style={[styles.btn, { backgroundColor: theme.down }]}
-        >
-          <Text style={[styles.killText, { color: theme.bg }]}>▮ KILL SWITCH</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            /* TODO: open the new-strategy flow */
-          }}
-          style={[styles.btn, styles.newBtn, { borderColor: theme.brand }]}
-        >
-          <Text style={[styles.newText, { color: theme.brand }]}>+ 新建</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => {
+          /* TODO: open the new-strategy flow */
+        }}
+        style={[styles.cta, { borderColor: theme.brand }]}
+      >
+        <Icon name="plus" color={theme.brand} size={15} strokeWidth={2} />
+        <Text style={[styles.ctaText, { color: theme.brand }]}>New strategy</Text>
+      </Pressable>
     </ScreenScaffold>
   );
 }
 
+function StrategyCard({
+  theme,
+  strategy,
+  on,
+  onToggle,
+}: {
+  theme: ThemeTokens;
+  strategy: { kind: string; icon: IconName; desc: string; ret: number };
+  on: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <SurfaceCard theme={theme} rule={false} style={styles.scard}>
+      <View style={styles.scardRow}>
+        <View style={[styles.sicon, { backgroundColor: withAlpha(theme.brand, 0.12) }]}>
+          <Icon name={strategy.icon} color={theme.brand} size={18} />
+        </View>
+        <View style={styles.smid}>
+          <Text style={[styles.sname, { color: theme.text }]}>{strategy.kind}</Text>
+          <Text style={[styles.sdesc, { color: theme.muted }]}>{strategy.desc}</Text>
+        </View>
+        <ChangeText theme={theme} value={strategy.ret} size={12.5} />
+        <View style={styles.stoggle}>
+          <Toggle theme={theme} value={on} onValueChange={onToggle} accessibilityLabel={`strategy-${strategy.kind}`} />
+        </View>
+      </View>
+    </SurfaceCard>
+  );
+}
+
 const styles = StyleSheet.create({
-  head: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 12 },
-  headTitle: { fontSize: 15, fontWeight: "700", letterSpacing: 0.8 },
-  sub: { fontSize: 11, marginTop: 3 },
-  srow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+  hero: { padding: 16 },
+  heroLabel: { fontFamily: fonts.body.regular, fontSize: 11, marginBottom: 6 },
+  heroSub: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 6 },
+  curve: { marginTop: 12 },
+  eyebrow: {
+    fontFamily: fonts.display.bold,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginTop: 14,
+    marginBottom: 8,
   },
-  srowLeft: { flex: 1 },
-  snameRow: { flexDirection: "row", alignItems: "baseline" },
-  sname: { fontSize: 14, fontWeight: "700", letterSpacing: 0.4 },
-  smkt: { fontSize: 12, fontWeight: "400" },
-  guard: {
+  templates: { flexDirection: "row", gap: 8 },
+  tmpl: {
+    flex: 1,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 14,
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 11,
   },
-  guardValue: { fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  ladder: { flexDirection: "row", gap: 10, marginTop: 6 },
-  btn: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 13, borderRadius: 9 },
-  newBtn: { borderWidth: 1, backgroundColor: "transparent" },
-  killText: { fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
-  newText: { fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
+  tmplText: { fontFamily: fonts.body.semibold, fontSize: 12 },
+  scard: { padding: 12, marginBottom: 8 },
+  scardRow: { flexDirection: "row", alignItems: "center", gap: 11 },
+  sicon: { width: 36, height: 36, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  smid: { flex: 1 },
+  sname: { fontFamily: fonts.display.bold, fontSize: 13.5 },
+  sdesc: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 2 },
+  stoggle: { marginLeft: 11 },
+  cta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 14,
+  },
+  ctaText: { fontFamily: fonts.display.bold, fontSize: 14, letterSpacing: 0.3 },
 });

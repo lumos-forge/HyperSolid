@@ -3,33 +3,34 @@ import { render, screen, fireEvent } from "@testing-library/react-native";
 import { AgentScreen } from "./AgentScreen";
 
 describe("AgentScreen", () => {
-  it("renders the armed status header and active trace card", () => {
+  it("renders the strategy hero with 30D return and running count", () => {
     render(<AgentScreen />);
-    expect(screen.getByText("YOUR AGENT")).toBeTruthy();
-    expect(screen.getByText("◉ ARMED")).toBeTruthy();
-    expect(screen.getByText("PHOSPHOR TRACE · ACTIVE")).toBeTruthy();
+    expect(screen.getByText("Strategy")).toBeTruthy();
+    expect(screen.getByText("30D strategy return")).toBeTruthy();
+    expect(screen.getByText(/\+7\.06%/)).toBeTruthy();
+    expect(screen.getByText(/2 running · risk-bounded/)).toBeTruthy();
   });
 
-  it("lists the mock strategies under a STRATEGIES section", () => {
+  it("lists templates and my-strategies", () => {
     render(<AgentScreen />);
-    expect(screen.getByText("STRATEGIES")).toBeTruthy();
-    expect(screen.getByText("TP/SL")).toBeTruthy();
+    expect(screen.getByText("Templates")).toBeTruthy();
+    expect(screen.getByText("My strategies")).toBeTruthy();
+    expect(screen.getByText("TWAP")).toBeTruthy();
     expect(screen.getByText("GRID")).toBeTruthy();
-    expect(screen.getByText("DCA")).toBeTruthy();
+    expect(screen.getAllByText("DCA").length).toBeGreaterThan(0);
   });
 
-  it("renders guardrails and the kill-switch / new actions", () => {
+  it("renders the new-strategy action", () => {
     render(<AgentScreen />);
-    expect(screen.getByText("GUARDRAILS")).toBeTruthy();
-    expect(screen.getByText("▮ KILL SWITCH")).toBeTruthy();
-    expect(screen.getByText("+ 新建")).toBeTruthy();
+    expect(screen.getByText("New strategy")).toBeTruthy();
   });
 
-  it("toggles a strategy switch locally", () => {
+  it("toggles a strategy switch locally and updates the running count", () => {
     render(<AgentScreen />);
     const dca = screen.getByLabelText("strategy-DCA");
-    expect(dca.props.accessibilityState.checked).toBe(false);
+    expect(dca.props.accessibilityState.checked).toBe(true);
     fireEvent.press(dca);
-    expect(screen.getByLabelText("strategy-DCA").props.accessibilityState.checked).toBe(true);
+    expect(screen.getByLabelText("strategy-DCA").props.accessibilityState.checked).toBe(false);
+    expect(screen.getByText(/1 running · risk-bounded/)).toBeTruthy();
   });
 });

@@ -96,10 +96,10 @@
 - [x] 权益 SurfaceCard（Equity·USDC 英雄辉光 + Available/Unrealized PnL/Margin ratio + 账户健康条按 margin ratio 着色/Healthy·Caution·At risk）+ 分段（Positions·N / Orders·N / Fills·N）+ 持仓卡 PositionRow（coin·PERP、Long/Short·lev tag、▲▼ PnL、Size/Entry/Mark/ROE 网格）。
 - [x] 保留 view-only 组合查询（useViewOnlyPortfolio/loadRecent/loadOpenOrders）与未确认横幅；chrome/banner/copy 英文化；TDD（chrome、健康卡、Tab 切换、持仓卡）。
 
-### - [ ] 单元 8：Strategy(Agent) 屏
+### - [x] 单元 8：Strategy(Agent) 屏
 
-- [ ] Hero（30D return + 收益曲线）+ 模板行（Grid/DCA/TWAP/TP-SL）+ 策略卡 + 新建按钮。
-- [ ] 曲线用 react-native-svg；TDD。
+- [x] Hero SurfaceCard（30D strategy return「+7.06%」+ N running·risk-bounded + ReturnCurve 收益曲线）+ 模板行（Grid/DCA/TWAP/TP-SL，含图标）+ 策略卡（图标 + 名称 + 描述 + ▲▼ 收益 + Toggle 启停）+ New strategy CTA。
+- [x] 新增 ReturnCurve（react-native-svg 面积+线）+ Icon 补 grid/repeat/bolt/shield/plus/chevronRight；TDD（曲线空态/绘制、Icon 全量、hero/模板/策略/新建/Toggle 联动 running 数）。
 
 ### - [ ] 单元 9：Wallet(Account) 屏 + 底部 Tab
 
@@ -141,6 +141,8 @@
 
 > 单元 5：Market Detail 部分 v8 区块依赖现有数据模型没有的字段，为「不改业务逻辑 + 不编造数据」而诚实省略：① Open interest（MarketTicker 无 OI）；② 多周期涨跌 7D/30D/90D/180D/1Y（无历史，仅 24h 可由 candles 推）；③ 指标 Tab（无指标计算管线，避免装饰性失效控件）；④ 多空比条 L/S（无持仓分布数据）；⑤ 周期保留功能性的 1H/4H/1D/1W（service 当前固定 interval）。以上需 service 层扩展，列为后续；24h high/low 由 candles 诚实推导，资金费倒计时按 UTC 整点实时计算。
 
+> 单元 8：Strategy 为 mock UI 壳（既有 TODO，无真实策略/收益数据流）。按 v8 事实源严格对齐，去掉旧版自由发挥的 Kill switch / Guardrails 行（v8 strategy 无此区块）；hero「+7.06%」与策略卡收益为壳层占位（延续既有 mock 约定，待接真实 agent/策略存储后替换）。Toggle 启停为本地状态，未接执行层（既有 TODO 保留）。
+
 > 单元 6：① 百分比滑杆省略——真实功能需账户可用余额，TradeScreen 当前不取持仓/权益数据，注入会引入新数据流（越界）；列为后续（接 positionsData/权益后补）。② 杠杆为票据「意向杠杆」，驱动 Est. liq 估算与摘要展示，**不**自动调用链上 setLeverage（那是独立动作，隐式调用属逻辑改动）。③ 类型仅 Limit/Market（干净映射 OrderRequest.market）；Stop 触发单语义另需触发价 UX，暂缓。④ TP/SL 已通过新增 service 层 `placeBracket`（复用 lib 既有 `buildBracketOrder`，未改编码核心）真实下达括号单。告警文案保持中文（与不可改的 rejectionMessage 一致）。
 
 ---
@@ -157,3 +159,4 @@
 - 2026-06-23 · 单元 5（Market Detail 屏 v8 重构 + CandleChart）· +3（395→398）· 新增 CandleChart（react-native-svg：brand 网格 + 涨跌蜡烛 + 当前价虚线 + 价轴标签 + 价格徽标，TDD 空态/绘制/轴标签）；MarketDetailScreen 重构为 v8：报价块（PriceText 英雄辉光 + ChangeText ▲▼ + Mark）、统计网格（24h high/low 由 candles 推、vol、Funding+UTC 整点倒计时、Max leverage）、TF 选择、CandleChart、Order book/Trades Tab、CTA Trade、NetworkWarning strip（非对称）；保留 useLiveDetail 实数据接线。诚实省略 OI/多周期/指标 Tab/多空条（数据缺失，见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/逻辑未动。下一轮从「单元 6：Trade 屏」开始。
 - 2026-06-23 · 单元 6（Trade 屏 v8 重构 + placeBracket）· +5（398→403）· ExchangeService 新增 placeBracket（复用 lib buildBracketOrder + 抽出共享 submitBuilt 幂等管线，placeOrder 行为不变，TDD ×3）；TradeScreen 重构为 v8：Buy/Long·Sell/Short 段、Limit/Market 类型、杠杆 chips、价/量、Reduce-only/Post-only Toggle、TP/SL Optional（走 placeBracket）、摘要 SurfaceCard、动态 CTA（买绿卖红）、testnet 警示条；reduceOnly/market/tif(Alo) 接 placeOrder。既有下单幂等/不确定回执/testID/中文告警逐字保留（13 旧测试全绿）+ 2 新 wiring 测试。诚实省略百分比滑杆（需余额）、不自动 setLeverage（见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/编码核心未改。下一轮从「单元 7：Positions 屏」开始。
 - 2026-06-23 · 单元 7（Positions 屏 v8 重构）· +0（403，改写未加净测试）· PositionRow 重构为 v8 卡（SurfaceCard：coin·PERP + Long/Short·lev tag + ▲▼ PnL + Size/Entry/Mark/ROE 网格，Mark=positionValue/size、ROE 由 marginUsed 推）；PositionsScreen 加权益 SurfaceCard（Equity 英雄辉光 + Available/Unrealized PnL/Margin ratio + 健康条按 margin ratio 着色与 Healthy/Caution/At risk）、分段 Positions·N/Orders·N/Fills·N、英文化 chrome/banner/query；保留 view-only 查询与未确认横幅逻辑。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/逻辑未动。下一轮从「单元 8：Strategy(Agent) 屏」开始。
+- 2026-06-23 · 单元 8（Strategy/Agent 屏 v8 重构 + ReturnCurve）· +2（403→405）· 新增 ReturnCurve（react-native-svg 面积+线，TDD 空态/绘制）+ Icon 补 grid/repeat/bolt/shield/plus/chevronRight；AgentScreen 重构为 v8：标题 Strategy + NetworkWarning chip、Hero SurfaceCard（30D return +7.06% + N running·risk-bounded + 收益曲线）、Templates 行、My strategies 策略卡（图标+名+描述+▲▼ 收益 + Toggle 启停联动 running 数）、New strategy CTA；按严格对齐 v8 去掉旧 Kill switch/Guardrails（见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji。下一轮从「单元 9：Wallet(Account) 屏 + 底部 Tab」开始。
