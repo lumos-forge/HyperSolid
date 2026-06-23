@@ -941,6 +941,13 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ## Phase B — Wallet money movement (REQUIRES its own spec + security brainstorm before TDD)
 
+> **STATUS: ✅ B1 (Withdraw) + B2a (Deposit address) SHIPPED 2026-06-23.** Brainstormed → spec
+> (`docs/superpowers/specs/2026-06-23-wallet-money-movement-design.md`) → TDD. Withdraw via SDK
+> `withdraw3` (validate-before-sign, uncertain-receipt honesty); Deposit address + Copy
+> (expo-clipboard) + Arbitrum-bridge explainer. jest 424→431, tsc 0, Metro bundle OK. Commits:
+> spec ddf79f1 · B1a d530adb · B1b/B2a f1036b4. **Deferred:** B2b (in-app Arbitrum transfer) +
+> deposit QR — still need their own spec (notes below stand).
+
 > **Gate:** Do **not** start Phase B as bite-sized tasks yet. Money movement crosses the Phase 2 wallet-security boundary and moves real funds. Run `superpowers:brainstorming` to produce a dedicated spec first, then a separate plan. The notes below define scope, the known-good API surface, and acceptance — they are the input to that brainstorm, not implementation steps.
 
 ### B1 — Withdraw (HL → address), feasible via SDK
