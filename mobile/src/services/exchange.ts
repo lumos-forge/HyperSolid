@@ -28,6 +28,7 @@ export interface ExchangeLike {
   modify(params: { oid: number | `0x${string}`; order: unknown }): Promise<unknown>;
   updateLeverage(params: { asset: number; isCross: boolean; leverage: number }): Promise<unknown>;
   withdraw3(params: { destination: string; amount: string }): Promise<unknown>;
+  approveAgent(params: { agentAddress: string; agentName?: string | null }): Promise<unknown>;
 }
 
 export type SubmitResult =
@@ -36,6 +37,11 @@ export type SubmitResult =
 
 /** Result of a withdrawal request. Like orders, an uncertain receipt is never treated as success. */
 export type WithdrawResult =
+  | { ok: true; response?: unknown }
+  | { ok: false; error: string; uncertain?: boolean };
+
+/** Result of approving a trade-only agent wallet (Phase C). Uncertain receipt is never assumed ok. */
+export type ApproveAgentResult =
   | { ok: true; response?: unknown }
   | { ok: false; error: string; uncertain?: boolean };
 
@@ -193,6 +199,26 @@ export class ExchangeService {
       const response = await this.client.withdraw3({
         destination: req.destination,
         amount: String(req.amount),
+      });
+      return { ok: true, response };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e), uncertain: true };
+    }
+  }
+
+  /**
+   * Approve a trade-only agent wallet (Phase C, spec): signs HL `approveAgent` with the user's
+   * on-device main key, authorizing `agentAddress` to TRADE on their behalf (it can never withdraw).
+   * Validation runs before signing; a thrown receipt is uncertain, never assumed failed. No funds move.
+   */
+  async approveAgent(req: { agentAddress: string; agentName?: string }): Promise<ApproveAgentResult> {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(req.agentAddress)) {
+      return { ok: false, error: "代理地址无效（需 0x + 40 位十六进制）" };
+    }
+    try {
+      const response = await this.client.approveAgent({
+        agentAddress: req.agentAddress,
+        agentName: req.agentName ?? null,
       });
       return { ok: true, response };
     } catch (e) {

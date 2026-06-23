@@ -13,6 +13,7 @@ type FakeClient = ExchangeLike & {
   cancelByCloidArg?: unknown;
   modifyArg?: { oid: number | `0x${string}`; order: { a: number } };
   withdrawArg?: unknown;
+  approveAgentArg?: unknown;
 };
 
 function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
@@ -36,6 +37,10 @@ function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
     updateLeverage: jest.fn(async () => ({ status: "ok" })),
     withdraw3: jest.fn(async (p: unknown) => {
       self.withdrawArg = p;
+      return { status: "ok", response: { type: "default" } };
+    }),
+    approveAgent: jest.fn(async (p: unknown) => {
+      self.approveAgentArg = p;
       return { status: "ok", response: { type: "default" } };
     }),
   };
@@ -344,6 +349,46 @@ describe("ExchangeService.withdrawUsdc", () => {
     });
     const svc = new ExchangeService(client, index);
     const res = await svc.withdrawUsdc({ destination: ADDR, amount: 100, withdrawable: 800 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.uncertain).toBe(true);
+  });
+});
+
+describe("ExchangeService.approveAgent", () => {
+  const AGENT = "0x" + "9".repeat(40);
+
+  it("signs an agent approval with the address and name", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.approveAgent({ agentAddress: AGENT, agentName: "hypersolid valid_until 123" });
+    expect(res.ok).toBe(true);
+    expect(client.approveAgent).toHaveBeenCalled();
+    expect(client.approveAgentArg).toEqual({ agentAddress: AGENT, agentName: "hypersolid valid_until 123" });
+  });
+
+  it("defaults a missing agent name to null", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    await svc.approveAgent({ agentAddress: AGENT });
+    expect(client.approveAgentArg).toEqual({ agentAddress: AGENT, agentName: null });
+  });
+
+  it("rejects an invalid agent address without hitting the network", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.approveAgent({ agentAddress: "0xabc" });
+    expect(res.ok).toBe(false);
+    expect(client.approveAgent).not.toHaveBeenCalled();
+  });
+
+  it("treats a thrown receipt as uncertain, not failed", async () => {
+    const client = fakeClient();
+    client.approveAgent = jest.fn(async () => {
+      throw new Error("network down");
+    });
+    const svc = new ExchangeService(client, index);
+    const res = await svc.approveAgent({ agentAddress: AGENT });
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.uncertain).toBe(true);
