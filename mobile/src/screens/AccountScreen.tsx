@@ -230,9 +230,12 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           <SurfaceCard theme={theme} testID="deposit-panel" style={styles.card}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>Deposit USDC</Text>
             <Text style={[styles.sheetHint, { color: theme.muted }]}>
-              Send USDC on Arbitrum to this address — it is your Hyperliquid deposit address. Only USDC
-              on Arbitrum; other tokens or chains may be lost.
+              Your Hyperliquid account is the address below. Hyperliquid is funded by sending native
+              USDC on Arbitrum (min 5 USDC) from THIS wallet to the Hyperliquid bridge — the bridge
+              credits the sender. In-app deposit is coming soon; for now deposit from the official
+              Hyperliquid app. Never send from a centralized exchange, and never USDC.e.
             </Text>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>Your account address</Text>
             <Text style={[styles.depAddr, { color: theme.text }]} selectable>
               {address}
             </Text>

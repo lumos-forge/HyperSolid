@@ -40,13 +40,15 @@ Wallet (local) → tap Withdraw → panel:
 
 ## B2a — Deposit (address) flow
 
+> **Correction (2026-06-23, post-research):** Hyperliquid deposits use a **single Bridge2 contract** on Arbitrum and **credit the *sender* address** — there is **no per-user deposit address**, min **5 USDC**, native USDC only (not USDC.e), and you must send **from your own Arbitrum wallet (never a CEX)**. The original "send USDC to your own address" framing was wrong and was corrected to an honest account-identity view that does **not** instruct an unsafe transfer. The *safe* real deposit is the in-app transfer (B2b), because copying a bridge address invites the classic CEX-send footgun.
+
 ```
 Wallet (local) → tap Deposit → panel:
-  "Deposit USDC on Arbitrum" explainer + the wallet's own address (mono, selectable)
-  + Copy button (expo-clipboard) + warning: only send USDC on Arbitrum to the Hyperliquid bridge.
+  Explains: your HL account = your address; fund it by sending native USDC on Arbitrum (min 5)
+  from THIS wallet to the HL bridge (credits sender); in-app deposit coming (B2b); meanwhile use
+  the official HL app; never from a CEX, never USDC.e.
+  Shows: "Your account address" (mono, selectable) + Copy. No "send here" instruction. No signing.
 ```
-
-- Pure display + copy. No signing, no network. View-only shows the address read-only (copy still available — it's their own address to fund).
 
 ## Testing
 
