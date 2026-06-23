@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
-import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
@@ -13,6 +12,9 @@ import { PositionsService } from "../services/positionsData";
 import { FundingsService } from "../services/fundingsData";
 import { createPositionsInfoClient, createFundingsInfoClient, createExchangeClient } from "../lib/hyperliquid/client";
 import { ExchangeService } from "../services/exchange";
+import { DepositService } from "../services/deposit";
+import { createArbitrumDepositClient } from "../lib/arbitrum/client";
+import { MIN_DEPOSIT_USDC } from "../lib/arbitrum/deposit";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { marginRatioPct } from "../lib/hyperliquid/markPnl";
 import { totalFunding } from "../lib/hyperliquid/funding";
@@ -79,6 +81,9 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const [amountInput, setAmountInput] = useState("");
   const [destInput, setDestInput] = useState("");
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [mainnetConfirm, setMainnetConfirm] = useState(false);
+  const [depositBusy, setDepositBusy] = useState(false);
 
   useEffect(() => {
     if (mode === "none" || !address || !isValidAddress(address)) {
@@ -145,17 +150,46 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
     setTheme(next);
   }
 
-  // Deposit/Withdraw are non-custodial money in/out entry points (spec §B). Deposit shows the
-  // wallet's own address to fund on Arbitrum; Withdraw signs a real HL withdraw3 via the service.
+  // Deposit/Withdraw are non-custodial money in/out (spec §B). Deposit signs an Arbitrum USDC
+  // transfer to the HL bridge (§B2b); Withdraw signs a real HL withdraw3. Both via injectable
+  // services — keys never leave the device.
   function onDeposit() {
+    setMainnetConfirm(false);
     setSheet((s) => (s === "deposit" ? "none" : "deposit"));
   }
   function onWithdraw() {
     setDestInput((d) => d || address || "");
     setSheet((s) => (s === "withdraw" ? "none" : "withdraw"));
   }
-  function onCopyAddress() {
-    if (address) void Clipboard.setStringAsync(address);
+  async function onConfirmDeposit() {
+    const local = wallet as Partial<LocalWalletService> | null;
+    if (!local || typeof local.getViemAccount !== "function") return;
+    // Mainnet sends real money — require a distinct second confirmation before signing.
+    if (network === "mainnet" && !mainnetConfirm) {
+      setMainnetConfirm(true);
+      return;
+    }
+    setDepositBusy(true);
+    try {
+      const client = createArbitrumDepositClient(network, local.getViemAccount());
+      const svc = new DepositService(client, network);
+      const res = await svc.depositUsdc({
+        amount: Number(depositAmount),
+        confirmed: network === "mainnet",
+      });
+      if (res.ok) {
+        Alert.alert("充值已发送", `tx ${res.txHash.slice(0, 12)}… · 入账约 1 分钟`);
+        setSheet("none");
+        setMainnetConfirm(false);
+        setDepositAmount("");
+      } else if (res.uncertain) {
+        Alert.alert("回执不确定", `${res.error}。请在区块浏览器核对该交易后再决定是否重试。`);
+      } else {
+        Alert.alert("充值未提交", res.error);
+      }
+    } finally {
+      setDepositBusy(false);
+    }
   }
   async function onConfirmWithdraw() {
     const local = wallet as Partial<LocalWalletService> | null;
@@ -230,20 +264,44 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           <SurfaceCard theme={theme} testID="deposit-panel" style={styles.card}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>Deposit USDC</Text>
             <Text style={[styles.sheetHint, { color: theme.muted }]}>
-              Your Hyperliquid account is the address below. Hyperliquid is funded by sending native
-              USDC on Arbitrum (min 5 USDC) from THIS wallet to the Hyperliquid bridge — the bridge
-              credits the sender. In-app deposit is coming soon; for now deposit from the official
-              Hyperliquid app. Never send from a centralized exchange, and never USDC.e.
+              {`Sends native USDC on Arbitrum from this wallet to the Hyperliquid bridge (credited to you in ~1 min). Minimum ${MIN_DEPOSIT_USDC} USDC — less is lost. Your wallet needs a little ETH on Arbitrum for gas. Never USDC.e.`}
             </Text>
-            <Text style={[styles.fieldLabel, { color: theme.muted }]}>Your account address</Text>
-            <Text style={[styles.depAddr, { color: theme.text }]} selectable>
-              {address}
-            </Text>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>Amount · USDC</Text>
+            <TextInput
+              value={depositAmount}
+              onChangeText={(v) => {
+                setMainnetConfirm(false);
+                setDepositAmount(v);
+              }}
+              testID="deposit-amount"
+              keyboardType="decimal-pad"
+              placeholder={`${MIN_DEPOSIT_USDC}.00`}
+              placeholderTextColor={theme.faint}
+              style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
+            />
+            {network === "mainnet" && mainnetConfirm ? (
+              <Text style={[styles.dangerNote, { color: theme.warn }]} testID="deposit-mainnet-confirm">
+                You are about to send REAL USDC on Arbitrum mainnet. This is irreversible — confirm to sign.
+              </Text>
+            ) : null}
             <View style={styles.sheetRow}>
-              <Pressable onPress={onCopyAddress} accessibilityRole="button" testID="copy-address" style={[styles.sheetBtn, { backgroundColor: theme.brand }]}>
-                <Text style={[styles.sheetBtnText, { color: theme.bg }]}>Copy address</Text>
+              <Pressable disabled={depositBusy} onPress={onConfirmDeposit} accessibilityRole="button" testID="deposit-confirm" style={[styles.sheetBtn, { backgroundColor: network === "mainnet" && mainnetConfirm ? theme.warn : theme.brand }]}>
+                {depositBusy ? (
+                  <ActivityIndicator color={theme.bg} />
+                ) : (
+                  <Text style={[styles.sheetBtnText, { color: theme.bg }]}>
+                    {network === "mainnet" ? (mainnetConfirm ? "Yes, send real USDC" : "Review deposit") : "Confirm deposit"}
+                  </Text>
+                )}
               </Pressable>
-              <Pressable onPress={() => setSheet("none")} accessibilityRole="button" style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}>
+              <Pressable
+                onPress={() => {
+                  setSheet("none");
+                  setMainnetConfirm(false);
+                }}
+                accessibilityRole="button"
+                style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}
+              >
                 <Text style={[styles.sheetBtnText, { color: theme.text }]}>Close</Text>
               </Pressable>
             </View>
@@ -454,6 +512,7 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: fonts.display.bold, fontSize: 14, marginBottom: 8 },
   sheetHint: { fontFamily: fonts.body.regular, fontSize: 11.5, lineHeight: 17, marginBottom: 12 },
   depAddr: { fontFamily: fonts.mono.regular, fontSize: 13, marginBottom: 14 },
+  dangerNote: { fontFamily: fonts.body.semibold, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   fieldLabel: { fontFamily: fonts.body.regular, fontSize: 11, marginBottom: 4 },
   sheetRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   sheetBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center", justifyContent: "center" },
