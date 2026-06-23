@@ -126,4 +126,20 @@ describe("HTTP app", () => {
     expect(res.json()).toEqual(appConfig);
     await app.close();
   });
+
+  it("accepts bodyless POSTs that still set Content-Type: application/json (as the app's client does)", async () => {
+    // The mobile StrategyApi sends Content-Type: application/json even with no body for
+    // provision/revoke/kill-switch; the server must not reject those with FST_ERR_CTP_EMPTY_JSON_BODY.
+    const app = build();
+    const token = await tokenFor(app);
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+
+    const prov = await app.inject({ method: "POST", url: "/agent/provision", headers });
+    expect(prov.statusCode).toBe(200);
+    expect(prov.json().agentAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+
+    const ks = await app.inject({ method: "POST", url: "/kill-switch", headers });
+    expect(ks.statusCode).toBe(204);
+    await app.close();
+  });
 });

@@ -47,6 +47,19 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const version = deps.version ?? "0.1.0";
   const app = Fastify({ logger: deps.logger ?? false });
 
+  // The app's client sends Content-Type: application/json even for bodyless POSTs (provision/revoke/
+  // kill-switch); treat an empty JSON body as {} instead of FST_ERR_CTP_EMPTY_JSON_BODY.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+    const text = (body as string).trim();
+    if (text.length === 0) return done(null, {});
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      (err as { statusCode?: number }).statusCode = 400;
+      done(err as Error, undefined);
+    }
+  });
+
   // --- health (public) ---
   app.get("/health", async () => ({ ok: true, version }));
 
