@@ -78,4 +78,21 @@ describe("scheduler tick", () => {
     expect(store.get(eth.id)!.nextRunAt).toBeGreaterThan(1000);
     expect(store.get(btc.id)!.nextRunAt).toBe(1000);
   });
+
+  it("enforces a per-owner daily spend cap, leaving other owners unaffected", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const a = store.create("0xo", { coin: "BTC", side: "buy", quoteAmountUsdc: 60, intervalHours: 24 });
+    const b = store.create("0xo", { coin: "ETH", side: "buy", quoteAmountUsdc: 60, intervalHours: 24 });
+    const c = store.create("0xother", { coin: "BTC", side: "buy", quoteAmountUsdc: 60, intervalHours: 24 });
+    const placer = placerFake();
+    const activity = new MemoryActivityStore();
+
+    await tick(store, placer, { maxNotionalUsdc: 1000, dailyMaxNotionalUsdc: 100 }, false, 2000, activity);
+
+    // owner 0xo: first 60 fires, second would push the day to 120 > 100 -> skipped. 0xother unaffected.
+    expect(store.get(a.id)!.nextRunAt).toBeGreaterThan(1000);
+    expect(store.get(b.id)!.nextRunAt).toBe(1000);
+    expect(store.get(c.id)!.nextRunAt).toBeGreaterThan(1000);
+    expect(placer.calls).toHaveLength(2);
+  });
 });

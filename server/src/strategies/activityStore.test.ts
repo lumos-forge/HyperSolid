@@ -18,6 +18,17 @@ function contract(name: string, make: () => ActivityStore) {
       expect(store.list("0xo", "s2")).toHaveLength(1);
       expect(store.list("0xother", "s1")).toHaveLength(0);
     });
+
+    it("notionalSince sums sz*px for an owner since a time (across strategies)", () => {
+      const store = make();
+      store.record({ strategyId: "s1", owner: "0xo", time: 100, coin: "BTC", side: "buy", sz: 0.001, px: 50000 }); // 50
+      store.record({ strategyId: "s2", owner: "0xo", time: 300, coin: "ETH", side: "buy", sz: 1, px: 2500 }); // 2500
+      store.record({ strategyId: "s1", owner: "0xother", time: 300, coin: "BTC", side: "buy", sz: 1, px: 1 });
+
+      expect(store.notionalSince("0xo", 0)).toBeCloseTo(2550, 6);
+      expect(store.notionalSince("0xo", 200)).toBeCloseTo(2500, 6); // only the t=300 fill
+      expect(store.notionalSince("0xnobody", 0)).toBe(0);
+    });
   });
 }
 

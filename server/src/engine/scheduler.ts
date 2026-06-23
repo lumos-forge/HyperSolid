@@ -24,6 +24,15 @@ export interface OrderPlacer {
 /** Sink for recorded fills (activity log). Optional so the core tick stays usable without one. */
 export interface ActivityRecorder {
   record(a: { strategyId: string; owner: string; time: number; coin: string; side: string; sz: number; px: number }): unknown;
+  /** Owner's total notional spent since a time — used to enforce the daily spend cap. */
+  notionalSince?(owner: string, sinceMs: number): number;
+}
+
+const DAY_MS = 86_400_000;
+
+/** UTC midnight (ms) for the day containing `now` — the window for the daily spend cap. */
+export function dayStartUtcMs(now: number): number {
+  return Math.floor(now / DAY_MS) * DAY_MS;
 }
 
 /**
@@ -54,6 +63,10 @@ export async function tick(
   for (const s of dueStrategies(store.listAll(), now)) {
     const notionalUsdc = s.params.quoteAmountUsdc;
     if (!withinCaps({ notionalUsdc, killSwitch, coin: s.params.coin }, limits).ok) continue;
+    if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
+      const spentToday = activity.notionalSince(s.owner, dayStartUtcMs(now));
+      if (spentToday + notionalUsdc > limits.dailyMaxNotionalUsdc) continue;
+    }
     const cloid = cloidFor(s.id, s.nextRunAt);
     const res = await placer.place({ owner: s.owner, coin: s.params.coin, sizeUsdc: notionalUsdc, cloid });
     if (res.ok) {

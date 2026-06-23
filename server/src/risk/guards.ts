@@ -7,6 +7,8 @@ export interface RiskLimits {
   maxNotionalUsdc: number;
   /** Optional tighter per-coin notional cap; overrides the global cap for listed coins. */
   perCoinMaxNotionalUsdc?: Record<string, number>;
+  /** Optional per-owner daily spend (notional) cap; enforced by the scheduler (needs spend state). */
+  dailyMaxNotionalUsdc?: number;
 }
 
 /**

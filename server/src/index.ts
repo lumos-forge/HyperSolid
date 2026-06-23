@@ -49,6 +49,9 @@ export async function main(): Promise<void> {
   const slippageBps = Number(process.env.SLIPPAGE_BPS ?? 50);
   const maxNotionalUsdc = Number(process.env.MAX_NOTIONAL_USDC ?? 1000);
   const perCoinMaxNotionalUsdc = parsePerCoinCaps(process.env.PER_COIN_CAPS);
+  const dailyMaxNotionalUsdc = process.env.DAILY_MAX_NOTIONAL_USDC
+    ? Number(process.env.DAILY_MAX_NOTIONAL_USDC)
+    : undefined;
   const tickMs = Number(process.env.TICK_MS ?? 60_000);
   const dbPath = process.env.DB_PATH ?? "strategies.db";
 
@@ -68,7 +71,7 @@ export async function main(): Promise<void> {
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const timer = setInterval(() => {
-    void tick(store, placer, { maxNotionalUsdc, perCoinMaxNotionalUsdc }, killSwitch, now(), activity).catch((e) =>
+    void tick(store, placer, { maxNotionalUsdc, perCoinMaxNotionalUsdc, dailyMaxNotionalUsdc }, killSwitch, now(), activity).catch((e) =>
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
     );

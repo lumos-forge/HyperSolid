@@ -17,6 +17,8 @@ export interface Activity {
 export interface ActivityStore {
   record(a: Omit<Activity, "id">): Activity;
   list(owner: string, strategyId: string): Activity[];
+  /** Sum of `sz*px` notional for an owner across all strategies since `sinceMs` (inclusive). */
+  notionalSince(owner: string, sinceMs: number): number;
 }
 
 export class MemoryActivityStore implements ActivityStore {
@@ -30,6 +32,11 @@ export class MemoryActivityStore implements ActivityStore {
     return this.rows
       .filter((r) => r.owner === owner.toLowerCase() && r.strategyId === strategyId)
       .sort((x, y) => y.time - x.time);
+  }
+  notionalSince(owner: string, sinceMs: number): number {
+    return this.rows
+      .filter((r) => r.owner === owner.toLowerCase() && r.time >= sinceMs)
+      .reduce((sum, r) => sum + r.sz * r.px, 0);
   }
 }
 
@@ -88,6 +95,13 @@ export class SqliteActivityStore implements ActivityStore {
       sz: r.sz,
       px: r.px,
     }));
+  }
+
+  notionalSince(owner: string, sinceMs: number): number {
+    const row = this.db
+      .prepare("SELECT COALESCE(SUM(sz * px), 0) AS total FROM activity WHERE owner = ? AND time >= ?")
+      .get(owner.toLowerCase(), sinceMs) as { total: number };
+    return row.total;
   }
 
   close(): void {
