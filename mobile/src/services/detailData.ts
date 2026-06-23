@@ -27,6 +27,12 @@ export class DetailDataService {
     return normalizeCandles(raw);
   }
 
+  /** Daily closing prices, oldest→newest, for multi-period performance. */
+  async loadDailyCloses(coin: string, days = 365, now = Date.now()): Promise<number[]> {
+    const candles = await this.loadCandles(coin, "1d", days + 1, now);
+    return candles.map((c) => c.close);
+  }
+
   async subscribeOrderbook(coin: string, onBook: (ob: Orderbook) => void): Promise<Subscription> {
     return this.subs.l2Book(coin, (raw) => onBook(normalizeOrderbook(raw)));
   }

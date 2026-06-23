@@ -11,7 +11,13 @@ jest.mock("../lib/hyperliquid/client", () => ({
   createDetailInfoClient: () => ({}),
   createDetailSubsClient: () => ({}),
 }));
-jest.mock("../services/detailData", () => ({ DetailDataService: class {} }));
+jest.mock("../services/detailData", () => ({
+  DetailDataService: class {
+    async loadDailyCloses() {
+      return [];
+    }
+  },
+}));
 
 const btc: MarketTicker = {
   coin: "BTC",

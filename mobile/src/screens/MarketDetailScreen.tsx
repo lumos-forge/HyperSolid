@@ -9,6 +9,7 @@ import { useLiveDetail } from "../hooks/useLiveDetail";
 import { DetailDataService } from "../services/detailData";
 import { createDetailInfoClient, createDetailSubsClient } from "../lib/hyperliquid/client";
 import { CandleChart } from "../components/CandleChart";
+import { MultiPeriodReturns } from "../components/MultiPeriodReturns";
 import { OrderbookView } from "../components/OrderbookView";
 import { TradesList } from "../components/TradesList";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -19,6 +20,7 @@ import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
 import { fonts } from "../theme/fonts";
 import { formatCompact, formatFundingPct } from "../lib/hyperliquid/format";
+import { periodReturns } from "../lib/hyperliquid/performance";
 
 type Props = NativeStackScreenProps<MarketsStackParamList, "MarketDetail">;
 
@@ -54,6 +56,26 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const [dailyCloses, setDailyCloses] = useState<number[]>([]);
+  useEffect(() => {
+    let active = true;
+    service
+      .loadDailyCloses(coin)
+      .then((c) => active && setDailyCloses(c))
+      .catch(() => active && setDailyCloses([]));
+    return () => {
+      active = false;
+    };
+  }, [service, coin]);
+  const perf = periodReturns(dailyCloses, [
+    { label: "24H", days: 1 },
+    { label: "7D", days: 7 },
+    { label: "30D", days: 30 },
+    { label: "90D", days: 90 },
+    { label: "180D", days: 180 },
+    { label: "1Y", days: 365 },
+  ]);
 
   const price = ticker?.midPx ?? 0;
   const pct = ticker?.changePct ?? 0;
@@ -121,6 +143,8 @@ export function MarketDetailScreen({ route, navigation }: Props) {
       </View>
 
       <CandleChart candles={candles} theme={theme} currentPrice={price} />
+
+      <MultiPeriodReturns theme={theme} data={perf} />
 
       <View style={[styles.bookTabs, { borderBottomColor: theme.line }]}>
         {BOOK_TABS.map((tab) => (
