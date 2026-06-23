@@ -76,10 +76,10 @@
 - [x] `NetworkWarning`（非对称：testnet chip + 警示条按 `envStore.network`，自读 useTheme/useEnvStore；mainnet 不渲染）。
 - [x] TDD 各组件（▲▼/up·down 色/辉光、卡片结构与 rule、警示按 network 显隐与 warn 描边）。
 
-### - [ ] 单元 4：Markets 屏
+### - [x] 单元 4：Markets 屏
 
-- [ ] 简洁列表（星标 / 代号 PERP / Fund·Vol / 价格 / ▲▼）+ 搜索 + All/Watchlist + 警示 chip（testnet）。
-- [ ] 复用 MarketRow/Sparkline（如保留）；接真实 marketStore；TDD（行渲染、▲▼、警示按 network）。
+- [x] 简洁列表（星标 / 代号 PERP / Fund·Vol / 价格 / ▲▼）+ 搜索（Search markets）+ All/Watchlist + 警示 chip（仅 testnet）。
+- [x] MarketRow 重构为 v8（PERP tag、Fund·Vol 子行、PriceText/ChangeText、formatVol）；接真实 marketStore；去 Trace/SIGNAL/HYPERSOLID；NetworkWarning chip 非对称；TDD（行渲染、▲▼ 标记、警示按 network、搜索过滤）。
 
 ### - [ ] 单元 5：Market Detail 屏
 
@@ -149,3 +149,4 @@
 - 2026-06-23 · 单元 1（主题令牌 warn + electrum 对齐 v8）· +3（372→375）· tokens.ts 扩展 ThemeTokens（加 surfaceAlt/lineStrong/faint/glow/warn），electrum 对齐 v8（up #37D69A、down #FF6168、warn #FFA53D 等），daylight/oscilloscope 各补协调 warn + 扩展令牌；tint 复用 color.ts withAlpha；tokens.test 断言 warn 存在/与 brand 可区分/electrum 对齐。tsc 零错、jest 全绿、无 UI 文件改动（tokens.ts 为色源，硬编码色合规）。下一轮从「单元 2：字体基座」开始。
 - 2026-06-23 · 单元 2（字体基座 JetBrains Mono/Space Mono/Inter Tight）· +3（375→378）· 装 expo-font + @expo-google-fonts ×3（config plugin 注册）；fonts.ts 暴露 fonts.mono/display/body 家族名 token（纯字符串 jest 安全）+ fontAssets.ts 持 .ttf 映射（仅 App 导入、隔离不入 jest）；App.tsx useFonts(fontMap) 启动加载 + 首帧 gate（错误回退系统字体）；fonts.test 断言 token 形状/角色映射/家族唯一。tsc 零错、jest 全绿、改动文件无硬编码色/emoji。下一轮从「单元 3：共享原语」开始。
 - 2026-06-23 · 单元 3（共享原语 PriceText/ChangeText/SurfaceCard/NetworkWarning）· +15（378→393）· PriceText 改 mono tabular + 可选英雄辉光（textShadow，仅传 glowColor 时启用）；ChangeText 新增（▲▼ 几何 + 带符号 pct + up/down 色 + mono bold）；SurfaceCard 新增（surface + lineStrong 描边 + 3px brand 顶线 + overflow hidden）；NetworkWarning 新增（自读 envStore/useTheme，testnet→chip/strip，mainnet→null，warn token tint/描边 + alert 图标 + 诚实文案）。TDD 各组件全绿；tsc 零错、jest 全绿、4 文件无硬编码色/pictographic emoji（▲▼ 几何允许）。chip 同色调适配见偏差记录。下一轮从「单元 4：Markets 屏」开始。
+- 2026-06-23 · 单元 4（Markets 屏 v8 重构）· +2（393→395）· MarketsScreen 去 Trace/SIGNAL·LIVE/HYPERSOLID，标题改 Markets、网络警示用 NetworkWarning chip（非对称，mainnet 静默）、搜索 Search markets、Tab All/Watchlist（Space Mono）；MarketRow 重构为 v8（PERP tag、Fund·Vol 子行、PriceText + ChangeText ▲▼、新增 formatVol 紧凑量）；同步更新 MarketRow/MarketsScreen/RootNavigator 测试到 v8 契约。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/逻辑未动。下一轮从「单元 5：Market Detail 屏」开始。

@@ -3,21 +3,23 @@ import { View, Text, StyleSheet, ActivityIndicator, Pressable, TextInput } from 
 import { FlashList } from "@shopify/flash-list";
 import { useMarketStore } from "../state/marketStore";
 import { useWatchlistStore } from "../state/watchlistStore";
-import { useEnvStore } from "../state/envStore";
 import { MarketRow } from "../components/MarketRow";
 import { ScreenScaffold } from "../components/ScreenScaffold";
-import { Pill } from "../components/Pill";
+import { NetworkWarning } from "../components/NetworkWarning";
 import { Icon } from "../components/Icon";
+import { fonts } from "../theme/fonts";
 import { useTheme } from "../theme/useTheme";
 
-const SIGNAL_LABEL = "SIGNAL · LIVE";
+const TABS = [
+  ["all", "All"],
+  ["favorites", "Watchlist"],
+] as const;
 
 export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: string) => void }) {
   const theme = useTheme();
   const { tickers, loading, error } = useMarketStore();
   const favorites = useWatchlistStore((s) => s.coins);
   const toggleFavorite = useWatchlistStore((s) => s.toggle);
-  const network = useEnvStore((s) => s.network);
   const [filter, setFilter] = useState<"all" | "favorites">("all");
   const [query, setQuery] = useState("");
 
@@ -28,23 +30,17 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
   return (
     <ScreenScaffold
       theme={theme}
-      showTrace
-      statusTitle="HYPERSOLID"
-      pill={<Pill theme={theme} label={`◷ ${network.toUpperCase()}`} />}
+      statusTitle="Markets"
+      pill={<NetworkWarning variant="chip" />}
       scroll={false}
     >
-      <View style={styles.readout}>
-        <Text style={[styles.readoutLabel, { color: theme.brand }]}>{SIGNAL_LABEL}</Text>
-        <View style={[styles.dot, { backgroundColor: theme.brand, shadowColor: theme.brand }]} />
-      </View>
-
       <View style={[styles.search, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-        <Icon name="search" color={theme.muted} size={16} />
+        <Icon name="search" color={theme.faint} size={16} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="search markets"
-          placeholderTextColor={theme.muted}
+          placeholder="Search markets"
+          placeholderTextColor={theme.faint}
           autoCapitalize="characters"
           autoCorrect={false}
           style={[styles.searchInput, { color: theme.text }]}
@@ -52,7 +48,7 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
       </View>
 
       <View style={[styles.tabs, { borderBottomColor: theme.line }]}>
-        {(["all", "favorites"] as const).map((f) => (
+        {TABS.map(([f, label]) => (
           <Pressable
             key={f}
             onPress={() => setFilter(f)}
@@ -68,7 +64,7 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
                 },
               ]}
             >
-              {f === "all" ? "全部" : "自选"}
+              {label}
             </Text>
           </Pressable>
         ))}
@@ -83,7 +79,9 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
             <Text style={[styles.msg, { color: theme.muted }]}>Loading markets…</Text>
           </View>
         ) : filter === "favorites" && data.length === 0 ? (
-          <Text style={[styles.msg, { color: theme.muted }]}>暂无自选，点击星标收藏标的</Text>
+          <Text style={[styles.msg, { color: theme.muted }]}>
+            No watchlist yet · tap the star to follow markets
+          </Text>
         ) : (
           <FlashList
             data={data}
@@ -105,23 +103,26 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
 }
 
 const styles = StyleSheet.create({
-  readout: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  readoutLabel: { fontSize: 11, fontWeight: "600", letterSpacing: 1.5 },
-  dot: { width: 7, height: 7, borderRadius: 4, shadowOpacity: 0.9, shadowRadius: 4, elevation: 3 },
   search: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 11,
     paddingVertical: 9,
     marginBottom: 12,
   },
-  searchInput: { flex: 1, fontSize: 13, padding: 0 },
+  searchInput: { flex: 1, fontFamily: fonts.body.regular, fontSize: 13, padding: 0 },
   tabs: { flexDirection: "row", gap: 18, borderBottomWidth: 1, marginBottom: 4 },
-  tab: { fontSize: 14, fontWeight: "600", paddingBottom: 8, borderBottomWidth: 2 },
+  tab: {
+    fontFamily: fonts.display.bold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+  },
   listArea: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", paddingTop: 40 },
-  msg: { fontSize: 14, marginTop: 8 },
+  msg: { fontFamily: fonts.body.regular, fontSize: 14, marginTop: 8 },
 });

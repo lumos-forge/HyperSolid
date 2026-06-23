@@ -34,22 +34,29 @@ describe("MarketsScreen", () => {
     expect(screen.getByText(/network down/i)).toBeTruthy();
   });
 
-  it("renders the phosphor chrome: status title, signal readout and search", () => {
+  it("renders the v8 chrome: Markets title, search and All/Watchlist tabs", () => {
     render(<MarketsScreen />);
-    expect(screen.getByText("HYPERSOLID")).toBeTruthy();
-    expect(screen.getByText("SIGNAL · LIVE")).toBeTruthy();
-    expect(screen.getByPlaceholderText("search markets")).toBeTruthy();
+    expect(screen.getByText("Markets")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Search markets")).toBeTruthy();
+    expect(screen.getByText("All")).toBeTruthy();
+    expect(screen.getByText("Watchlist")).toBeTruthy();
   });
 
-  it("shows the active network in the status pill", () => {
+  it("stays silent about the network on mainnet (asymmetric warning)", () => {
     render(<MarketsScreen />);
-    expect(screen.getByText("◷ MAINNET")).toBeTruthy();
+    expect(screen.queryByText("TESTNET")).toBeNull();
+  });
+
+  it("flags testnet with a caution chip in the header", () => {
+    useEnvStore.setState({ network: "testnet" });
+    render(<MarketsScreen />);
+    expect(screen.getByText("TESTNET")).toBeTruthy();
   });
 
   it("filters rows by the search query", () => {
     useMarketStore.getState().setMarkets(tickers);
     render(<MarketsScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText("search markets"), "btc");
+    fireEvent.changeText(screen.getByPlaceholderText("Search markets"), "btc");
     expect(screen.getByText("BTC")).toBeTruthy();
     expect(screen.queryByText("ETH")).toBeNull();
   });
