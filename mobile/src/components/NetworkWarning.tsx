@@ -9,8 +9,8 @@ import { Icon } from "./Icon";
 /**
  * Asymmetric network warning (spec P0-B): testnet is loud, mainnet is silent. Driven by
  * `envStore.network` so a single source of truth decides visibility.
- *  - `chip`  → compact caution tag for the Markets header.
- *  - `strip` → full-width caution banner for order-placing screens (Trade / Market Detail).
+ *  - `chip`  -> compact caution tag for the Markets header.
+ *  - `strip` -> full-width caution banner for order-placing screens (Trade / Market Detail).
  * Colors are tinted from the dedicated `warn` token (distinct from brand) — no hardcoded hex.
  */
 export function NetworkWarning({ variant }: { variant: "chip" | "strip" }) {

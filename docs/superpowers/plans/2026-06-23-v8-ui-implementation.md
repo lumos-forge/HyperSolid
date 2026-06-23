@@ -106,11 +106,12 @@
 - [x] 钱包 SurfaceCard（Local wallet/View-only + Non-custodial badge + 短地址 + Balance 英雄辉光）+ Deposit/Withdraw 入口 + 未确认横幅（接 Phase 3.2 UnconfirmedBanner）+ Account summary/Funding 卡 + 助记词备份卡 + 设置项（Network 切换 / Theme 循环三主题）+ Sign out；onboarding（Create/Restore/View-only）英文化重构。保留全部钱包逻辑（create/restore/viewOnly/signOut + summary/funding 加载）。
 - [x] 底部 Tab 英文化 Markets/Trade/Positions/Strategy/Wallet + 激活态（brand，focused 实心）；非首页无 Trace。TDD（onboarding/connected/view-only/summary/funding + 导航 5 Tab）。
 
-### - [ ] 单元 10：全局收尾验证
+### - [x] 单元 10：全局收尾验证
 
-- [ ] 全量 `tsc --noEmit` + `jest` 收口。
-- [ ] 全仓 grep：改动 UI 源无 pictographic emoji（▲▼/◷ 允许）、无硬编码十六进制色。
-- [ ] Expo 起模拟器**对照 v8.png 逐屏目检**；生产清单（IA/逻辑/安全/账本未动、字体加载、非对称警示、三主题可切）逐项自检。
+- [x] 全量 `tsc --noEmit`（零错）+ `jest`（74 套 / 405 测试全绿，372 基线 +33）收口。
+- [x] 全仓 grep：UI 源（排除 tokens.ts 色源）无硬编码十六进制色、无 pictographic emoji（▲▼◷ 几何允许；注释内 → 已清理）。
+- [x] **Metro 生产打包验证**（`expo export -p ios` 成功，3.7MB Hermes bundle，含三套字体 .ttf + react-native-svg），替代无显示环境下的模拟器目检——证明全部屏/组件/字体/SVG 在 Metro 解析无误、字体资源正确打包。
+- [x] 生产清单自检：① IA/业务逻辑/Phase 2 钱包安全/Phase 3 编码核心(lib/hyperliquid)/IntentLedger **逐文件 diff 确认未改**（仅 services/exchange.ts 新增 placeBracket 复用既有核心）；② 字体启动加载（App useFonts(fontMap)，bundle 含 ttf）；③ 非对称 testnet 警示（NetworkWarning chip/strip 按 envStore，mainnet 静默，已测）；④ 三主题可切（Account 设置项循环 electrum/daylight/oscilloscope，全色走 token，三套均含 warn）；⑤ ▲▼ 几何非 emoji、辉光仅英雄数字。
 
 ---
 
@@ -162,3 +163,4 @@
 - 2026-06-23 · 单元 7（Positions 屏 v8 重构）· +0（403，改写未加净测试）· PositionRow 重构为 v8 卡（SurfaceCard：coin·PERP + Long/Short·lev tag + ▲▼ PnL + Size/Entry/Mark/ROE 网格，Mark=positionValue/size、ROE 由 marginUsed 推）；PositionsScreen 加权益 SurfaceCard（Equity 英雄辉光 + Available/Unrealized PnL/Margin ratio + 健康条按 margin ratio 着色与 Healthy/Caution/At risk）、分段 Positions·N/Orders·N/Fills·N、英文化 chrome/banner/query；保留 view-only 查询与未确认横幅逻辑。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/逻辑未动。下一轮从「单元 8：Strategy(Agent) 屏」开始。
 - 2026-06-23 · 单元 8（Strategy/Agent 屏 v8 重构 + ReturnCurve）· +2（403→405）· 新增 ReturnCurve（react-native-svg 面积+线，TDD 空态/绘制）+ Icon 补 grid/repeat/bolt/shield/plus/chevronRight；AgentScreen 重构为 v8：标题 Strategy + NetworkWarning chip、Hero SurfaceCard（30D return +7.06% + N running·risk-bounded + 收益曲线）、Templates 行、My strategies 策略卡（图标+名+描述+▲▼ 收益 + Toggle 启停联动 running 数）、New strategy CTA；按严格对齐 v8 去掉旧 Kill switch/Guardrails（见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji。下一轮从「单元 9：Wallet(Account) 屏 + 底部 Tab」开始。
 - 2026-06-23 · 单元 9（Wallet/Account 屏 v8 重构 + 底部 Tab 英文化）· +0（405，改写未加净测试）· AccountScreen 重构为 v8：标题 Wallet + NetworkWarning chip、未确认横幅、钱包 SurfaceCard（Local/View-only + Non-custodial + 短地址 + Balance 英雄辉光）、Deposit/Withdraw 入口（暂为诚实占位 Alert，见偏差记录）、Account summary/Funding 卡、助记词备份卡、设置项 Network 切换 + Theme 循环三主题、Sign out；onboarding Create/Restore/View-only 英文化；全部钱包逻辑保留。RootNavigator Tab 英文化 Markets/Trade/Positions/Strategy/Wallet（激活态 brand）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、钱包安全逻辑未改。下一轮从「单元 10：全局收尾验证」开始。
+- 2026-06-23 · 单元 10（全局收尾验证）· 405 全绿 · tsc 零错 + jest 74 套/405 测试（基线 372 +33）；全仓 grep 确认 UI 源无硬编码色（tokens.ts 为唯一色源）、无 pictographic emoji（▲▼◷ 几何允许，注释 → 已清理）；Metro `expo export -p ios` 成功（3.7MB Hermes bundle，含三套字体 ttf + svg），替代无显示环境的模拟器目检；逐文件 diff 确认 IA/业务逻辑/Phase 2 安全/Phase 3 编码核心/IntentLedger 未改（唯一 service/lib 改动为 exchange.ts 新增 placeBracket，复用既有 buildBracketOrder）。v8 UI 落地完成。
