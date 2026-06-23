@@ -246,3 +246,60 @@ describe("ExchangeService.cancelOrderByCloid / modifyOrder (gotchas + ledger)", 
     expect(client.cancelByCloid).not.toHaveBeenCalled();
   });
 });
+
+describe("ExchangeService.placeBracket", () => {
+  it("submits an entry plus TP and SL legs through the same idempotency pipeline", async () => {
+    const client = fakeClient();
+    const ledger = new IntentLedger();
+    const svc = new ExchangeService(client, index, ledger);
+    const res = await svc.placeBracket({
+      entry: { coin: "BTC", side: "buy", size: 0.01, price: 60000 },
+      takeProfit: { triggerPx: 66000 },
+      stopLoss: { triggerPx: 58000 },
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(isValidCloid(res.cloid)).toBe(true);
+    // entry + TP + SL = 3 order tuples in a single grouped submission
+    const arg = client.orderArg as { orders: unknown[]; grouping: string };
+    expect(arg.orders).toHaveLength(3);
+    expect(arg.grouping).toBe("normalTpsl");
+    expect(ledger.get(res.cloid)?.status).toBe("open");
+  });
+
+  it("reuses the entry cloid on retry and never double-submits the bracket", async () => {
+    const client = fakeClient(() => {
+      throw new Error("network down");
+    });
+    const ledger = new IntentLedger();
+    const svc = new ExchangeService(client, index, ledger);
+    const first = await svc.placeBracket({
+      entry: { coin: "BTC", side: "buy", size: 0.01, price: 60000 },
+      stopLoss: { triggerPx: 58000 },
+    });
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(first.uncertain).toBe(true);
+    expect(first.cloid).toBeDefined();
+    const okClient = fakeClient();
+    const svc2 = new ExchangeService(okClient, index, ledger);
+    const retry = await svc2.placeBracket({
+      entry: { coin: "BTC", side: "buy", size: 0.01, price: 60000, cloid: first.cloid },
+      stopLoss: { triggerPx: 58000 },
+    });
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.cloid).toBe(first.cloid);
+  });
+
+  it("rejects an unknown asset without hitting the network", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.placeBracket({
+      entry: { coin: "DOGE", side: "buy", size: 1, price: 1 },
+      stopLoss: { triggerPx: 0.9 },
+    });
+    expect(res.ok).toBe(false);
+    expect(client.order).not.toHaveBeenCalled();
+  });
+});

@@ -10,8 +10,11 @@ import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { MarketTicker } from "../lib/hyperliquid/types";
 
 const mockPlaceOrder = jest.fn();
+const mockPlaceBracket = jest.fn();
 jest.mock("../services/exchange", () => ({
-  ExchangeService: jest.fn().mockImplementation(() => ({ placeOrder: mockPlaceOrder })),
+  ExchangeService: jest
+    .fn()
+    .mockImplementation(() => ({ placeOrder: mockPlaceOrder, placeBracket: mockPlaceBracket })),
 }));
 jest.mock("../lib/hyperliquid/client", () => ({
   createExchangeClient: jest.fn(() => ({})),
@@ -37,35 +40,34 @@ describe("TradeScreen", () => {
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
     useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
     mockPlaceOrder.mockReset();
+    mockPlaceBracket.mockReset();
     jest.spyOn(Alert, "alert").mockReset().mockImplementation(() => {});
   });
 
   it("prompts to connect a wallet when none is set", () => {
     render(<TradeScreen />);
-    expect(screen.getByText("交易 Trade")).toBeTruthy();
-    expect(screen.getByText(/请先在「钱包」连接钱包后交易/)).toBeTruthy();
+    expect(screen.getByText("Trade")).toBeTruthy();
+    expect(screen.getByText(/Connect a wallet in Wallet/)).toBeTruthy();
   });
 
   it("blocks trading in view-only mode", () => {
     useWalletStore.setState({ mode: "viewOnly", address: "0xabc" });
     render(<TradeScreen />);
-    expect(screen.getByText(/只读模式不能交易/)).toBeTruthy();
+    expect(screen.getByText(/Read-only mode can't place orders/)).toBeTruthy();
   });
 
   it("renders the order form chrome when a local wallet is connected", () => {
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: "0xabc" });
     render(<TradeScreen />);
-    expect(screen.getByText("HYPERSOLID")).toBeTruthy();
-    expect(screen.getByText("◷ MAINNET")).toBeTruthy();
-    expect(screen.getByText("买入 / 做多")).toBeTruthy();
-    expect(screen.getByText("卖出 / 做空")).toBeTruthy();
-    expect(screen.getByText("提交订单")).toBeTruthy();
+    expect(screen.getByText("Buy / Long")).toBeTruthy();
+    expect(screen.getByText("Sell / Short")).toBeTruthy();
+    expect(screen.getByText("Buy / Long BTC")).toBeTruthy();
   });
 
-  it("shows the current price hint for the selected coin", () => {
+  it("shows the current price for the selected coin", () => {
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: "0xabc" });
     render(<TradeScreen />);
-    expect(screen.getByText(/当前价 62481.5/)).toBeTruthy();
+    expect(screen.getByText("62,481.5")).toBeTruthy();
   });
 
   it("does not submit while the session is locked (no wallet)", () => {
@@ -229,5 +231,46 @@ describe("TradeScreen", () => {
     // "重试最近一笔" engages the same-cloid retry UI (Unit 5 notice).
     fireEvent.press(screen.getByTestId("unconfirmed-review"));
     expect(screen.getByTestId("retry-order")).toBeTruthy();
+  });
+
+  it("passes reduce-only, post-only (Alo) and market type into the order request", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      ok: true,
+      cloid: ("0x" + "a".repeat(32)) as `0x${string}`,
+      status: { kind: "resting", message: "订单已挂单" },
+    });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByText("Market"));
+    fireEvent.press(screen.getByLabelText("reduce-only"));
+    fireEvent.press(screen.getByLabelText("post-only"));
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalled());
+    const req = mockPlaceOrder.mock.calls[0][0];
+    expect(req.reduceOnly).toBe(true);
+    expect(req.market).toBe(true);
+    expect(req.tif).toBe("Alo");
+    expect(mockPlaceBracket).not.toHaveBeenCalled();
+  });
+
+  it("routes through placeBracket when a TP or SL price is set", async () => {
+    mockPlaceBracket.mockResolvedValue({
+      ok: true,
+      cloid: ("0x" + "b".repeat(32)) as `0x${string}`,
+      status: { kind: "resting", message: "订单已挂单" },
+    });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.changeText(screen.getByTestId("field-sl"), "58000");
+    fireEvent.press(screen.getByTestId("submit-order"));
+    await waitFor(() => expect(mockPlaceBracket).toHaveBeenCalled());
+    const arg = mockPlaceBracket.mock.calls[0][0];
+    expect(arg.entry.coin).toBe("BTC");
+    expect(arg.stopLoss.triggerPx).toBe(58000);
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
   });
 });

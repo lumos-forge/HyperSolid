@@ -1,5 +1,12 @@
 import type { AssetIndex } from "../lib/hyperliquid/assetId";
-import { buildOrder, type OrderRequest } from "../lib/hyperliquid/buildOrder";
+import {
+  buildOrder,
+  buildBracketOrder,
+  type OrderRequest,
+  type OrderSide,
+  type BracketRequest,
+  type HlOrderParams,
+} from "../lib/hyperliquid/buildOrder";
 import {
   buildCancel,
   buildCancelByCloid,
@@ -46,12 +53,44 @@ export class ExchangeService {
   async placeOrder(req: OrderRequest): Promise<SubmitResult> {
     const built = buildOrder(req, this.index);
     if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
+    return this.submitBuilt(built.params, built.cloid, {
+      coin: req.coin,
+      side: req.side,
+      size: req.size,
+      price: req.price,
+    });
+  }
 
-    const cloid = built.cloid;
-    // §6.2: persist the intent (pending) BEFORE signing; retries reuse the same cloid.
-    this.ledger.open({ coin: req.coin, side: req.side, size: req.size, price: req.price, cloid });
+  /**
+   * Submit an entry order together with optional take-profit / stop-loss legs (spec §4.3 bracket).
+   * Reuses the exact idempotency pipeline as `placeOrder` (persist cloid pending BEFORE signing,
+   * dedupe, reconcile, uncertain-receipt retry) via `buildBracketOrder` — no real order at test time.
+   */
+  async placeBracket(req: BracketRequest): Promise<SubmitResult> {
+    const built = buildBracketOrder(req, this.index);
+    if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
+    const { entry } = req;
+    return this.submitBuilt(built.params, built.cloid, {
+      coin: entry.coin,
+      side: entry.side,
+      size: entry.size,
+      price: entry.price,
+    });
+  }
 
-    // Dedupe: never double-submit a cloid that is already live or settled.
+  /**
+   * Shared submit pipeline for single + bracket orders: persist the (pending) cloid BEFORE signing,
+   * dedupe by cloid (never double-submit a live/settled intent), submit, normalize + reconcile the
+   * HL status, and surface uncertain (network/timeout) receipts so the caller can safely retry the
+   * SAME cloid instead of orphaning a duplicate (§6.1/§6.2).
+   */
+  private async submitBuilt(
+    params: HlOrderParams,
+    cloid: `0x${string}`,
+    open: { coin: string; side: OrderSide; size: number; price: number },
+  ): Promise<SubmitResult> {
+    this.ledger.open({ ...open, cloid });
+
     if (!this.ledger.shouldSubmit(cloid)) {
       const intent = this.ledger.get(cloid);
       if (intent && (intent.status === "rejected" || intent.status === "canceled")) {
@@ -62,7 +101,7 @@ export class ExchangeService {
 
     this.ledger.markSubmitted(cloid);
     try {
-      const response = await this.client.order(built.params);
+      const response = await this.client.order(params);
       const status = normalizeOrderStatus(firstOrderStatus(response));
       this.ledger.reconcile(cloid, status);
       if (status.kind === "rejected") return { ok: false, error: status.message, cloid };
