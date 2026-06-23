@@ -41,7 +41,7 @@ describe("makeHlPlacer", () => {
     expect(o.s).toBe("0.001");
     // aggressive buy price = 50000 * (1 + 50bps) = 50250
     expect(o.p).toBe("50250");
-    expect(res).toEqual({ ok: true, filledUsdc: 50 });
+    expect(res).toEqual({ ok: true, filledUsdc: 50, filledSz: 0.001, avgPx: 50000 });
   });
 
   it("fails closed when no agent client is available for the owner", async () => {

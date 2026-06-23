@@ -4,6 +4,7 @@ import { AgentManager } from "./agent/agentManager";
 import { SqliteAgentStore } from "./agent/sqliteAgentStore";
 import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
+import { SqliteActivityStore } from "./strategies/activityStore";
 import type { StrategyStore } from "./strategies/store";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
 import { makeHlPlacer } from "./agent/placer";
@@ -37,6 +38,7 @@ export async function main(): Promise<void> {
   const auth = new Auth({ secret: authSecret });
   const agents = new AgentManager(SqliteAgentStore.open(dbPath, agentEncKey), generatePrivateKey);
   const store: StrategyStore = SqliteStrategyStore.open(dbPath, now);
+  const activity = SqliteActivityStore.open(dbPath);
 
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
@@ -48,14 +50,14 @@ export async function main(): Promise<void> {
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const timer = setInterval(() => {
-    void tick(store, placer, { maxNotionalUsdc }, killSwitch, now()).catch((e) =>
+    void tick(store, placer, { maxNotionalUsdc }, killSwitch, now(), activity).catch((e) =>
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
     );
   }, tickMs);
   timer.unref?.();
 
-  const app = buildApp({ auth, agents, store, now });
+  const app = buildApp({ auth, agents, store, activity, now });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);

@@ -3,6 +3,7 @@ import { buildApp } from "./app";
 import { Auth } from "../auth/auth";
 import { AgentManager, MemoryAgentStore } from "../agent/agentManager";
 import { MemoryStrategyStore } from "../strategies/store";
+import { MemoryActivityStore } from "../strategies/activityStore";
 
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const AGENT_PK = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" as const;
@@ -82,6 +83,23 @@ describe("HTTP app", () => {
     const auth = { authorization: `Bearer ${token}` };
     const res = await app.inject({ method: "PATCH", url: "/strategies/does-not-exist", headers: auth, payload: { status: "paused" } });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("returns recorded activity (DTO) for an owned strategy", async () => {
+    const auth0 = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+    const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+    const store = new MemoryStrategyStore(() => 1000);
+    const activity = new MemoryActivityStore();
+    const app = buildApp({ auth: auth0, agents, store, activity, now: () => 1000 });
+    const token = await tokenFor(app);
+    const headers = { authorization: `Bearer ${token}` };
+
+    const created = (await app.inject({ method: "POST", url: "/strategies", headers, payload: { type: "dca", params: { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 } } })).json();
+    activity.record({ strategyId: created.id, owner: account.address, time: 1500, coin: "BTC", side: "buy", sz: 0.001, px: 50000 });
+
+    const list = (await app.inject({ method: "GET", url: `/strategies/${created.id}/activity`, headers })).json();
+    expect(list).toEqual([{ id: expect.any(String), time: 1500, coin: "BTC", side: "buy", sz: 0.001, px: 50000 }]);
     await app.close();
   });
 });

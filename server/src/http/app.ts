@@ -3,11 +3,13 @@ import type { Auth } from "../auth/auth";
 import type { AgentManager } from "../agent/agentManager";
 import type { StrategyStore } from "../strategies/store";
 import type { DcaParams, DcaStrategy } from "../strategies/dca";
+import type { ActivityStore } from "../strategies/activityStore";
 
 export interface AppDeps {
   auth: Auth;
   agents: AgentManager;
   store: StrategyStore;
+  activity?: ActivityStore;
   now?: () => number;
   /** Agent approval lifetime applied on confirm (default ~90 days). */
   agentTtlMs?: number;
@@ -142,7 +144,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!owner) return;
     const { id } = req.params as { id: string };
     if (!ownedStrategy(owner, id, reply)) return;
-    return [];
+    return (deps.activity?.list(owner, id) ?? []).map((a) => ({
+      id: a.id,
+      time: a.time,
+      coin: a.coin,
+      side: a.side,
+      sz: a.sz,
+      px: a.px,
+    }));
   });
 
   // --- kill switch: hard-stop the owner's automation by pausing every running strategy ---

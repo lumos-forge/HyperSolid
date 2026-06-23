@@ -1,4 +1,4 @@
-import type { OrderPlacer, PlaceRequest } from "../engine/scheduler";
+import type { OrderPlacer, PlaceRequest, PlaceResult } from "../engine/scheduler";
 import { roundSize, formatPrice } from "../hl/format";
 
 /** Narrow injectable surface of the HL ExchangeClient — lets us place orders without the network. */
@@ -23,15 +23,15 @@ interface OrderStatus {
   error?: string;
 }
 
-/** Extract filled USDC notional from an HL order response, or undefined if not (yet) filled. */
-function filledUsdcOf(res: unknown): number | undefined {
+/** Extract filled notional + size/price from an HL order response, or undefined if not (yet) filled. */
+function fillOf(res: unknown): { filledUsdc: number; filledSz: number; avgPx: number } | undefined {
   const statuses = (res as { response?: { data?: { statuses?: OrderStatus[] } } })?.response?.data?.statuses;
   const f = statuses?.[0]?.filled;
   if (!f) return undefined;
   const sz = Number(f.totalSz);
   const px = Number(f.avgPx);
   if (!Number.isFinite(sz) || !Number.isFinite(px)) return undefined;
-  return sz * px;
+  return { filledUsdc: sz * px, filledSz: sz, avgPx: px };
 }
 
 /**
@@ -42,7 +42,7 @@ function filledUsdcOf(res: unknown): number | undefined {
  */
 export function makeHlPlacer(deps: PlacerDeps): OrderPlacer {
   return {
-    async place(req: PlaceRequest): Promise<{ ok: boolean; filledUsdc?: number }> {
+    async place(req: PlaceRequest): Promise<PlaceResult> {
       const client = deps.clientFor(req.owner);
       if (!client) return { ok: false };
       try {
@@ -62,9 +62,9 @@ export function makeHlPlacer(deps: PlacerDeps): OrderPlacer {
           c: req.cloid,
         };
         const res = await client.order({ orders: [order], grouping: "na" });
-        const filledUsdc = filledUsdcOf(res);
-        if (filledUsdc === undefined) return { ok: false };
-        return { ok: true, filledUsdc };
+        const fill = fillOf(res);
+        if (fill === undefined) return { ok: false };
+        return { ok: true, ...fill };
       } catch {
         return { ok: false };
       }

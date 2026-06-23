@@ -10,8 +10,20 @@ export interface PlaceRequest {
   cloid: string;
 }
 
+export interface PlaceResult {
+  ok: boolean;
+  filledUsdc?: number;
+  filledSz?: number;
+  avgPx?: number;
+}
+
 export interface OrderPlacer {
-  place(req: PlaceRequest): Promise<{ ok: boolean; filledUsdc?: number }>;
+  place(req: PlaceRequest): Promise<PlaceResult>;
+}
+
+/** Sink for recorded fills (activity log). Optional so the core tick stays usable without one. */
+export interface ActivityRecorder {
+  record(a: { strategyId: string; owner: string; time: number; coin: string; side: string; sz: number; px: number }): unknown;
 }
 
 /**
@@ -28,7 +40,8 @@ export function cloidFor(strategyId: string, scheduledNextRunAt: number): string
  * One scheduler pass: place a DCA child order for each due strategy (slot-deterministic cloid),
  * gated by risk caps + the kill-switch, and advance only on a successful placement. Idempotent: the
  * cloid is keyed by the strategy's *scheduled* nextRunAt, and the strategy is advanced only after a
- * confirmed fill — a re-run before advancement reuses the same cloid.
+ * confirmed fill — a re-run before advancement reuses the same cloid. On a confirmed fill it also
+ * records an activity row (when an `activity` sink is provided).
  */
 export async function tick(
   store: StrategyStore,
@@ -36,6 +49,7 @@ export async function tick(
   limits: RiskLimits,
   killSwitch: boolean,
   now: number,
+  activity?: ActivityRecorder,
 ): Promise<void> {
   for (const s of dueStrategies(store.listAll(), now)) {
     const notionalUsdc = s.params.quoteAmountUsdc;
@@ -44,6 +58,17 @@ export async function tick(
     const res = await placer.place({ owner: s.owner, coin: s.params.coin, sizeUsdc: notionalUsdc, cloid });
     if (res.ok) {
       store.recordFill(s.id, res.filledUsdc ?? notionalUsdc, nextRunAt(s, now));
+      if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+        activity.record({
+          strategyId: s.id,
+          owner: s.owner,
+          time: now,
+          coin: s.params.coin,
+          side: s.params.side,
+          sz: res.filledSz,
+          px: res.avgPx,
+        });
+      }
     }
   }
 }
