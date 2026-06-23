@@ -18,6 +18,7 @@ export function normalizeMarkets(data: MetaAndAssetCtxs): MarketTicker[] {
       changePct: pctChange(midPx, prevDayPx),
       funding: Number(ctx?.funding ?? 0),
       dayNtlVlm: Number(ctx?.dayNtlVlm ?? 0),
+      openInterest: Number(ctx?.openInterest ?? 0),
       maxLeverage: asset.maxLeverage,
       szDecimals: asset.szDecimals,
     };

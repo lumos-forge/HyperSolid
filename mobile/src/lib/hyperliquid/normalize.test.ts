@@ -47,4 +47,12 @@ describe("normalizeMarkets", () => {
     ];
     expect(normalizeMarkets(data)[0].changePct).toBe(0);
   });
+
+  it("carries open interest through normalization", () => {
+    const data: MetaAndAssetCtxs = [
+      { universe: [{ name: "BTC", szDecimals: 5, maxLeverage: 50 }] },
+      [{ midPx: "64000", prevDayPx: "63000", funding: "0.0001", dayNtlVlm: "1000", openInterest: "1950000000" }],
+    ];
+    expect(normalizeMarkets(data)[0].openInterest).toBe(1_950_000_000);
+  });
 });

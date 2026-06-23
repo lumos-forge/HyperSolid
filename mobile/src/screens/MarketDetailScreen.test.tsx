@@ -20,6 +20,7 @@ const btc: MarketTicker = {
   changePct: 2.43,
   funding: 0.00011,
   dayNtlVlm: 1.2e9,
+  openInterest: 1.95e9,
   maxLeverage: 50,
   szDecimals: 5,
 };
@@ -51,6 +52,7 @@ describe("MarketDetailScreen", () => {
     }
     expect(screen.getByText("Order book")).toBeTruthy();
     expect(screen.getByText("Trades")).toBeTruthy();
+    expect(screen.getByText("Open interest")).toBeTruthy();
   });
 
   it("renders the trade CTA", () => {

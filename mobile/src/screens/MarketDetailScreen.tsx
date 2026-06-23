@@ -64,6 +64,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     ["24h high", high24 != null ? formatPrice(high24) : "—"],
     ["24h low", low24 != null ? formatPrice(low24) : "—"],
     ["24h vol · USDC", ticker ? formatCompact(ticker.dayNtlVlm) : "—"],
+    ["Open interest", ticker?.openInterest ? formatCompact(ticker.openInterest) : "—"],
     [`Funding · ${fundingCountdown(now)}`, ticker ? formatFundingPct(ticker.funding) : "—"],
     ["Max leverage", ticker ? `${ticker.maxLeverage}×` : "—"],
   ];

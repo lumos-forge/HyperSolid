@@ -25,6 +25,8 @@ export interface MarketTicker {
   changePct: number;
   funding: number;
   dayNtlVlm: number;
+  /** 24h open interest (USD notional). Optional: absent for markets without a ctx. */
+  openInterest?: number;
   maxLeverage: number;
   szDecimals: number;
 }
