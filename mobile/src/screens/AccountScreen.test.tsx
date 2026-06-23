@@ -49,6 +49,7 @@ describe("AccountScreen", () => {
     mockDeposit.mockClear();
     useRuntimeConfigStore.setState({
       arbitrumRpc: { mainnet: "https://arb-mainnet/key", testnet: "https://arb-testnet/key" },
+      withdrawFeeUsdc: { mainnet: null, testnet: null },
     });
   });
 
@@ -139,13 +140,23 @@ describe("AccountScreen", () => {
     expect(mockDeposit).not.toHaveBeenCalled();
   });
 
-  it("confirms a withdrawal through the service with the entered amount + destination", async () => {
+  it("withdraws via the service after the mainnet two-step confirm, showing fee + net", async () => {
     const localWallet = { getViemAccount: () => ({}), getAddress: () => ADDR } as never;
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
     await waitFor(() => expect(fakeDeps.positions.loadPortfolio).toHaveBeenCalled());
     fireEvent.press(screen.getByText("Withdraw"));
     fireEvent.changeText(screen.getByTestId("withdraw-amount"), "100");
+    // fee line: default 1 USDC fee -> receive ~99
+    expect(screen.getByTestId("withdraw-fee")).toHaveTextContent(/Fee 1 USDC/);
+    expect(screen.getByTestId("withdraw-fee")).toHaveTextContent(/99\.00 USDC/);
+
+    // mainnet first press = review (no service call)
+    fireEvent.press(screen.getByTestId("withdraw-confirm"));
+    expect(mockWithdraw).not.toHaveBeenCalled();
+    expect(screen.getByTestId("withdraw-mainnet-confirm")).toBeTruthy();
+
+    // second press = sign
     fireEvent.press(screen.getByTestId("withdraw-confirm"));
     await waitFor(() => expect(mockWithdraw).toHaveBeenCalled());
     expect(mockWithdraw).toHaveBeenCalledWith({ destination: ADDR, amount: 100, withdrawable: 800 });

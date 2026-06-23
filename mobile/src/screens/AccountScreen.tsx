@@ -14,7 +14,7 @@ import { createPositionsInfoClient, createFundingsInfoClient, createExchangeClie
 import { ExchangeService } from "../services/exchange";
 import { DepositService } from "../services/deposit";
 import { createArbitrumDepositClient } from "../lib/arbitrum/client";
-import { arbitrumRpcFor } from "../state/runtimeConfigStore";
+import { arbitrumRpcFor, withdrawFeeFor } from "../state/runtimeConfigStore";
 import { MIN_DEPOSIT_USDC } from "../lib/arbitrum/deposit";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { marginRatioPct } from "../lib/hyperliquid/markPnl";
@@ -82,6 +82,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const [amountInput, setAmountInput] = useState("");
   const [destInput, setDestInput] = useState("");
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawMainnetConfirm, setWithdrawMainnetConfirm] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
   const [mainnetConfirm, setMainnetConfirm] = useState(false);
   const [depositBusy, setDepositBusy] = useState(false);
@@ -159,6 +160,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
     setSheet((s) => (s === "deposit" ? "none" : "deposit"));
   }
   function onWithdraw() {
+    setWithdrawMainnetConfirm(false);
     setDestInput((d) => d || address || "");
     setSheet((s) => (s === "withdraw" ? "none" : "withdraw"));
   }
@@ -201,6 +203,11 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   async function onConfirmWithdraw() {
     const local = wallet as Partial<LocalWalletService> | null;
     if (!local || typeof local.getViemAccount !== "function") return;
+    // Mainnet moves real money — require a distinct second confirmation before signing.
+    if (network === "mainnet" && !withdrawMainnetConfirm) {
+      setWithdrawMainnetConfirm(true);
+      return;
+    }
     setWithdrawBusy(true);
     try {
       const client = createExchangeClient(network, local.getViemAccount());
@@ -213,6 +220,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       if (res.ok) {
         Alert.alert("提现已提交", `${amountInput} USDC -> ${shortAddr(destInput.trim())}`);
         setSheet("none");
+        setWithdrawMainnetConfirm(false);
         setAmountInput("");
       } else if (res.uncertain) {
         Alert.alert("回执不确定", `${res.error}。提现可能已提交，请在重试前先核对余额。`);
@@ -225,6 +233,8 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   }
 
   if (mode !== "none") {
+    const withdrawFee = withdrawFeeFor(network);
+    const withdrawNet = Math.max(0, (Number(amountInput) || 0) - withdrawFee).toFixed(2);
     return (
       <ScreenScaffold theme={theme} statusTitle="Wallet" pill={<NetworkWarning variant="chip" />}>
         <UnconfirmedBanner theme={theme} count={unconfirmedCount} />
@@ -319,12 +329,15 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           <SurfaceCard theme={theme} testID="withdraw-panel" style={styles.card}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>Withdraw USDC</Text>
             <Text style={[styles.sheetHint, { color: theme.muted }]}>
-              {`Withdrawable ${summary ? formatPrice(summary.withdrawable) : "—"} USDC · a network fee applies.`}
+              {`Withdrawable ${summary ? formatPrice(summary.withdrawable) : "—"} USDC`}
             </Text>
             <Text style={[styles.fieldLabel, { color: theme.muted }]}>Amount · USDC</Text>
             <TextInput
               value={amountInput}
-              onChangeText={setAmountInput}
+              onChangeText={(v) => {
+                setWithdrawMainnetConfirm(false);
+                setAmountInput(v);
+              }}
               testID="withdraw-amount"
               keyboardType="decimal-pad"
               placeholder="0.00"
@@ -334,7 +347,10 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
             <Text style={[styles.fieldLabel, { color: theme.muted }]}>Destination</Text>
             <TextInput
               value={destInput}
-              onChangeText={setDestInput}
+              onChangeText={(v) => {
+                setWithdrawMainnetConfirm(false);
+                setDestInput(v);
+              }}
               testID="withdraw-dest"
               autoCapitalize="none"
               autoCorrect={false}
@@ -342,15 +358,32 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
               placeholderTextColor={theme.faint}
               style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
             />
+            <Text style={[styles.feeLine, { color: theme.muted }]} testID="withdraw-fee">
+              {`Fee ${withdrawFee} USDC · you receive ≈ ${withdrawNet} USDC`}
+            </Text>
+            {network === "mainnet" && withdrawMainnetConfirm ? (
+              <Text style={[styles.dangerNote, { color: theme.warn }]} testID="withdraw-mainnet-confirm">
+                You are about to withdraw REAL USDC on mainnet. This is irreversible — confirm to sign.
+              </Text>
+            ) : null}
             <View style={styles.sheetRow}>
-              <Pressable disabled={withdrawBusy} onPress={onConfirmWithdraw} accessibilityRole="button" testID="withdraw-confirm" style={[styles.sheetBtn, { backgroundColor: theme.brand }]}>
+              <Pressable disabled={withdrawBusy} onPress={onConfirmWithdraw} accessibilityRole="button" testID="withdraw-confirm" style={[styles.sheetBtn, { backgroundColor: network === "mainnet" && withdrawMainnetConfirm ? theme.warn : theme.brand }]}>
                 {withdrawBusy ? (
                   <ActivityIndicator color={theme.bg} />
                 ) : (
-                  <Text style={[styles.sheetBtnText, { color: theme.bg }]}>Confirm withdrawal</Text>
+                  <Text style={[styles.sheetBtnText, { color: theme.bg }]}>
+                    {network === "mainnet" ? (withdrawMainnetConfirm ? "Yes, withdraw real USDC" : "Review withdrawal") : "Confirm withdrawal"}
+                  </Text>
                 )}
               </Pressable>
-              <Pressable onPress={() => setSheet("none")} accessibilityRole="button" style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}>
+              <Pressable
+                onPress={() => {
+                  setSheet("none");
+                  setWithdrawMainnetConfirm(false);
+                }}
+                accessibilityRole="button"
+                style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}
+              >
                 <Text style={[styles.sheetBtnText, { color: theme.text }]}>Close</Text>
               </Pressable>
             </View>
@@ -520,6 +553,7 @@ const styles = StyleSheet.create({
   sheetHint: { fontFamily: fonts.body.regular, fontSize: 11.5, lineHeight: 17, marginBottom: 12 },
   depAddr: { fontFamily: fonts.mono.regular, fontSize: 13, marginBottom: 14 },
   dangerNote: { fontFamily: fonts.body.semibold, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
+  feeLine: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 10 },
   fieldLabel: { fontFamily: fonts.body.regular, fontSize: 11, marginBottom: 4 },
   sheetRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   sheetBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center", justifyContent: "center" },

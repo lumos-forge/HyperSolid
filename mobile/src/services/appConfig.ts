@@ -2,6 +2,7 @@ import { useRuntimeConfigStore, type AppRuntimeConfig } from "../state/runtimeCo
 
 interface RawAppConfig {
   arbitrumRpc?: { mainnet?: string | null; testnet?: string | null };
+  withdrawFeeUsdc?: { mainnet?: number | null; testnet?: number | null };
 }
 
 /**
@@ -20,6 +21,10 @@ export async function loadAppConfig(
     arbitrumRpc: {
       mainnet: raw.arbitrumRpc?.mainnet ?? null,
       testnet: raw.arbitrumRpc?.testnet ?? null,
+    },
+    withdrawFeeUsdc: {
+      mainnet: raw.withdrawFeeUsdc?.mainnet ?? null,
+      testnet: raw.withdrawFeeUsdc?.testnet ?? null,
     },
   };
 }

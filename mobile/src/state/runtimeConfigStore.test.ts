@@ -1,8 +1,11 @@
-import { useRuntimeConfigStore, arbitrumRpcFor } from "./runtimeConfigStore";
+import { useRuntimeConfigStore, arbitrumRpcFor, withdrawFeeFor, DEFAULT_WITHDRAW_FEE_USDC } from "./runtimeConfigStore";
 
 describe("runtimeConfigStore", () => {
   beforeEach(() => {
-    useRuntimeConfigStore.setState({ arbitrumRpc: { mainnet: null, testnet: null } });
+    useRuntimeConfigStore.setState({
+      arbitrumRpc: { mainnet: null, testnet: null },
+      withdrawFeeUsdc: { mainnet: null, testnet: null },
+    });
   });
 
   it("starts empty (nothing delivered yet)", () => {
@@ -13,8 +16,19 @@ describe("runtimeConfigStore", () => {
   it("exposes the server-delivered RPC per network", () => {
     useRuntimeConfigStore.getState().setConfig({
       arbitrumRpc: { mainnet: "https://rpc.mainnet/key", testnet: "https://rpc.testnet/key" },
+      withdrawFeeUsdc: { mainnet: null, testnet: null },
     });
     expect(arbitrumRpcFor("mainnet")).toBe("https://rpc.mainnet/key");
     expect(arbitrumRpcFor("testnet")).toBe("https://rpc.testnet/key");
+  });
+
+  it("falls back to the default withdraw fee until the server delivers one", () => {
+    expect(withdrawFeeFor("mainnet")).toBe(DEFAULT_WITHDRAW_FEE_USDC);
+    useRuntimeConfigStore.getState().setConfig({
+      arbitrumRpc: { mainnet: null, testnet: null },
+      withdrawFeeUsdc: { mainnet: 2.5, testnet: null },
+    });
+    expect(withdrawFeeFor("mainnet")).toBe(2.5);
+    expect(withdrawFeeFor("testnet")).toBe(DEFAULT_WITHDRAW_FEE_USDC);
   });
 });

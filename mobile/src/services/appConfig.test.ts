@@ -7,17 +7,22 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 describe("loadAppConfig", () => {
   it("fetches the app-config endpoint and parses the per-network RPC", async () => {
     const fetchImpl = jest.fn(async () =>
-      jsonResponse({ arbitrumRpc: { mainnet: "https://m/key", testnet: "https://t/key" } }),
+      jsonResponse({
+        arbitrumRpc: { mainnet: "https://m/key", testnet: "https://t/key" },
+        withdrawFeeUsdc: { mainnet: 1, testnet: 0 },
+      }),
     ) as unknown as typeof fetch;
     const cfg = await loadAppConfig("https://api.example.com/", fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith("https://api.example.com/app-config");
     expect(cfg.arbitrumRpc).toEqual({ mainnet: "https://m/key", testnet: "https://t/key" });
+    expect(cfg.withdrawFeeUsdc).toEqual({ mainnet: 1, testnet: 0 });
   });
 
   it("defaults missing RPC fields to null", async () => {
     const fetchImpl = jest.fn(async () => jsonResponse({})) as unknown as typeof fetch;
     const cfg = await loadAppConfig("https://api.example.com", fetchImpl);
     expect(cfg.arbitrumRpc).toEqual({ mainnet: null, testnet: null });
+    expect(cfg.withdrawFeeUsdc).toEqual({ mainnet: null, testnet: null });
   });
 
   it("throws on a non-ok response (so the caller keeps the empty config)", async () => {
