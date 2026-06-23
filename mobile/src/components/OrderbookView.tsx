@@ -4,7 +4,7 @@ import type { Orderbook } from "../lib/hyperliquid/types";
 import type { ThemeTokens } from "../theme/tokens";
 import { useT } from "../i18n/useT";
 
-export function OrderbookView({ book, theme }: { book: Orderbook; theme: ThemeTokens }) {
+export function OrderbookView({ book, theme, coin }: { book: Orderbook; theme: ThemeTokens; coin?: string }) {
   const t = useT();
   const maxTotal = Math.max(
     book.bids[book.bids.length - 1]?.total ?? 1,
@@ -27,7 +27,9 @@ export function OrderbookView({ book, theme }: { book: Orderbook; theme: ThemeTo
     <View>
       <View style={styles.head}>
         <Text style={[styles.h, styles.price, { color: theme.muted }]}>{t("orderbook.price")}</Text>
-        <Text style={[styles.h, styles.num, { color: theme.muted }]}>{t("orderbook.size")}</Text>
+        <Text style={[styles.h, styles.num, { color: theme.muted }]}>
+          {coin ? `${t("orderbook.size")} (${coin})` : t("orderbook.size")}
+        </Text>
         <Text style={[styles.h, styles.num, { color: theme.muted }]}>{t("orderbook.sum")}</Text>
       </View>
       {rows("ask")}

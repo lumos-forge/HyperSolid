@@ -45,7 +45,7 @@ describe("MarketDetailScreen", () => {
 
   it("renders the back header, hero price and signed change", () => {
     renderDetail({ goBack: jest.fn() });
-    expect(screen.getByText("BTC-PERP")).toBeTruthy();
+    expect(screen.getByText("BTC-USDC PERP")).toBeTruthy();
     expect(screen.getAllByText("62,481.5").length).toBeGreaterThan(0);
     const chg = screen.getByText(/\+2\.43%/);
     expect(chg).toHaveTextContent(/▲/);

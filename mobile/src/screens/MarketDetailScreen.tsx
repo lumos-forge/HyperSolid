@@ -123,7 +123,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
           style={styles.back}
         >
           <Icon name="chevron" color={theme.muted} size={14} />
-          <Text style={[styles.backText, { color: theme.text }]}>{coin}-PERP</Text>
+          <Text style={[styles.backText, { color: theme.text }]}>{coin}-USDC PERP</Text>
         </Pressable>
       }
       pill={<Icon name="star" color={theme.brand} active size={20} />}
@@ -181,32 +181,39 @@ export function MarketDetailScreen({ route, navigation }: Props) {
       <RsiPanel values={rsi(closes, 14)} theme={theme} />
 
       <View style={[styles.bookTabs, { borderBottomColor: theme.line }]}>
-        {BOOK_TABS.map((tab) => (
-          <Pressable
-            key={tab}
-            onPress={() => setBookTab(tab)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: bookTab === tab }}
-          >
-            <Text
-              style={[
-                styles.bookTab,
-                {
-                  color: bookTab === tab ? theme.brand : theme.muted,
-                  borderBottomColor: bookTab === tab ? theme.brand : "transparent",
-                },
-              ]}
+        <View style={styles.bookTabGroup}>
+          {BOOK_TABS.map((tab) => (
+            <Pressable
+              key={tab}
+              onPress={() => setBookTab(tab)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: bookTab === tab }}
             >
-              {tab === "book" ? "Order book" : "Trades"}
-            </Text>
-          </Pressable>
-        ))}
+              <Text
+                style={[
+                  styles.bookTab,
+                  {
+                    color: bookTab === tab ? theme.brand : theme.muted,
+                    borderBottomColor: bookTab === tab ? theme.brand : "transparent",
+                  },
+                ]}
+              >
+                {tab === "book" ? "Order book" : "Trades"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.imbalance}>
+          <Text style={{ color: theme.up }}>L {imbalance.bidPct.toFixed(1)}%</Text>
+          <Text style={{ color: theme.muted }}> · </Text>
+          <Text style={{ color: theme.down }}>{imbalance.askPct.toFixed(1)}% S</Text>
+        </Text>
       </View>
 
       {bookTab === "book" ? (
         orderbook ? (
           <>
-            <OrderbookView book={orderbook} theme={theme} />
+            <OrderbookView book={orderbook} theme={theme} coin={coin} />
             <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} />
           </>
         ) : (
@@ -218,7 +225,11 @@ export function MarketDetailScreen({ route, navigation }: Props) {
         <Text style={[styles.muted, { color: theme.muted }]}>Loading trades…</Text>
       )}
 
-      <Pressable style={[styles.cta, { backgroundColor: theme.brand }]} accessibilityRole="button">
+      <Pressable
+        style={[styles.cta, { backgroundColor: theme.brand }]}
+        accessibilityRole="button"
+        onPress={() => navigation.getParent()?.navigate("Trade" as never)}
+      >
         <Text style={[styles.ctaText, { color: theme.bg }]}>Trade</Text>
         <Icon name="arrowRight" color={theme.bg} size={18} />
       </Pressable>
@@ -238,7 +249,9 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: fonts.body.regular, fontSize: 10.5, flexShrink: 1 },
   statValue: { fontFamily: fonts.mono.medium, fontSize: 10.5 },
   tfs: { flexDirection: "row", gap: 7, marginBottom: 10 },
-  bookTabs: { flexDirection: "row", gap: 18, borderBottomWidth: 1, marginTop: 14, marginBottom: 6 },
+  bookTabs: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, marginTop: 14, marginBottom: 6 },
+  bookTabGroup: { flexDirection: "row", gap: 18 },
+  imbalance: { fontFamily: fonts.mono.medium, fontSize: 10.5, paddingBottom: 4 },
   bookTab: {
     fontFamily: fonts.display.bold,
     fontSize: 12,
