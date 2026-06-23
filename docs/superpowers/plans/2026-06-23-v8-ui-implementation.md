@@ -57,11 +57,11 @@
 
 ## 单元清单（按顺序执行）
 
-### - [ ] 单元 1：主题令牌（warn + electrum 对齐 v8）
+### - [x] 单元 1：主题令牌（warn + electrum 对齐 v8）
 
-- [ ] `tokens.ts` 加 `warn` 警示色 + 必要 tint（upS/downS/brandS/warnS 或等价）；electrum 对齐 v8（brand/up/down/warn/dim/faint/surface 等）。
-- [ ] daylight / oscilloscope 也补 `warn`（各自协调色），三套主题 schema 一致。
-- [ ] `tokens.test` 断言 `warn` 存在、与 `brand` 可区分、三套主题都有；现有 token 测试不破。
+- [x] `tokens.ts` 加 `warn` 警示色 + 扩展令牌（surfaceAlt/lineStrong/faint/glow）；electrum 对齐 v8（up #37D69A、down #FF6168、warn #FFA53D 等）。tint 走既有 `withAlpha`（color.ts）。
+- [x] daylight / oscilloscope 也补 `warn` + 扩展令牌（各自协调色），三套主题 schema 一致。
+- [x] `tokens.test` 断言 `warn` 存在、与 `brand`/up/down 可区分、三套都有 + electrum 对齐 v8。
 
 ### - [ ] 单元 2：字体基座
 
@@ -144,3 +144,4 @@
 > 每完成一个单元追加一行：`YYYY-MM-DD · 单元 N · 测试数 · 一句话结论`
 
 - 2026-06-23 · 单元 0（计划创建）· — · 建立可重入计划与 10 单元拆分（v8 UI 落地，主题令牌/字体/原语/逐屏重构 + 收尾），事实源锁定 build-v8.js + v8.png，下一轮从「单元 1：主题令牌」开始。
+- 2026-06-23 · 单元 1（主题令牌 warn + electrum 对齐 v8）· +3（372→375）· tokens.ts 扩展 ThemeTokens（加 surfaceAlt/lineStrong/faint/glow/warn），electrum 对齐 v8（up #37D69A、down #FF6168、warn #FFA53D 等），daylight/oscilloscope 各补协调 warn + 扩展令牌；tint 复用 color.ts withAlpha；tokens.test 断言 warn 存在/与 brand 可区分/electrum 对齐。tsc 零错、jest 全绿、无 UI 文件改动（tokens.ts 为色源，硬编码色合规）。下一轮从「单元 2：字体基座」开始。
