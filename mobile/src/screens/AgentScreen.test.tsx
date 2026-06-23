@@ -1,36 +1,100 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { AgentScreen } from "./AgentScreen";
+import { useWalletStore } from "../state/walletStore";
+import { useEnvStore } from "../state/envStore";
+import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
+
+const AGENT = "0x" + "9".repeat(40);
+
+const mockApiFake = {
+  challenge: jest.fn(async () => ({ nonce: "n" })),
+  session: jest.fn(async () => ({ token: "tok" })),
+  agentStatus: jest.fn(async () => ({ approved: false })),
+  provisionAgent: jest.fn(async () => ({ agentAddress: AGENT })),
+  confirmAgent: jest.fn(async () => undefined),
+  revokeAgent: jest.fn(async () => undefined),
+  listStrategies: jest.fn(async () => [] as unknown[]),
+  createStrategy: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "running" })),
+  setStrategyStatus: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "paused" })),
+  killSwitch: jest.fn(async () => undefined),
+};
+const mockApproveAgent = jest.fn(async () => ({ ok: true as const }));
+const mockOpenSession = jest.fn(async () => "tok");
+
+jest.mock("../services/strategyApi", () => ({ StrategyApi: jest.fn().mockImplementation(() => mockApiFake) }));
+jest.mock("../wallet/walletSession", () => ({ openStrategySession: (...a: unknown[]) => mockOpenSession(...(a as [])) }));
+jest.mock("../services/exchange", () => ({
+  ExchangeService: jest.fn().mockImplementation(() => ({ approveAgent: mockApproveAgent })),
+}));
+jest.mock("../lib/hyperliquid/client", () => ({ createExchangeClient: jest.fn(() => ({})) }));
+
+const localWallet = { getViemAccount: () => ({ signMessage: jest.fn() }), getAddress: () => AGENT } as never;
 
 describe("AgentScreen", () => {
-  it("renders the strategy hero with 30D return and running count", () => {
-    render(<AgentScreen />);
-    expect(screen.getByText("Strategy")).toBeTruthy();
-    expect(screen.getByText("30D strategy return")).toBeTruthy();
-    expect(screen.getByText(/\+7\.06%/)).toBeTruthy();
-    expect(screen.getByText(/2 running · risk-bounded/)).toBeTruthy();
+  beforeEach(() => {
+    Object.values(mockApiFake).forEach((f) => f.mockClear?.());
+    mockApproveAgent.mockClear();
+    mockOpenSession.mockClear();
+    mockApiFake.agentStatus.mockResolvedValue({ approved: false });
+    mockApiFake.listStrategies.mockResolvedValue([]);
+    useEnvStore.setState({ network: "testnet" });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: AGENT });
+    useRuntimeConfigStore.setState({
+      arbitrumRpc: { mainnet: null, testnet: null },
+      withdrawFeeUsdc: { mainnet: null, testnet: null },
+      strategyApiBaseUrl: "https://api.example.com",
+    });
   });
 
-  it("lists templates and my-strategies", () => {
+  it("gates when there is no local wallet", () => {
+    useWalletStore.setState({ mode: "none", wallet: null, address: null });
     render(<AgentScreen />);
-    expect(screen.getByText("Templates")).toBeTruthy();
-    expect(screen.getByText("My strategies")).toBeTruthy();
-    expect(screen.getByText("TWAP")).toBeTruthy();
-    expect(screen.getByText("GRID")).toBeTruthy();
-    expect(screen.getAllByText("DCA").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("strategy-gated")).toBeTruthy();
   });
 
-  it("renders the new-strategy action", () => {
+  it("gates when the server has not delivered the strategy API base URL", () => {
+    useRuntimeConfigStore.setState({
+      arbitrumRpc: { mainnet: null, testnet: null },
+      withdrawFeeUsdc: { mainnet: null, testnet: null },
+      strategyApiBaseUrl: null,
+    });
     render(<AgentScreen />);
-    expect(screen.getByText("New strategy")).toBeTruthy();
+    expect(screen.getByTestId("strategy-gated")).toBeTruthy();
   });
 
-  it("toggles a strategy switch locally and updates the running count", () => {
+  it("connects via wallet signature, then shows the agent approval CTA", async () => {
     render(<AgentScreen />);
-    const dca = screen.getByLabelText("strategy-DCA");
-    expect(dca.props.accessibilityState.checked).toBe(true);
-    fireEvent.press(dca);
-    expect(screen.getByLabelText("strategy-DCA").props.accessibilityState.checked).toBe(false);
-    expect(screen.getByText(/1 running · risk-bounded/)).toBeTruthy();
+    expect(screen.getByTestId("strategy-connect")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(mockOpenSession).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("agent-approve")).toBeTruthy());
+  });
+
+  it("authorizes the trading agent (provision -> sign -> confirm)", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("agent-approve")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("agent-approve"));
+    await waitFor(() => expect(mockApiFake.provisionAgent).toHaveBeenCalled());
+    expect(mockApproveAgent).toHaveBeenCalledWith(expect.objectContaining({ agentAddress: AGENT }));
+    expect(mockApiFake.confirmAgent).toHaveBeenCalledWith(AGENT);
+  });
+
+  it("creates a DCA strategy from the form", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("new-dca")).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("dca-amount"), "50");
+    fireEvent.changeText(screen.getByTestId("dca-interval"), "24");
+    fireEvent.press(screen.getByTestId("dca-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith({
+        coin: "BTC",
+        side: "buy",
+        quoteAmountUsdc: 50,
+        intervalHours: 24,
+      }),
+    );
   });
 });

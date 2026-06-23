@@ -452,3 +452,10 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ## Progress
 
 > Append one line per task: `YYYY-MM-DD · Task N · tests · one-line result`
+
+- 2026-06-23 · T1 (strategyApiBaseUrl in runtime config) · 457→458 · server-delivered strategyApiBaseUrl + appConfig parse. Done.
+- 2026-06-23 · T2 (StrategyApi client) · +4 · typed backend client (auth/agent/strategies, bearer + injected fetch). Done.
+- 2026-06-23 · T3 (wallet session helper) · +1 · openStrategySession (challenge→sign→token). Done.
+- 2026-06-23 · T4 (controller + AgentScreen) · +9 (→468) · useStrategyController (approve/create/toggle/revoke/kill) + AgentScreen real wiring (gating, wallet-signature connect, agent approval, DCA form, kill-switch); Metro bundle OK. Done.
+
+**Status: ✅ App control plane COMPLETE.** Next sub-project: the backend execution engine (`server/`, separate plan).
