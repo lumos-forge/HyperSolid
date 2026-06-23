@@ -11,6 +11,7 @@ import { createDetailInfoClient, createDetailSubsClient } from "../lib/hyperliqu
 import { CandleChart } from "../components/CandleChart";
 import { MultiPeriodReturns } from "../components/MultiPeriodReturns";
 import { RsiPanel } from "../components/RsiPanel";
+import { BookImbalanceBar } from "../components/BookImbalanceBar";
 import { OrderbookView } from "../components/OrderbookView";
 import { TradesList } from "../components/TradesList";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -23,6 +24,7 @@ import { fonts } from "../theme/fonts";
 import { formatCompact, formatFundingPct } from "../lib/hyperliquid/format";
 import { periodReturns } from "../lib/hyperliquid/performance";
 import { sma, ema, bollinger, rsi } from "../lib/hyperliquid/indicators";
+import { bookImbalance } from "../lib/hyperliquid/bookImbalance";
 
 type Props = NativeStackScreenProps<MarketsStackParamList, "MarketDetail">;
 
@@ -96,6 +98,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     }
     return [];
   })();
+  const imbalance = orderbook ? bookImbalance(orderbook, 10) : { bidPct: 50, askPct: 50 };
   const high24 = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const low24 = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
@@ -202,7 +205,10 @@ export function MarketDetailScreen({ route, navigation }: Props) {
 
       {bookTab === "book" ? (
         orderbook ? (
-          <OrderbookView book={orderbook} theme={theme} />
+          <>
+            <OrderbookView book={orderbook} theme={theme} />
+            <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} />
+          </>
         ) : (
           <Text style={[styles.muted, { color: theme.muted }]}>Loading order book…</Text>
         )
