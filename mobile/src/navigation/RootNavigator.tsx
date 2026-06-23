@@ -16,11 +16,11 @@ export const TABS: {
   icon: IconName;
   component: React.ComponentType<object>;
 }[] = [
-  { name: "Markets", label: "行情", icon: "markets", component: MarketsStack },
-  { name: "Trade", label: "交易", icon: "trade", component: TradeScreen },
-  { name: "Positions", label: "持仓", icon: "positions", component: PositionsScreen },
-  { name: "Agent", label: "策略", icon: "agent", component: AgentScreen },
-  { name: "Account", label: "钱包", icon: "account", component: AccountScreen },
+  { name: "Markets", label: "Markets", icon: "markets", component: MarketsStack },
+  { name: "Trade", label: "Trade", icon: "trade", component: TradeScreen },
+  { name: "Positions", label: "Positions", icon: "positions", component: PositionsScreen },
+  { name: "Agent", label: "Strategy", icon: "agent", component: AgentScreen },
+  { name: "Account", label: "Wallet", icon: "account", component: AccountScreen },
 ];
 
 export function RootNavigator() {

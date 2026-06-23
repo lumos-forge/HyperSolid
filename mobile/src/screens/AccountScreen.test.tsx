@@ -33,38 +33,39 @@ describe("AccountScreen", () => {
 
   it("renders the onboarding state with create / restore / view-only actions", () => {
     render(<AccountScreen />);
-    expect(screen.getByText("HYPERSOLID")).toBeTruthy();
-    expect(screen.getByText("◷ MAINNET")).toBeTruthy();
-    expect(screen.getByText("欢迎使用 HyperSolid")).toBeTruthy();
-    expect(screen.getByText("创建本地钱包（推荐）")).toBeTruthy();
-    expect(screen.getByText("恢复钱包")).toBeTruthy();
-    expect(screen.getByText("以只读模式进入")).toBeTruthy();
-    expect(screen.getByPlaceholderText("输入 12 词助记词")).toBeTruthy();
+    expect(screen.getByText("Wallet")).toBeTruthy();
+    expect(screen.getByText("Welcome to HyperSolid")).toBeTruthy();
+    expect(screen.getByText("Create local wallet")).toBeTruthy();
+    expect(screen.getByText("Restore wallet")).toBeTruthy();
+    expect(screen.getByText("Enter view-only")).toBeTruthy();
+    expect(screen.getByPlaceholderText("12-word recovery phrase")).toBeTruthy();
   });
 
-  it("renders the connected state with wallet card and sign-out", () => {
+  it("renders the connected state with wallet card, deposit/withdraw and sign-out", () => {
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
-    expect(screen.getByText("钱包 Account")).toBeTruthy();
-    expect(screen.getByText("本地钱包（非托管）")).toBeTruthy();
-    expect(screen.getByText("退出 / 切换钱包")).toBeTruthy();
-    expect(screen.getByText("网络")).toBeTruthy();
+    expect(screen.getByText("Local wallet")).toBeTruthy();
+    expect(screen.getByText("Non-custodial")).toBeTruthy();
+    expect(screen.getByText("Deposit")).toBeTruthy();
+    expect(screen.getByText("Withdraw")).toBeTruthy();
+    expect(screen.getByText("Sign out / switch wallet")).toBeTruthy();
+    expect(screen.getByText("Network")).toBeTruthy();
   });
 
   it("labels the view-only connected state correctly", () => {
     useWalletStore.setState({ mode: "viewOnly", wallet: null, address: "0xabc" });
     render(<AccountScreen deps={fakeDeps} />);
-    expect(screen.getByText("仅查看")).toBeTruthy();
+    expect(screen.getByText("View-only")).toBeTruthy();
   });
 
   it("loads + shows account summary (margin ratio) and funding total for a connected wallet", async () => {
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
     await waitFor(() => expect(fakeDeps.positions.loadPortfolio).toHaveBeenCalledWith(ADDR));
-    expect(screen.getByText("账户摘要")).toBeTruthy();
-    expect(screen.getByText("保证金率")).toBeTruthy();
+    expect(screen.getByText("Account summary")).toBeTruthy();
+    expect(screen.getByText("Margin ratio")).toBeTruthy();
     expect(screen.getByText(/10\.0%/)).toBeTruthy(); // 100 / 1000
-    expect(screen.getByText("资金费")).toBeTruthy();
+    expect(screen.getByText("Funding")).toBeTruthy();
     expect(screen.getByText(/-0\.15/)).toBeTruthy(); // total -0.25 + 0.10
   });
 

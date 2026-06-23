@@ -101,11 +101,10 @@
 - [x] Hero SurfaceCard（30D strategy return「+7.06%」+ N running·risk-bounded + ReturnCurve 收益曲线）+ 模板行（Grid/DCA/TWAP/TP-SL，含图标）+ 策略卡（图标 + 名称 + 描述 + ▲▼ 收益 + Toggle 启停）+ New strategy CTA。
 - [x] 新增 ReturnCurve（react-native-svg 面积+线）+ Icon 补 grid/repeat/bolt/shield/plus/chevronRight；TDD（曲线空态/绘制、Icon 全量、hero/模板/策略/新建/Toggle 联动 running 数）。
 
-### - [ ] 单元 9：Wallet(Account) 屏 + 底部 Tab
+### - [x] 单元 9：Wallet(Account) 屏 + 底部 Tab
 
-- [ ] 钱包卡（非托管/地址/余额）+ Deposit/Withdraw + 未确认横幅（接 Phase 3.2）+ 设置项 + 管理。
-- [ ] 底部 Tab：Markets/Trade/Positions/Strategy/Wallet 图标 + 激活态（brand）；非首页去掉 Trace。
-- [ ] TDD。
+- [x] 钱包 SurfaceCard（Local wallet/View-only + Non-custodial badge + 短地址 + Balance 英雄辉光）+ Deposit/Withdraw 入口 + 未确认横幅（接 Phase 3.2 UnconfirmedBanner）+ Account summary/Funding 卡 + 助记词备份卡 + 设置项（Network 切换 / Theme 循环三主题）+ Sign out；onboarding（Create/Restore/View-only）英文化重构。保留全部钱包逻辑（create/restore/viewOnly/signOut + summary/funding 加载）。
+- [x] 底部 Tab 英文化 Markets/Trade/Positions/Strategy/Wallet + 激活态（brand，focused 实心）；非首页无 Trace。TDD（onboarding/connected/view-only/summary/funding + 导航 5 Tab）。
 
 ### - [ ] 单元 10：全局收尾验证
 
@@ -141,6 +140,8 @@
 
 > 单元 5：Market Detail 部分 v8 区块依赖现有数据模型没有的字段，为「不改业务逻辑 + 不编造数据」而诚实省略：① Open interest（MarketTicker 无 OI）；② 多周期涨跌 7D/30D/90D/180D/1Y（无历史，仅 24h 可由 candles 推）；③ 指标 Tab（无指标计算管线，避免装饰性失效控件）；④ 多空比条 L/S（无持仓分布数据）；⑤ 周期保留功能性的 1H/4H/1D/1W（service 当前固定 interval）。以上需 service 层扩展，列为后续；24h high/low 由 candles 诚实推导，资金费倒计时按 UTC 整点实时计算。
 
+> 单元 9：Deposit/Withdraw 为非托管资金进出入口（用户 P1 要求补足），但真实转账流程（桥充值 / HL 提现）尚未实现，按「不做失效死按钮」原则当前点击弹出诚实说明 Alert（即将上线）。待接入真实流程后替换。钱包安全/创建/恢复/签出逻辑与未确认横幅内核未改。
+
 > 单元 8：Strategy 为 mock UI 壳（既有 TODO，无真实策略/收益数据流）。按 v8 事实源严格对齐，去掉旧版自由发挥的 Kill switch / Guardrails 行（v8 strategy 无此区块）；hero「+7.06%」与策略卡收益为壳层占位（延续既有 mock 约定，待接真实 agent/策略存储后替换）。Toggle 启停为本地状态，未接执行层（既有 TODO 保留）。
 
 > 单元 6：① 百分比滑杆省略——真实功能需账户可用余额，TradeScreen 当前不取持仓/权益数据，注入会引入新数据流（越界）；列为后续（接 positionsData/权益后补）。② 杠杆为票据「意向杠杆」，驱动 Est. liq 估算与摘要展示，**不**自动调用链上 setLeverage（那是独立动作，隐式调用属逻辑改动）。③ 类型仅 Limit/Market（干净映射 OrderRequest.market）；Stop 触发单语义另需触发价 UX，暂缓。④ TP/SL 已通过新增 service 层 `placeBracket`（复用 lib 既有 `buildBracketOrder`，未改编码核心）真实下达括号单。告警文案保持中文（与不可改的 rejectionMessage 一致）。
@@ -160,3 +161,4 @@
 - 2026-06-23 · 单元 6（Trade 屏 v8 重构 + placeBracket）· +5（398→403）· ExchangeService 新增 placeBracket（复用 lib buildBracketOrder + 抽出共享 submitBuilt 幂等管线，placeOrder 行为不变，TDD ×3）；TradeScreen 重构为 v8：Buy/Long·Sell/Short 段、Limit/Market 类型、杠杆 chips、价/量、Reduce-only/Post-only Toggle、TP/SL Optional（走 placeBracket）、摘要 SurfaceCard、动态 CTA（买绿卖红）、testnet 警示条；reduceOnly/market/tif(Alo) 接 placeOrder。既有下单幂等/不确定回执/testID/中文告警逐字保留（13 旧测试全绿）+ 2 新 wiring 测试。诚实省略百分比滑杆（需余额）、不自动 setLeverage（见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/编码核心未改。下一轮从「单元 7：Positions 屏」开始。
 - 2026-06-23 · 单元 7（Positions 屏 v8 重构）· +0（403，改写未加净测试）· PositionRow 重构为 v8 卡（SurfaceCard：coin·PERP + Long/Short·lev tag + ▲▼ PnL + Size/Entry/Mark/ROE 网格，Mark=positionValue/size、ROE 由 marginUsed 推）；PositionsScreen 加权益 SurfaceCard（Equity 英雄辉光 + Available/Unrealized PnL/Margin ratio + 健康条按 margin ratio 着色与 Healthy/Caution/At risk）、分段 Positions·N/Orders·N/Fills·N、英文化 chrome/banner/query；保留 view-only 查询与未确认横幅逻辑。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、IA/逻辑未动。下一轮从「单元 8：Strategy(Agent) 屏」开始。
 - 2026-06-23 · 单元 8（Strategy/Agent 屏 v8 重构 + ReturnCurve）· +2（403→405）· 新增 ReturnCurve（react-native-svg 面积+线，TDD 空态/绘制）+ Icon 补 grid/repeat/bolt/shield/plus/chevronRight；AgentScreen 重构为 v8：标题 Strategy + NetworkWarning chip、Hero SurfaceCard（30D return +7.06% + N running·risk-bounded + 收益曲线）、Templates 行、My strategies 策略卡（图标+名+描述+▲▼ 收益 + Toggle 启停联动 running 数）、New strategy CTA；按严格对齐 v8 去掉旧 Kill switch/Guardrails（见偏差记录）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji。下一轮从「单元 9：Wallet(Account) 屏 + 底部 Tab」开始。
+- 2026-06-23 · 单元 9（Wallet/Account 屏 v8 重构 + 底部 Tab 英文化）· +0（405，改写未加净测试）· AccountScreen 重构为 v8：标题 Wallet + NetworkWarning chip、未确认横幅、钱包 SurfaceCard（Local/View-only + Non-custodial + 短地址 + Balance 英雄辉光）、Deposit/Withdraw 入口（暂为诚实占位 Alert，见偏差记录）、Account summary/Funding 卡、助记词备份卡、设置项 Network 切换 + Theme 循环三主题、Sign out；onboarding Create/Restore/View-only 英文化；全部钱包逻辑保留。RootNavigator Tab 英文化 Markets/Trade/Positions/Strategy/Wallet（激活态 brand）。tsc 零错、jest 全绿、改动文件无硬编码色/emoji、钱包安全逻辑未改。下一轮从「单元 10：全局收尾验证」开始。

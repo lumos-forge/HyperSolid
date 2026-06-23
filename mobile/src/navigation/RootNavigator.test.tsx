@@ -13,7 +13,7 @@ describe("RootNavigator", () => {
         <RootNavigator />
       </NavigationContainer>,
     );
-    for (const label of ["行情", "交易", "持仓", "策略", "钱包"]) {
+    for (const label of ["Markets", "Trade", "Positions", "Strategy", "Wallet"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
