@@ -42,6 +42,8 @@
 
 ## Phase A — Market Detail enrichment + Trade percent sizing
 
+> **STATUS: ✅ COMPLETE (executed inline 2026-06-23).** All 6 tasks shipped via TDD; jest 405→424 (+19), tsc 0, no hardcoded hex/emoji. Commits: A1 b0cf54c · A2 3cb17c5 · A3 2031521 · A4 eaba68c · A5 0caa2e9 · A6 a8ee465.
+
 ### Task A1: Surface Open Interest
 
 OI already arrives in `RawAssetCtx.openInterest` (see `src/lib/hyperliquid/types.ts`) but is dropped during normalization. Add it as an **optional** field (so the ~10 existing `MarketTicker` fixtures don't need editing) and show it in the Market Detail stats grid.
@@ -52,7 +54,7 @@ OI already arrives in `RawAssetCtx.openInterest` (see `src/lib/hyperliquid/types
 - Test: `src/lib/hyperliquid/normalize.test.ts`
 - Modify: `src/screens/MarketDetailScreen.tsx` (stats array)
 
-- [ ] **Step 1: Write the failing test** — append to `src/lib/hyperliquid/normalize.test.ts`:
+- [x] **Step 1: Write the failing test** — append to `src/lib/hyperliquid/normalize.test.ts`:
 
 ```ts
 it("carries open interest through normalization", () => {
@@ -63,30 +65,30 @@ it("carries open interest through normalization", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/normalize.test.ts -t "open interest"`
 Expected: FAIL (`t.openInterest` is `undefined`).
 
-- [ ] **Step 3: Add the field** — in `src/lib/hyperliquid/types.ts`, inside `interface MarketTicker`, after `szDecimals: number;` add:
+- [x] **Step 3: Add the field** — in `src/lib/hyperliquid/types.ts`, inside `interface MarketTicker`, after `szDecimals: number;` add:
 
 ```ts
   /** 24h open interest (USD notional). Optional: absent for markets without a ctx. */
   openInterest?: number;
 ```
 
-- [ ] **Step 4: Map it** — in `src/lib/hyperliquid/normalize.ts`, inside the object built by `normalizeMarkets` (next to `dayNtlVlm: Number(ctx?.dayNtlVlm ?? 0),`) add:
+- [x] **Step 4: Map it** — in `src/lib/hyperliquid/normalize.ts`, inside the object built by `normalizeMarkets` (next to `dayNtlVlm: Number(ctx?.dayNtlVlm ?? 0),`) add:
 
 ```ts
       openInterest: Number(ctx?.openInterest ?? 0),
 ```
 
-- [ ] **Step 5: Run it, expect pass**
+- [x] **Step 5: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/normalize.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Show it in Market Detail** — in `src/screens/MarketDetailScreen.tsx`, in the `stats` array, insert after the `24h vol · USDC` row:
+- [x] **Step 6: Show it in Market Detail** — in `src/screens/MarketDetailScreen.tsx`, in the `stats` array, insert after the `24h vol · USDC` row:
 
 ```ts
     ["Open interest", ticker?.openInterest ? formatCompact(ticker.openInterest) : "—"],
@@ -94,13 +96,13 @@ Expected: PASS.
 
 (`formatCompact` is already imported.)
 
-- [ ] **Step 7: Update the detail test** — in `src/screens/MarketDetailScreen.test.tsx`, add `openInterest: 1.95e9` to the `btc` fixture object, then add inside the chrome test:
+- [x] **Step 7: Update the detail test** — in `src/screens/MarketDetailScreen.test.tsx`, add `openInterest: 1.95e9` to the `btc` fixture object, then add inside the chrome test:
 
 ```ts
     expect(screen.getByText("Open interest")).toBeTruthy();
 ```
 
-- [ ] **Step 8: Full gates + commit**
+- [x] **Step 8: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc errors; all green (+1).
@@ -126,7 +128,7 @@ Compute 24H/7D/30D/90D/180D/1Y returns from daily closes. Add a pure helper + a 
 - Test: `src/components/MultiPeriodReturns.test.tsx`
 - Modify: `src/screens/MarketDetailScreen.tsx`
 
-- [ ] **Step 1: Write the failing test** — `src/lib/hyperliquid/performance.test.ts`:
+- [x] **Step 1: Write the failing test** — `src/lib/hyperliquid/performance.test.ts`:
 
 ```ts
 import { periodReturns } from "./performance";
@@ -147,12 +149,12 @@ describe("periodReturns", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/performance.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — `src/lib/hyperliquid/performance.ts`:
+- [x] **Step 3: Implement** — `src/lib/hyperliquid/performance.ts`:
 
 ```ts
 export interface PeriodReturn {
@@ -175,12 +177,12 @@ export function periodReturns(
 }
 ```
 
-- [ ] **Step 4: Run it, expect pass**
+- [x] **Step 4: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/performance.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Add the daily-closes fetch** — in `src/services/detailData.ts`, add a method to the service class (it already wraps `candleSnapshot` via `loadCandles`):
+- [x] **Step 5: Add the daily-closes fetch** — in `src/services/detailData.ts`, add a method to the service class (it already wraps `candleSnapshot` via `loadCandles`):
 
 ```ts
   /** Daily closing prices, oldest→newest, for multi-period performance. */
@@ -190,7 +192,7 @@ Expected: PASS.
   }
 ```
 
-- [ ] **Step 6: Write the component test** — `src/components/MultiPeriodReturns.test.tsx`:
+- [x] **Step 6: Write the component test** — `src/components/MultiPeriodReturns.test.tsx`:
 
 ```tsx
 import React from "react";
@@ -216,12 +218,12 @@ describe("MultiPeriodReturns", () => {
 });
 ```
 
-- [ ] **Step 7: Run it, expect fail**
+- [x] **Step 7: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/components/MultiPeriodReturns.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 8: Implement the component** — `src/components/MultiPeriodReturns.tsx`:
+- [x] **Step 8: Implement the component** — `src/components/MultiPeriodReturns.tsx`:
 
 ```tsx
 import React from "react";
@@ -256,12 +258,12 @@ const styles = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 9: Run it, expect pass**
+- [x] **Step 9: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/components/MultiPeriodReturns.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 10: Wire into Market Detail** — in `src/screens/MarketDetailScreen.tsx`:
+- [x] **Step 10: Wire into Market Detail** — in `src/screens/MarketDetailScreen.tsx`:
   1. import: `import { MultiPeriodReturns } from "../components/MultiPeriodReturns";` and `import { periodReturns } from "../lib/hyperliquid/performance";`
   2. add state + fetch (place near the other hooks):
 
@@ -280,9 +282,9 @@ Expected: PASS.
 
   3. render `<MultiPeriodReturns theme={theme} data={perf} />` right below the `<CandleChart .../>`.
 
-- [ ] **Step 11: Mock the new method in the detail test** — in `src/screens/MarketDetailScreen.test.tsx`, the `useLiveDetail`/`DetailDataService` are already mocked; extend the `DetailDataService` mock so `loadDailyCloses` resolves `[]` (so the effect is harmless): `jest.mock("../services/detailData", () => ({ DetailDataService: class { async loadDailyCloses() { return []; } } }));`
+- [x] **Step 11: Mock the new method in the detail test** — in `src/screens/MarketDetailScreen.test.tsx`, the `useLiveDetail`/`DetailDataService` are already mocked; extend the `DetailDataService` mock so `loadDailyCloses` resolves `[]` (so the effect is harmless): `jest.mock("../services/detailData", () => ({ DetailDataService: class { async loadDailyCloses() { return []; } } }));`
 
-- [ ] **Step 12: Full gates + commit**
+- [x] **Step 12: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc; all green.
@@ -306,7 +308,7 @@ Pure indicator math + an `overlays` prop on `CandleChart` to draw indicator poly
 - Modify: `src/components/CandleChart.tsx`
 - Modify: `src/screens/MarketDetailScreen.tsx`
 
-- [ ] **Step 1: Write the failing test** — `src/lib/hyperliquid/indicators.test.ts`:
+- [x] **Step 1: Write the failing test** — `src/lib/hyperliquid/indicators.test.ts`:
 
 ```ts
 import { sma, ema, bollinger, rsi } from "./indicators";
@@ -337,12 +339,12 @@ describe("indicators", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/indicators.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — `src/lib/hyperliquid/indicators.ts`:
+- [x] **Step 3: Implement** — `src/lib/hyperliquid/indicators.ts`:
 
 ```ts
 export function sma(values: number[], period: number): (number | null)[] {
@@ -414,12 +416,12 @@ export function rsi(values: number[], period = 14): (number | null)[] {
 }
 ```
 
-- [ ] **Step 4: Run it, expect pass**
+- [x] **Step 4: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/indicators.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Add `overlays` to CandleChart** — in `src/components/CandleChart.tsx`, add to the props type:
+- [x] **Step 5: Add `overlays` to CandleChart** — in `src/components/CandleChart.tsx`, add to the props type:
 
 ```tsx
   overlays?: Array<{ values: (number | null)[]; color: string }>;
@@ -439,7 +441,7 @@ and, inside the `<Svg>` (after the candle `<Rect>`s, before the current-price li
 
 Add `Path` to the `react-native-svg` import: `import Svg, { Line, Rect, Path } from "react-native-svg";`.
 
-- [ ] **Step 6: Update the CandleChart test** — in `src/components/CandleChart.test.tsx` add:
+- [x] **Step 6: Update the CandleChart test** — in `src/components/CandleChart.test.tsx` add:
 
 ```tsx
   it("draws indicator overlays when provided", () => {
@@ -455,7 +457,7 @@ Add `Path` to the `react-native-svg` import: `import Svg, { Line, Rect, Path } f
   });
 ```
 
-- [ ] **Step 7: Wire the indicator tabs** — in `src/screens/MarketDetailScreen.tsx`:
+- [x] **Step 7: Wire the indicator tabs** — in `src/screens/MarketDetailScreen.tsx`:
   1. import: `import { sma, ema, bollinger } from "../lib/hyperliquid/indicators";`
   2. add state: `const [indicator, setIndicator] = useState<"none" | "MA" | "EMA" | "BOLL">("none");`
   3. compute overlays from `candles.map((c) => c.close)`:
@@ -488,7 +490,7 @@ Add `Path` to the `react-native-svg` import: `import Svg, { Line, Rect, Path } f
       </View>
 ```
 
-- [ ] **Step 8: Full gates + commit**
+- [x] **Step 8: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc; all green.
@@ -511,7 +513,7 @@ Render RSI(14) in a small panel under the candle chart (the `rsi()` helper alrea
 - Test: `src/components/RsiPanel.test.tsx`
 - Modify: `src/screens/MarketDetailScreen.tsx`
 
-- [ ] **Step 1: Write the failing test** — `src/components/RsiPanel.test.tsx`:
+- [x] **Step 1: Write the failing test** — `src/components/RsiPanel.test.tsx`:
 
 ```tsx
 import React from "react";
@@ -535,12 +537,12 @@ describe("RsiPanel", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/components/RsiPanel.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — `src/components/RsiPanel.tsx`:
+- [x] **Step 3: Implement** — `src/components/RsiPanel.tsx`:
 
 ```tsx
 import React from "react";
@@ -587,14 +589,14 @@ const styles = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 4: Run it, expect pass**
+- [x] **Step 4: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/components/RsiPanel.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Wire it in** — in `src/screens/MarketDetailScreen.tsx`, import `import { RsiPanel } from "../components/RsiPanel";` and `rsi` from indicators, then render `<RsiPanel values={rsi(closes, 14)} theme={theme} />` below `MultiPeriodReturns`.
+- [x] **Step 5: Wire it in** — in `src/screens/MarketDetailScreen.tsx`, import `import { RsiPanel } from "../components/RsiPanel";` and `rsi` from indicators, then render `<RsiPanel values={rsi(closes, 14)} theme={theme} />` below `MultiPeriodReturns`.
 
-- [ ] **Step 6: Full gates + commit**
+- [x] **Step 6: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc; all green.
@@ -619,7 +621,7 @@ There is **no** public HL endpoint for a global long/short position ratio, so do
 - Test: `src/components/BookImbalanceBar.test.tsx`
 - Modify: `src/screens/MarketDetailScreen.tsx`
 
-- [ ] **Step 1: Write the failing test** — `src/lib/hyperliquid/bookImbalance.test.ts`:
+- [x] **Step 1: Write the failing test** — `src/lib/hyperliquid/bookImbalance.test.ts`:
 
 ```ts
 import { bookImbalance } from "./bookImbalance";
@@ -642,12 +644,12 @@ describe("bookImbalance", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/bookImbalance.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement** — `src/lib/hyperliquid/bookImbalance.ts`:
+- [x] **Step 3: Implement** — `src/lib/hyperliquid/bookImbalance.ts`:
 
 ```ts
 import type { Orderbook } from "./types";
@@ -663,12 +665,12 @@ export function bookImbalance(book: Orderbook, depth = 10): { bidPct: number; as
 }
 ```
 
-- [ ] **Step 4: Run it, expect pass**
+- [x] **Step 4: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/lib/hyperliquid/bookImbalance.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write the component test** — `src/components/BookImbalanceBar.test.tsx`:
+- [x] **Step 5: Write the component test** — `src/components/BookImbalanceBar.test.tsx`:
 
 ```tsx
 import React from "react";
@@ -688,12 +690,12 @@ describe("BookImbalanceBar", () => {
 });
 ```
 
-- [ ] **Step 6: Run it, expect fail**
+- [x] **Step 6: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/components/BookImbalanceBar.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 7: Implement the component** — `src/components/BookImbalanceBar.tsx`:
+- [x] **Step 7: Implement the component** — `src/components/BookImbalanceBar.tsx`:
 
 ```tsx
 import React from "react";
@@ -730,14 +732,14 @@ const styles = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 8: Run it, expect pass**
+- [x] **Step 8: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/components/BookImbalanceBar.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 9: Wire into Market Detail** — in `src/screens/MarketDetailScreen.tsx`, import both, compute `const imb = orderbook ? bookImbalance(orderbook, 10) : { bidPct: 50, askPct: 50 };` and render `<BookImbalanceBar theme={theme} bidPct={imb.bidPct} askPct={imb.askPct} />` inside the order-book section (only when `orderbook` is present).
+- [x] **Step 9: Wire into Market Detail** — in `src/screens/MarketDetailScreen.tsx`, import both, compute `const imb = orderbook ? bookImbalance(orderbook, 10) : { bidPct: 50, askPct: 50 };` and render `<BookImbalanceBar theme={theme} bidPct={imb.bidPct} askPct={imb.askPct} />` inside the order-book section (only when `orderbook` is present).
 
-- [ ] **Step 10: Full gates + commit**
+- [x] **Step 10: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc; all green.
@@ -762,7 +764,7 @@ Add a `useAvailableBalance` hook (connected wallet's `withdrawable` via `Positio
 - Test: `src/components/SizePercentRow.test.tsx`
 - Modify: `src/screens/TradeScreen.tsx`
 
-- [ ] **Step 1: Write the hook test** — `src/hooks/useAvailableBalance.test.ts`:
+- [x] **Step 1: Write the hook test** — `src/hooks/useAvailableBalance.test.ts`:
 
 ```ts
 import { renderHook, waitFor } from "@testing-library/react-native";
@@ -789,12 +791,12 @@ describe("useAvailableBalance", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect fail**
+- [x] **Step 2: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/hooks/useAvailableBalance.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement the hook** — `src/hooks/useAvailableBalance.ts`:
+- [x] **Step 3: Implement the hook** — `src/hooks/useAvailableBalance.ts`:
 
 ```ts
 import { useEffect, useState } from "react";
@@ -822,12 +824,12 @@ export function useAvailableBalance(service: PositionsService, address: string |
 }
 ```
 
-- [ ] **Step 4: Run it, expect pass**
+- [x] **Step 4: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/hooks/useAvailableBalance.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write the component test** — `src/components/SizePercentRow.test.tsx`:
+- [x] **Step 5: Write the component test** — `src/components/SizePercentRow.test.tsx`:
 
 ```tsx
 import React from "react";
@@ -855,12 +857,12 @@ describe("SizePercentRow", () => {
 });
 ```
 
-- [ ] **Step 6: Run it, expect fail**
+- [x] **Step 6: Run it, expect fail**
 
 Run: `cd mobile && npx jest src/components/SizePercentRow.test.tsx`
 Expected: FAIL (module not found).
 
-- [ ] **Step 7: Implement the component** — `src/components/SizePercentRow.tsx`:
+- [x] **Step 7: Implement the component** — `src/components/SizePercentRow.tsx`:
 
 ```tsx
 import React from "react";
@@ -911,19 +913,19 @@ const styles = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 8: Run it, expect pass**
+- [x] **Step 8: Run it, expect pass**
 
 Run: `cd mobile && npx jest src/components/SizePercentRow.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 9: Wire into Trade** — in `src/screens/TradeScreen.tsx`:
+- [x] **Step 9: Wire into Trade** — in `src/screens/TradeScreen.tsx`:
   1. imports: `import { SizePercentRow } from "../components/SizePercentRow";`, `import { useAvailableBalance } from "../hooks/useAvailableBalance";`, `import { PositionsService } from "../services/positionsData";`, `import { createPositionsInfoClient } from "../lib/hyperliquid/client";`
   2. add (near the other `useMemo`s): `const positionsSvc = useMemo(() => new PositionsService(createPositionsInfoClient(network)), [network]); const available = useAvailableBalance(positionsSvc, useWalletStore.getState().address);`
   3. render `<SizePercentRow theme={theme} available={available} leverage={leverage} price={Number(price)} onPick={edit(setSize)} />` directly below the Size `Field`.
 
-- [ ] **Step 10: Extend the Trade test** — in `src/screens/TradeScreen.test.tsx`, add `createPositionsInfoClient: () => ({})` to the existing `jest.mock("../lib/hyperliquid/client", …)` factory and `jest.mock("../services/positionsData", () => ({ PositionsService: class { async loadPortfolio() { return { summary: { withdrawable: 800 }, positions: [] }; } } }));`. Add a test: connected wallet + price 64000 + leverage default → pressing `50%` sets a size and the submit value reflects it (assert `screen.getByText("50%")` is present and pressing it doesn't throw).
+- [x] **Step 10: Extend the Trade test** — in `src/screens/TradeScreen.test.tsx`, add `createPositionsInfoClient: () => ({})` to the existing `jest.mock("../lib/hyperliquid/client", …)` factory and `jest.mock("../services/positionsData", () => ({ PositionsService: class { async loadPortfolio() { return { summary: { withdrawable: 800 }, positions: [] }; } } }));`. Add a test: connected wallet + price 64000 + leverage default → pressing `50%` sets a size and the submit value reflects it (assert `screen.getByText("50%")` is present and pressing it doesn't throw).
 
-- [ ] **Step 11: Full gates + commit**
+- [x] **Step 11: Full gates + commit**
 
 Run: `cd mobile && npx tsc --noEmit && npx jest`
 Expected: 0 tsc; all green.
