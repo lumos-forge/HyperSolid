@@ -63,11 +63,11 @@
 - [x] daylight / oscilloscope 也补 `warn` + 扩展令牌（各自协调色），三套主题 schema 一致。
 - [x] `tokens.test` 断言 `warn` 存在、与 `brand`/up/down 可区分、三套都有 + electrum 对齐 v8。
 
-### - [ ] 单元 2：字体基座
+### - [x] 单元 2：字体基座
 
-- [ ] 装 `expo-font` + `@expo-google-fonts/{jetbrains-mono,space-mono,inter-tight}`；App 启动加载；加载前回退系统字体。
-- [ ] 暴露字体 token `fonts.mono/display/body`（接入 theme 或独立模块）；全局可用。
-- [ ] 测字体模块（加载标志/token 形状）；不在 jest 跑原生字体加载（注入式/mock）。
+- [x] 装 `expo-font` + `@expo-google-fonts/{jetbrains-mono,space-mono,inter-tight}`（config plugin 已注册）；App `useFonts(fontMap)` 启动加载，首帧前 gate；错误则系统字体回退、不阻塞。
+- [x] 暴露字体 token `fonts.mono/display/body`（`src/theme/fonts.ts` 纯字符串家族名，jest 安全）；全局可用。
+- [x] `fonts.test` 断言 token 形状/角色映射/家族名唯一；`.ttf` 映射在 `fontAssets.ts`（仅 App 导入，隔离不入 jest）。
 
 ### - [ ] 单元 3：共享原语
 
@@ -145,3 +145,4 @@
 
 - 2026-06-23 · 单元 0（计划创建）· — · 建立可重入计划与 10 单元拆分（v8 UI 落地，主题令牌/字体/原语/逐屏重构 + 收尾），事实源锁定 build-v8.js + v8.png，下一轮从「单元 1：主题令牌」开始。
 - 2026-06-23 · 单元 1（主题令牌 warn + electrum 对齐 v8）· +3（372→375）· tokens.ts 扩展 ThemeTokens（加 surfaceAlt/lineStrong/faint/glow/warn），electrum 对齐 v8（up #37D69A、down #FF6168、warn #FFA53D 等），daylight/oscilloscope 各补协调 warn + 扩展令牌；tint 复用 color.ts withAlpha；tokens.test 断言 warn 存在/与 brand 可区分/electrum 对齐。tsc 零错、jest 全绿、无 UI 文件改动（tokens.ts 为色源，硬编码色合规）。下一轮从「单元 2：字体基座」开始。
+- 2026-06-23 · 单元 2（字体基座 JetBrains Mono/Space Mono/Inter Tight）· +3（375→378）· 装 expo-font + @expo-google-fonts ×3（config plugin 注册）；fonts.ts 暴露 fonts.mono/display/body 家族名 token（纯字符串 jest 安全）+ fontAssets.ts 持 .ttf 映射（仅 App 导入、隔离不入 jest）；App.tsx useFonts(fontMap) 启动加载 + 首帧 gate（错误回退系统字体）；fonts.test 断言 token 形状/角色映射/家族唯一。tsc 零错、jest 全绿、改动文件无硬编码色/emoji。下一轮从「单元 3：共享原语」开始。

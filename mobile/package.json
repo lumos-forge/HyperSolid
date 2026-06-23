@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/inter-tight": "^0.4.2",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/space-mono": "^0.4.2",
     "@nktkas/hyperliquid": "^0.32.2",
     "@react-navigation/bottom-tabs": "^7.18.2",
     "@react-navigation/native": "^7.3.3",
@@ -10,6 +13,7 @@
     "@shopify/flash-list": "^2.3.2",
     "event-target-polyfill": "^0.0.4",
     "expo": "~56.0.12",
+    "expo-font": "~56.0.7",
     "expo-local-authentication": "~56.0.4",
     "expo-secure-store": "~56.0.4",
     "expo-sqlite": "~56.0.5",

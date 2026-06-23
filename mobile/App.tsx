@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo } from "react";
 import { StatusBar } from "expo-status-bar";
+import { useFonts } from "expo-font";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import * as LocalAuthentication from "expo-local-authentication";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { LockScreen } from "./src/screens/LockScreen";
+import { fontMap } from "./src/theme/fontAssets";
 import { useLiveMarkets } from "./src/hooks/useLiveMarkets";
 import { MarketDataService } from "./src/services/marketData";
 import { createInfoClient, createSubsClient, createOrderStatusInfoClient } from "./src/lib/hyperliquid/client";
@@ -24,6 +26,10 @@ import { SecureStoreKeyStore } from "./src/wallet/secureKeyStore";
 const INTENT_DB_NAME = "hypersolid-intents.db";
 
 export default function App() {
+  // v8 type system: JetBrains Mono / Space Mono / Inter Tight, loaded app-wide. On font-CDN error
+  // we proceed with system-font fallback rather than block the app.
+  const [fontsLoaded, fontError] = useFonts(fontMap);
+
   const network = useEnvStore((s) => s.network);
   const service = useMemo(
     () => new MarketDataService(createInfoClient(network), createSubsClient(network)),
@@ -60,6 +66,9 @@ export default function App() {
   useEffect(() => {
     useAuthStore.getState().evaluate(() => manager.hasWallet());
   }, [manager]);
+
+  // Hold first paint until fonts are ready (avoids a system→custom font flash); never block on error.
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>
