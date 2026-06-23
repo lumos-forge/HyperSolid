@@ -10,12 +10,14 @@ describe("loadAppConfig", () => {
       jsonResponse({
         arbitrumRpc: { mainnet: "https://m/key", testnet: "https://t/key" },
         withdrawFeeUsdc: { mainnet: 1, testnet: 0 },
+        strategyApiBaseUrl: "https://api.example.com",
       }),
     ) as unknown as typeof fetch;
     const cfg = await loadAppConfig("https://api.example.com/", fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith("https://api.example.com/app-config");
     expect(cfg.arbitrumRpc).toEqual({ mainnet: "https://m/key", testnet: "https://t/key" });
     expect(cfg.withdrawFeeUsdc).toEqual({ mainnet: 1, testnet: 0 });
+    expect(cfg.strategyApiBaseUrl).toBe("https://api.example.com");
   });
 
   it("defaults missing RPC fields to null", async () => {
@@ -23,6 +25,7 @@ describe("loadAppConfig", () => {
     const cfg = await loadAppConfig("https://api.example.com", fetchImpl);
     expect(cfg.arbitrumRpc).toEqual({ mainnet: null, testnet: null });
     expect(cfg.withdrawFeeUsdc).toEqual({ mainnet: null, testnet: null });
+    expect(cfg.strategyApiBaseUrl).toBeNull();
   });
 
   it("throws on a non-ok response (so the caller keeps the empty config)", async () => {

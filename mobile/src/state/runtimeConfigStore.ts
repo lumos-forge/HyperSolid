@@ -6,6 +6,8 @@ export interface AppRuntimeConfig {
   arbitrumRpc: { mainnet: string | null; testnet: string | null };
   /** Hyperliquid flat withdraw fee (USDC) per network; null until delivered → fall back to default. */
   withdrawFeeUsdc: { mainnet: number | null; testnet: number | null };
+  /** Strategy backend base URL (server-delivered); null until delivered → strategy automation gated. */
+  strategyApiBaseUrl: string | null;
 }
 
 interface RuntimeConfigState extends AppRuntimeConfig {
@@ -22,7 +24,13 @@ export const DEFAULT_WITHDRAW_FEE_USDC = 1;
 export const useRuntimeConfigStore = create<RuntimeConfigState>((set) => ({
   arbitrumRpc: { mainnet: null, testnet: null },
   withdrawFeeUsdc: { mainnet: null, testnet: null },
-  setConfig: (cfg) => set({ arbitrumRpc: cfg.arbitrumRpc, withdrawFeeUsdc: cfg.withdrawFeeUsdc }),
+  strategyApiBaseUrl: null,
+  setConfig: (cfg) =>
+    set({
+      arbitrumRpc: cfg.arbitrumRpc,
+      withdrawFeeUsdc: cfg.withdrawFeeUsdc,
+      strategyApiBaseUrl: cfg.strategyApiBaseUrl,
+    }),
 }));
 
 /** The server-delivered Arbitrum RPC URL for a network, or null until it has been delivered. */
