@@ -13,7 +13,7 @@ import { FundingsService } from "../services/fundingsData";
 import { createPositionsInfoClient, createFundingsInfoClient, createExchangeClient } from "../lib/hyperliquid/client";
 import { ExchangeService } from "../services/exchange";
 import { DepositService } from "../services/deposit";
-import { createArbitrumDepositClient } from "../lib/arbitrum/client";
+import { createArbitrumDepositClient, fetchArbitrumBalances } from "../lib/arbitrum/client";
 import { arbitrumRpcFor, withdrawFeeFor } from "../state/runtimeConfigStore";
 import { MIN_DEPOSIT_USDC } from "../lib/arbitrum/deposit";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
@@ -38,6 +38,9 @@ export interface AccountScreenDeps {
 }
 
 const THEME_ORDER: ThemeName[] = ["electrum", "daylight", "oscilloscope"];
+
+/** Below this ETH balance, an Arbitrum ERC-20 transfer likely can't pay gas — warn the user. */
+const GAS_MIN_ETH = 0.0002;
 const THEME_LABEL: Record<ThemeName, string> = {
   electrum: "Electrum",
   daylight: "Daylight",
@@ -86,6 +89,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const [depositAmount, setDepositAmount] = useState("");
   const [mainnetConfirm, setMainnetConfirm] = useState(false);
   const [depositBusy, setDepositBusy] = useState(false);
+  const [depositBalances, setDepositBalances] = useState<{ usdc: number; eth: number } | null>(null);
 
   useEffect(() => {
     if (mode === "none" || !address || !isValidAddress(address)) {
@@ -106,6 +110,23 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       active = false;
     };
   }, [mode, address, services]);
+
+  // Deposit precheck (§B2b): when the deposit sheet opens, read the wallet's Arbitrum USDC (depositable)
+  // and ETH (gas) balances via the server-delivered RPC. Cleared when the sheet closes / RPC absent.
+  useEffect(() => {
+    const rpcUrl = arbitrumRpcFor(network);
+    if (sheet !== "deposit" || mode !== "local" || !address || !isValidAddress(address) || !rpcUrl) {
+      setDepositBalances(null);
+      return;
+    }
+    let active = true;
+    fetchArbitrumBalances(network, address as `0x${string}`, rpcUrl)
+      .then((b) => active && setDepositBalances(b))
+      .catch(() => active && setDepositBalances(null));
+    return () => {
+      active = false;
+    };
+  }, [sheet, mode, address, network]);
 
   async function onCreate() {
     setBusy(true);
@@ -184,6 +205,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       const svc = new DepositService(client, network);
       const res = await svc.depositUsdc({
         amount: Number(depositAmount),
+        available: depositBalances?.usdc,
         confirmed: network === "mainnet",
       });
       if (res.ok) {
@@ -296,6 +318,16 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
               placeholderTextColor={theme.faint}
               style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
             />
+            {depositBalances ? (
+              <Text style={[styles.feeLine, { color: theme.muted }]} testID="deposit-available">
+                {`Available ${depositBalances.usdc.toFixed(2)} USDC · ${depositBalances.eth.toFixed(4)} ETH for gas`}
+              </Text>
+            ) : null}
+            {depositBalances && depositBalances.eth < GAS_MIN_ETH ? (
+              <Text style={[styles.dangerNote, { color: theme.warn }]} testID="deposit-gas-warning">
+                Not enough ETH on Arbitrum to pay gas — fund this wallet with a little ETH first.
+              </Text>
+            ) : null}
             {network === "mainnet" && mainnetConfirm ? (
               <Text style={[styles.dangerNote, { color: theme.warn }]} testID="deposit-mainnet-confirm">
                 You are about to send REAL USDC on Arbitrum mainnet. This is irreversible — confirm to sign.

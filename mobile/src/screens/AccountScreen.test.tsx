@@ -15,7 +15,11 @@ jest.mock("../lib/hyperliquid/client", () => ({
   createFundingsInfoClient: jest.fn(() => ({})),
   createExchangeClient: jest.fn(() => ({})),
 }));
-jest.mock("../lib/arbitrum/client", () => ({ createArbitrumDepositClient: jest.fn(() => ({})) }));
+const mockBalances = jest.fn(async () => ({ usdc: 500, eth: 0.01 }));
+jest.mock("../lib/arbitrum/client", () => ({
+  createArbitrumDepositClient: jest.fn(() => ({})),
+  fetchArbitrumBalances: (...args: unknown[]) => mockBalances(...(args as [])),
+}));
 jest.mock("../services/exchange", () => ({
   ExchangeService: jest.fn().mockImplementation(() => ({ withdrawUsdc: mockWithdraw })),
 }));
@@ -47,6 +51,8 @@ describe("AccountScreen", () => {
     fakeDeps.fundings.load = jest.fn(async () => fundingEvents);
     mockWithdraw.mockClear();
     mockDeposit.mockClear();
+    mockBalances.mockClear();
+    mockBalances.mockResolvedValue({ usdc: 500, eth: 0.01 });
     useRuntimeConfigStore.setState({
       arbitrumRpc: { mainnet: "https://arb-mainnet/key", testnet: "https://arb-testnet/key" },
       withdrawFeeUsdc: { mainnet: null, testnet: null },
@@ -97,13 +103,15 @@ describe("AccountScreen", () => {
     expect(fakeDeps.positions.loadPortfolio).not.toHaveBeenCalled();
   });
 
-  it("opens the deposit form and enforces a mainnet two-step confirmation", async () => {
+  it("opens the deposit form, shows balances, and enforces a mainnet two-step confirmation", async () => {
     // mainnet (set in beforeEach): first press reviews, second press sends.
     const localWallet = { getViemAccount: () => ({}), getAddress: () => ADDR } as never;
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
     fireEvent.press(screen.getByText("Deposit"));
     expect(screen.getByTestId("deposit-panel")).toBeTruthy();
+    // balances loaded from the (mocked) Arbitrum read
+    await waitFor(() => expect(screen.getByTestId("deposit-available")).toHaveTextContent(/500\.00 USDC/));
     fireEvent.changeText(screen.getByTestId("deposit-amount"), "10");
 
     // first confirm = review (no send yet)
@@ -111,10 +119,19 @@ describe("AccountScreen", () => {
     expect(mockDeposit).not.toHaveBeenCalled();
     expect(screen.getByTestId("deposit-mainnet-confirm")).toBeTruthy();
 
-    // second confirm = sign + send, confirmed=true
+    // second confirm = sign + send, confirmed=true, available passed for the balance check
     fireEvent.press(screen.getByTestId("deposit-confirm"));
     await waitFor(() => expect(mockDeposit).toHaveBeenCalled());
-    expect(mockDeposit).toHaveBeenCalledWith({ amount: 10, confirmed: true });
+    expect(mockDeposit).toHaveBeenCalledWith({ amount: 10, available: 500, confirmed: true });
+  });
+
+  it("warns when the wallet has too little ETH for gas", async () => {
+    mockBalances.mockResolvedValue({ usdc: 500, eth: 0 });
+    const localWallet = { getViemAccount: () => ({}), getAddress: () => ADDR } as never;
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    fireEvent.press(screen.getByText("Deposit"));
+    await waitFor(() => expect(screen.getByTestId("deposit-gas-warning")).toBeTruthy());
   });
 
   it("deposits in one step on testnet (no second confirmation)", async () => {
@@ -123,9 +140,10 @@ describe("AccountScreen", () => {
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
     fireEvent.press(screen.getByText("Deposit"));
+    await waitFor(() => expect(screen.getByTestId("deposit-available")).toBeTruthy());
     fireEvent.changeText(screen.getByTestId("deposit-amount"), "5");
     fireEvent.press(screen.getByTestId("deposit-confirm"));
-    await waitFor(() => expect(mockDeposit).toHaveBeenCalledWith({ amount: 5, confirmed: false }));
+    await waitFor(() => expect(mockDeposit).toHaveBeenCalledWith({ amount: 5, available: 500, confirmed: false }));
   });
 
   it("blocks deposit until the server delivers the Arbitrum RPC", async () => {
