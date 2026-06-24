@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useT } from "../i18n/useT";
@@ -10,6 +10,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
   const t = useT();
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const autoTriggered = useRef(false);
 
   async function handle() {
     setBusy(true);
@@ -26,6 +27,17 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
       setBusy(false);
     }
   }
+
+  // Surface the biometric prompt automatically the moment the lock screen appears (cold start /
+  // return-from-background), so unlocking is one fewer tap. Fire once; after a cancel/fail the user
+  // retries with the button. The integrity gate inside onUnlock still runs first, so a compromised
+  // device never reaches a prompt.
+  useEffect(() => {
+    if (autoTriggered.current) return;
+    autoTriggered.current = true;
+    void handle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>

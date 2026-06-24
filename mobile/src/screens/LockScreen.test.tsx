@@ -14,6 +14,12 @@ describe("LockScreen", () => {
     await waitFor(() => expect(onUnlock).toHaveBeenCalled());
   });
 
+  it("auto-triggers the biometric prompt once on mount (no tap needed)", async () => {
+    const onUnlock = jest.fn().mockResolvedValue("success");
+    render(<LockScreen onUnlock={onUnlock} />);
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledTimes(1));
+  });
+
   it("shows an error message when unlock fails", async () => {
     const onUnlock = jest.fn().mockResolvedValue("failed");
     render(<LockScreen onUnlock={onUnlock} />);
@@ -43,10 +49,10 @@ describe("LockScreen", () => {
     expect(screen.getByText("解锁")).toBeTruthy();
   });
 
-  it("re-enables and shows an error if onUnlock throws", async () => {
+  it("re-enables and shows an error if onUnlock throws, and retries on tap", async () => {
     const onUnlock = jest.fn().mockRejectedValue(new Error("boom"));
     render(<LockScreen onUnlock={onUnlock} />);
-    fireEvent.press(screen.getByText("Unlock"));
+    // Auto-trigger on mount fails → error shown, button re-enabled for a manual retry.
     await waitFor(() => expect(screen.getByText(/Authentication failed/)).toBeTruthy());
     fireEvent.press(screen.getByText("Unlock"));
     await waitFor(() => expect(onUnlock).toHaveBeenCalledTimes(2));
