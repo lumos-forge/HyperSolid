@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
@@ -106,6 +107,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const [mainnetConfirm, setMainnetConfirm] = useState(false);
   const [depositBusy, setDepositBusy] = useState(false);
   const [depositBalances, setDepositBalances] = useState<{ usdc: number; eth: number } | null>(null);
+  const [addressCopied, setAddressCopied] = useState(false);
 
   useEffect(() => {
     if (mode === "none" || !address || !isValidAddress(address)) {
@@ -208,11 +210,18 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
     setTheme(next);
   }
 
+  async function onCopyAddress() {
+    if (!address) return;
+    await Clipboard.setStringAsync(address);
+    setAddressCopied(true);
+  }
+
   // Deposit/Withdraw are non-custodial money in/out (spec §B). Deposit signs an Arbitrum USDC
   // transfer to the HL bridge (§B2b); Withdraw signs a real HL withdraw3. Both via injectable
   // services — keys never leave the device.
   function onDeposit() {
     setMainnetConfirm(false);
+    setAddressCopied(false);
     setSheet((s) => (s === "deposit" ? "none" : "deposit"));
   }
   function onWithdraw() {
@@ -340,6 +349,18 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
             <Text style={[styles.sheetHint, { color: theme.muted }]}>
               {t("account.depositHint", { min: MIN_DEPOSIT_USDC })}
             </Text>
+            <Text style={[styles.fundTitle, { color: theme.text }]}>{t("account.fundWalletTitle")}</Text>
+            <View style={[styles.fundRow, { borderColor: theme.line, backgroundColor: theme.surfaceAlt }]}>
+              <Text style={[styles.fundAddr, { color: theme.muted }]} numberOfLines={1} ellipsizeMode="middle">
+                {address ?? "—"}
+              </Text>
+              <Pressable onPress={onCopyAddress} accessibilityRole="button" testID="copy-address" style={[styles.copyBtn, { borderColor: theme.lineStrong }]}>
+                <Text style={[styles.copyText, { color: theme.brand }]}>
+                  {addressCopied ? t("account.copied") : t("account.copyAddress")}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.fundHint, { color: theme.faint }]}>{t("account.fundWalletHint")}</Text>
             <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("account.amountUsdc")}</Text>
             <TextInput
               value={depositAmount}
@@ -641,6 +662,12 @@ const styles = StyleSheet.create({
   actionText: { fontFamily: fonts.display.bold, fontSize: 14, letterSpacing: 0.3 },
   sheetTitle: { fontFamily: fonts.display.bold, fontSize: 14, marginBottom: 8 },
   sheetHint: { fontFamily: fonts.body.regular, fontSize: 11.5, lineHeight: 17, marginBottom: 12 },
+  fundTitle: { fontFamily: fonts.body.semibold, fontSize: 12, marginBottom: 6 },
+  fundRow: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingLeft: 10, paddingRight: 6, paddingVertical: 6, marginBottom: 6 },
+  fundAddr: { flex: 1, fontFamily: fonts.mono.regular, fontSize: 12 },
+  copyBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  copyText: { fontFamily: fonts.display.bold, fontSize: 12 },
+  fundHint: { fontFamily: fonts.body.regular, fontSize: 11, lineHeight: 16, marginBottom: 12 },
   depAddr: { fontFamily: fonts.mono.regular, fontSize: 13, marginBottom: 14 },
   dangerNote: { fontFamily: fonts.body.semibold, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   feeLine: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 10 },

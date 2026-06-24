@@ -29,6 +29,8 @@ jest.mock("../services/exchange", () => ({
 jest.mock("../services/deposit", () => ({
   DepositService: jest.fn().mockImplementation(() => ({ depositUsdc: mockDeposit })),
 }));
+jest.mock("expo-clipboard", () => ({ setStringAsync: jest.fn(async () => true) }));
+import * as Clipboard from "expo-clipboard";
 
 const ADDR = "0x7f3aabcdef0123456789abcdefabcdef0123c2e9";
 
@@ -114,6 +116,19 @@ describe("AccountScreen", () => {
     useWalletStore.setState({ mode: "viewOnly", wallet: null, address: ADDR });
     render(<AccountScreen deps={fakeDeps} />);
     expect(screen.queryByText("Export & backup")).toBeNull();
+  });
+
+  it("shows a copyable wallet address with funding guidance in the deposit sheet", async () => {
+    (Clipboard.setStringAsync as jest.Mock).mockClear();
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    fireEvent.press(screen.getByText("Deposit"));
+    expect(screen.getByText("Fund this wallet first")).toBeTruthy();
+    expect(screen.getByText(ADDR)).toBeTruthy();
+    expect(screen.getByText("Copy")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("copy-address"));
+    await waitFor(() => expect(Clipboard.setStringAsync).toHaveBeenCalledWith(ADDR));
+    await waitFor(() => expect(screen.getByText("Copied")).toBeTruthy());
   });
 
   it("requires backup verification after creating a wallet (not a one-tap dismiss)", async () => {
