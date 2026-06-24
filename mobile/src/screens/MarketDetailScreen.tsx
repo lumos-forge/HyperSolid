@@ -21,6 +21,7 @@ import { NetworkWarning } from "../components/NetworkWarning";
 import { PriceText, formatPrice } from "../components/PriceText";
 import { ChangeText } from "../components/ChangeText";
 import { Chip } from "../components/Chip";
+import { IndicatorRow } from "../components/IndicatorRow";
 import { Icon } from "../components/Icon";
 import { fonts } from "../theme/fonts";
 import { formatCompact, formatFundingPct } from "../lib/hyperliquid/format";
@@ -64,7 +65,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
   const { candles, orderbook, trades } = useLiveDetail(service, coin, timeframe);
 
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("book");
-  const [indicator, setIndicator] = useState<Indicator>("RSI");
+  const [indicator, setIndicator] = useState<Indicator>("MA");
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -232,11 +233,13 @@ export function MarketDetailScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      <View style={styles.tfs}>
-        {INDICATORS.map((ind) => (
-          <Chip key={ind} theme={theme} label={ind} active={indicator === ind} onPress={() => setIndicator(ind)} />
-        ))}
-      </View>
+      <IndicatorRow
+        theme={theme}
+        items={INDICATORS}
+        active={indicator}
+        onSelect={setIndicator}
+        separatorAfter={OVERLAY_INDICATORS.length}
+      />
 
       {indicatorPanel}
 

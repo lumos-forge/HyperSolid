@@ -74,14 +74,18 @@ describe("MarketDetailScreen", () => {
     expect(screen.getByText("Trade")).toBeTruthy();
   });
 
-  it("renders all 8 indicator chips and the selected indicator panel", () => {
+  it("renders all 8 indicators and shows the matching panel when an oscillator is selected", () => {
     renderDetail({ goBack: jest.fn() });
     for (const ind of ["MA", "EMA", "BOLL", "SAR", "VOL", "MACD", "KDJ", "RSI"]) {
       expect(screen.getByText(ind)).toBeTruthy();
     }
-    // default indicator is RSI -> its panel renders
+    // default indicator is MA (a chart overlay) -> no sub-panel
+    expect(screen.queryByTestId("rsi-panel")).toBeNull();
+    expect(screen.queryByTestId("osc-panel")).toBeNull();
+    // selecting RSI shows its panel
+    fireEvent.press(screen.getByText("RSI"));
     expect(screen.getByTestId("rsi-panel")).toBeTruthy();
-    // switching to MACD shows the oscillator panel
+    // selecting MACD shows the oscillator panel
     fireEvent.press(screen.getByText("MACD"));
     expect(screen.getByTestId("osc-panel")).toBeTruthy();
   });
