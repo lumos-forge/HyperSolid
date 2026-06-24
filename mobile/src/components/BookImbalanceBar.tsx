@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import type { ThemeTokens } from "../theme/tokens";
 import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
+import { useT } from "../i18n/useT";
 
 /**
  * Top-of-book bid/ask depth skew. Labelled "Book imbalance" so it is NOT mistaken for a
@@ -17,10 +18,11 @@ export function BookImbalanceBar({
   bidPct: number;
   askPct: number;
 }) {
+  const t = useT();
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
-        <Text style={[styles.caption, { color: theme.faint }]}>Book imbalance (top 10)</Text>
+        <Text style={[styles.caption, { color: theme.faint }]}>{t("detail.bookImbalance")}</Text>
         <View style={styles.legend}>
           <Text style={[styles.pct, { color: theme.up }]}>{`B ${bidPct.toFixed(1)}%`}</Text>
           <Text style={[styles.pct, { color: theme.down }]}>{`${askPct.toFixed(1)}% A`}</Text>

@@ -24,7 +24,7 @@ describe("NetworkWarning (asymmetric)", () => {
     useEnvStore.setState({ network: "testnet" });
     render(<NetworkWarning variant="chip" />);
     expect(screen.getByTestId("network-warning-chip")).toBeTruthy();
-    expect(screen.getByText("TESTNET")).toHaveStyle({ color: t.warn });
+    expect(screen.getByText("Testnet")).toHaveStyle({ color: t.warn });
   });
 
   it("shows an honest caution strip on testnet with a warn left-edge", () => {

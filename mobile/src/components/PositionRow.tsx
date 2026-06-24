@@ -7,9 +7,11 @@ import { ChangeText } from "./ChangeText";
 import { formatPrice } from "./PriceText";
 import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
+import { useT } from "../i18n/useT";
 
 /** v8 position card: header (coin · PERP · Long/Short tag · ▲▼ PnL) + Size/Entry/Mark/ROE grid. */
 export function PositionRow({ position, theme }: { position: Position; theme: ThemeTokens }) {
+  const t = useT();
   const up = position.unrealizedPnl >= 0;
   const dir = up ? theme.up : theme.down;
   const sideColor = position.side === "long" ? theme.up : theme.down;
@@ -37,14 +39,14 @@ export function PositionRow({ position, theme }: { position: Position; theme: Th
             { color: sideColor, backgroundColor: withAlpha(sideColor, 0.13) },
           ]}
         >
-          {position.side === "long" ? "Long" : "Short"} · {position.leverage}×
+          {position.side === "long" ? t("positions.long") : t("positions.short")} · {position.leverage}×
         </Text>
         <Text style={[styles.pnl, { color: dir }]}>{pnl}</Text>
       </View>
       <View style={styles.grid}>
-        {cell("Size", String(position.size))}
-        {cell("Entry", formatPrice(position.entryPx))}
-        {cell("Mark", formatPrice(mark))}
+        {cell(t("positions.colSize"), String(position.size))}
+        {cell(t("positions.colEntry"), formatPrice(position.entryPx))}
+        {cell(t("detail.mark"), formatPrice(mark))}
         <View style={styles.cell}>
           <Text style={[styles.gl, { color: theme.faint }]}>ROE</Text>
           <ChangeText theme={theme} value={roe} size={12} showArrow={false} />

@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useEnvStore } from "../state/envStore";
 import { useTheme } from "../theme/useTheme";
+import { useT } from "../i18n/useT";
 import { withAlpha } from "../theme/color";
 import { fonts } from "../theme/fonts";
 import { Icon } from "./Icon";
@@ -16,6 +17,7 @@ import { Icon } from "./Icon";
 export function NetworkWarning({ variant }: { variant: "chip" | "strip" }) {
   const network = useEnvStore((s) => s.network);
   const theme = useTheme();
+  const t = useT();
   if (network !== "testnet") return null;
 
   if (variant === "chip") {
@@ -24,7 +26,7 @@ export function NetworkWarning({ variant }: { variant: "chip" | "strip" }) {
         testID="network-warning-chip"
         style={[styles.chip, { backgroundColor: withAlpha(theme.warn, 0.16), borderColor: theme.warn }]}
       >
-        <Text style={[styles.chipText, { color: theme.warn }]}>TESTNET</Text>
+        <Text style={[styles.chipText, { color: theme.warn }]}>{t("network.testnet")}</Text>
       </View>
     );
   }
@@ -42,8 +44,8 @@ export function NetworkWarning({ variant }: { variant: "chip" | "strip" }) {
       ]}
     >
       <Icon name="alert" color={theme.warn} size={13} strokeWidth={1.8} />
-      <Text style={[styles.stripTitle, { color: theme.warn }]}>Testnet</Text>
-      <Text style={[styles.stripSub, { color: theme.muted }]}>· paper funds, not real money</Text>
+      <Text style={[styles.stripTitle, { color: theme.warn }]}>{t("network.testnet")}</Text>
+      <Text style={[styles.stripSub, { color: theme.muted }]}>{t("network.testnetSub")}</Text>
     </View>
   );
 }
@@ -61,6 +63,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   strip: {
     flexDirection: "row",

@@ -44,13 +44,13 @@ describe("MarketsScreen", () => {
 
   it("stays silent about the network on mainnet (asymmetric warning)", () => {
     render(<MarketsScreen />);
-    expect(screen.queryByText("TESTNET")).toBeNull();
+    expect(screen.queryByText("Testnet")).toBeNull();
   });
 
   it("flags testnet with a caution chip in the header", () => {
     useEnvStore.setState({ network: "testnet" });
     render(<MarketsScreen />);
-    expect(screen.getByText("TESTNET")).toBeTruthy();
+    expect(screen.getByText("Testnet")).toBeTruthy();
   });
 
   it("filters rows by the search query", () => {

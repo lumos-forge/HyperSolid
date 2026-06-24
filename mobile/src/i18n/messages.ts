@@ -23,6 +23,10 @@ export const messages = {
     "detail.trades": "Trades",
     "detail.loadingBook": "Loading order book…",
     "detail.loadingTrades": "Loading trades…",
+    "detail.bookImbalance": "Book imbalance (top 10)",
+
+    "network.testnet": "Testnet",
+    "network.testnetSub": "· paper funds, not real money",
 
     "common.cancel": "Cancel",
     "common.confirm": "Confirm",
@@ -68,6 +72,10 @@ export const messages = {
     "positions.healthSummary": "{label} · {ratio}% margin",
     "positions.reduceOnly": "Reduce-only",
     "positions.filled": "Filled {filled}/{total}",
+    "positions.long": "Long",
+    "positions.short": "Short",
+    "positions.colSize": "Size",
+    "positions.colEntry": "Entry",
 
     "trade.typeLimit": "Limit",
     "trade.typeMarket": "Market",
@@ -229,6 +237,10 @@ export const messages = {
     "detail.trades": "成交",
     "detail.loadingBook": "正在加载订单簿…",
     "detail.loadingTrades": "正在加载成交…",
+    "detail.bookImbalance": "盘口失衡（前 10 档）",
+
+    "network.testnet": "测试网",
+    "network.testnetSub": "· 模拟资金，非真实资金",
 
     "common.cancel": "取消",
     "common.confirm": "确认",
@@ -274,6 +286,10 @@ export const messages = {
     "positions.healthSummary": "{label} · 保证金 {ratio}%",
     "positions.reduceOnly": "只减仓",
     "positions.filled": "已成交 {filled}/{total}",
+    "positions.long": "做多",
+    "positions.short": "做空",
+    "positions.colSize": "数量",
+    "positions.colEntry": "开仓价",
 
     "trade.typeLimit": "限价",
     "trade.typeMarket": "市价",
