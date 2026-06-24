@@ -146,7 +146,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       setNewMnemonic(mnemonic);
       setLocalWallet(wallet);
     } catch (e) {
-      Alert.alert("创建失败", e instanceof Error ? e.message : String(e));
+      Alert.alert(t("account.createFailed"), e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -159,7 +159,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       setLocalWallet(wallet);
       setMnemonicInput("");
     } catch {
-      Alert.alert("恢复失败", "助记词无效");
+      Alert.alert(t("account.restoreFailed"), t("account.invalidMnemonic"));
     } finally {
       setBusy(false);
     }
@@ -167,7 +167,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
 
   function onViewOnly() {
     if (!isValidAddress(addrInput)) {
-      Alert.alert("地址无效", "需 0x + 40 位十六进制");
+      Alert.alert(t("account.invalidAddress"), t("account.invalidAddressBody"));
       return;
     }
     setViewOnly(addrInput.trim());
@@ -207,7 +207,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
     // RPC is delivered by the server at runtime (never embedded). Block clearly until it arrives.
     const rpcUrl = arbitrumRpcFor(network);
     if (!rpcUrl) {
-      Alert.alert("充值暂不可用", "Arbitrum RPC 尚未从服务器下发，请稍后重试。");
+      Alert.alert(t("account.depositUnavailable"), t("account.depositNoRpc"));
       return;
     }
     setDepositBusy(true);
@@ -220,14 +220,14 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         confirmed: network === "mainnet",
       });
       if (res.ok) {
-        Alert.alert("充值已发送", `tx ${res.txHash.slice(0, 12)}… · 入账约 1 分钟`);
+        Alert.alert(t("account.depositSent"), t("account.depositSentBody", { tx: res.txHash.slice(0, 12) }));
         setSheet("none");
         setMainnetConfirm(false);
         setDepositAmount("");
       } else if (res.uncertain) {
-        Alert.alert("回执不确定", `${res.error}。请在区块浏览器核对该交易后再决定是否重试。`);
+        Alert.alert(t("common.uncertainReceipt"), t("account.depositUncertain", { error: res.error }));
       } else {
-        Alert.alert("充值未提交", res.error);
+        Alert.alert(t("account.depositNotSubmitted"), res.error);
       }
     } finally {
       setDepositBusy(false);
@@ -251,14 +251,14 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         withdrawable: summary?.withdrawable ?? 0,
       });
       if (res.ok) {
-        Alert.alert("提现已提交", `${amountInput} USDC -> ${shortAddr(destInput.trim())}`);
+        Alert.alert(t("account.withdrawSubmitted"), t("account.withdrawSubmittedBody", { amount: amountInput, dest: shortAddr(destInput.trim()) }));
         setSheet("none");
         setWithdrawMainnetConfirm(false);
         setAmountInput("");
       } else if (res.uncertain) {
-        Alert.alert("回执不确定", `${res.error}。提现可能已提交，请在重试前先核对余额。`);
+        Alert.alert(t("common.uncertainReceipt"), t("account.withdrawUncertain", { error: res.error }));
       } else {
-        Alert.alert("提现失败", res.error);
+        Alert.alert(t("account.withdrawFailed"), res.error);
       }
     } finally {
       setWithdrawBusy(false);
