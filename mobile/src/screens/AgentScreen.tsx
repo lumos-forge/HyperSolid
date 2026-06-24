@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
+import { useT } from "../i18n/useT";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
@@ -27,6 +28,7 @@ function shortAddr(a: string): string {
 
 export function AgentScreen() {
   const theme = useTheme();
+  const t = useT();
   const mode = useWalletStore((s) => s.mode);
   const wallet = useWalletStore((s) => s.wallet);
   const address = useWalletStore((s) => s.address);
@@ -51,7 +53,7 @@ export function AgentScreen() {
       );
       setToken(tok);
     } catch (e) {
-      Alert.alert("连接失败", e instanceof Error ? e.message : String(e));
+      Alert.alert(t("agent.connectFailed"), e instanceof Error ? e.message : String(e));
     } finally {
       setConnecting(false);
     }
@@ -63,16 +65,14 @@ export function AgentScreen() {
         <SurfaceCard theme={theme} testID="strategy-gated" style={styles.card}>
           <Text style={[styles.title, { color: theme.text }]}>Strategy automation</Text>
           <Text style={[styles.hint, { color: theme.muted }]}>
-            {!baseUrl
-              ? "服务器策略配置尚未下发，请稍后重试。"
-              : "需要本地钱包：请先在「钱包」创建或恢复钱包，再使用自动化。"}
+            {!baseUrl ? t("agent.gatedNoConfig") : t("agent.gatedNoWallet")}
           </Text>
         </SurfaceCard>
       ) : !token ? (
         <SurfaceCard theme={theme} testID="strategy-connect" style={styles.card}>
           <Text style={[styles.title, { color: theme.text }]}>Strategy automation</Text>
           <Text style={[styles.hint, { color: theme.muted }]}>
-            连接后由服务器用 trade-only 代理 24/7 执行策略；代理不能提现、主私钥不出设备。
+            {t("agent.connectHint")}
           </Text>
           <Pressable
             onPress={connect}
@@ -114,6 +114,7 @@ function StrategyPanel({
   network: "mainnet" | "testnet";
 }) {
   const api = useMemo(() => new StrategyApi(baseUrl, token), [baseUrl, token]);
+  const t = useT();
   const approve = useMemo(() => {
     const svc = new ExchangeService(createExchangeClient(network, account), buildAssetIndex({ universe: [] }));
     return (req: { agentAddress: string; agentName?: string }) => svc.approveAgent(req);
@@ -127,13 +128,13 @@ function StrategyPanel({
 
   async function onApprove() {
     const res = await ctrl.approveAgentFlow();
-    if (!res.ok) Alert.alert(res.uncertain ? "回执不确定" : "授权失败", res.error);
+    if (!res.ok) Alert.alert(res.uncertain ? t("common.uncertainReceipt") : t("agent.approveFailed"), res.error);
   }
   async function onCreate() {
     const q = Number(amount);
     const iv = Number(intervalHours);
     if (!(q > 0) || !(iv > 0)) {
-      Alert.alert("参数无效", "请填写正数的金额与周期（小时）");
+      Alert.alert(t("agent.invalidParams"), t("agent.invalidParamsBody"));
       return;
     }
     await ctrl.createDca({ coin: coin.toUpperCase(), side: "buy", quoteAmountUsdc: q, intervalHours: iv });
@@ -161,7 +162,7 @@ function StrategyPanel({
         ) : (
           <>
             <Text style={[styles.hint, { color: theme.muted }]}>
-              授权一个只能交易、不能提现的代理，由服务器替你执行策略。
+              {t("agent.approveHint")}
             </Text>
             <Pressable
               disabled={ctrl.busy}
