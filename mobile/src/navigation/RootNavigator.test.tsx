@@ -3,9 +3,13 @@ import { render, screen } from "@testing-library/react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { RootNavigator } from "./RootNavigator";
 import { useMarketStore } from "../state/marketStore";
+import { useLocaleStore } from "../state/localeStore";
 
 describe("RootNavigator", () => {
-  beforeEach(() => useMarketStore.setState({ tickers: [], loading: true, error: null }));
+  beforeEach(() => {
+    useMarketStore.setState({ tickers: [], loading: true, error: null });
+    useLocaleStore.setState({ locale: "en" });
+  });
 
   it("renders all 5 board tab labels", () => {
     render(
@@ -14,6 +18,18 @@ describe("RootNavigator", () => {
       </NavigationContainer>,
     );
     for (const label of ["Markets", "Trade", "Positions", "Strategy", "Wallet"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("translates the tab labels when the locale is Chinese", () => {
+    useLocaleStore.setState({ locale: "zh" });
+    render(
+      <NavigationContainer>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    for (const label of ["行情", "交易", "持仓", "策略", "钱包"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });

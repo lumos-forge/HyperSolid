@@ -25,6 +25,12 @@ export const messages = {
     "lang.en": "English",
     "lang.zh": "中文",
 
+    "tab.markets": "Markets",
+    "tab.trade": "Trade",
+    "tab.positions": "Positions",
+    "tab.strategy": "Strategy",
+    "tab.wallet": "Wallet",
+
     "lock.title": "HyperSolid locked",
     "lock.subtitle": "Unlock with biometrics to continue",
     "lock.unlock": "Unlock",
@@ -107,6 +113,12 @@ export const messages = {
     "settings.language": "语言",
     "lang.en": "English",
     "lang.zh": "中文",
+
+    "tab.markets": "行情",
+    "tab.trade": "交易",
+    "tab.positions": "持仓",
+    "tab.strategy": "策略",
+    "tab.wallet": "钱包",
 
     "lock.title": "HyperSolid 已锁定",
     "lock.subtitle": "用生物识别解锁以继续",
