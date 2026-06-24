@@ -25,6 +25,14 @@ export const messages = {
     "lang.en": "English",
     "lang.zh": "中文",
 
+    "lock.title": "HyperSolid locked",
+    "lock.subtitle": "Unlock with biometrics to continue",
+    "lock.unlock": "Unlock",
+    "lock.failed": "Authentication failed, try again",
+    "lock.cancelled": "Cancelled",
+    "lock.unavailable": "No biometrics detected — enable Face ID / fingerprint in Settings",
+    "lock.compromised": "Device security check failed: root/jailbreak risk detected. Unlock is disabled to protect your assets.",
+
     "reject.tickRejected": "Price does not match the tick size",
     "reject.minTradeNtlRejected": "Order notional is below the $10 minimum",
     "reject.sizeRejected": "Invalid size or below the minimum order size",
@@ -55,6 +63,14 @@ export const messages = {
     "settings.language": "语言",
     "lang.en": "English",
     "lang.zh": "中文",
+
+    "lock.title": "HyperSolid 已锁定",
+    "lock.subtitle": "用生物识别解锁以继续",
+    "lock.unlock": "解锁",
+    "lock.failed": "验证失败，请重试",
+    "lock.cancelled": "已取消",
+    "lock.unavailable": "未检测到生物识别，请在系统设置中启用 Face ID/指纹",
+    "lock.compromised": "设备安全检查未通过：检测到 root/越狱风险，为保护你的资产已禁止解锁。",
 
     "reject.tickRejected": "价格不符合最小变动单位（tick）规则",
     "reject.minTradeNtlRejected": "订单名义价值低于最小 $10",

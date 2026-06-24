@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTheme } from "../theme/useTheme";
+import { useT } from "../i18n/useT";
 import { Icon } from "../components/Icon";
 import type { AuthResult } from "../wallet/biometricGate";
 
 export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }) {
   const theme = useTheme();
+  const t = useT();
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -14,12 +16,12 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
     setMsg(null);
     try {
       const r = await onUnlock();
-      if (r === "failed") setMsg("验证失败，请重试");
-      else if (r === "cancelled") setMsg("已取消");
-      else if (r === "unavailable") setMsg("未检测到生物识别，请在系统设置中启用 Face ID/指纹");
-      else if (r === "compromised") setMsg("设备安全检查未通过：检测到 root/越狱风险，为保护你的资产已禁止解锁。");
+      if (r === "failed") setMsg(t("lock.failed"));
+      else if (r === "cancelled") setMsg(t("lock.cancelled"));
+      else if (r === "unavailable") setMsg(t("lock.unavailable"));
+      else if (r === "compromised") setMsg(t("lock.compromised"));
     } catch {
-      setMsg("验证失败，请重试");
+      setMsg(t("lock.failed"));
     } finally {
       setBusy(false);
     }
@@ -28,8 +30,8 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
       <Icon name="lock" color={theme.brand} size={48} />
-      <Text style={[styles.title, { color: theme.text }]}>HyperSolid 已锁定</Text>
-      <Text style={[styles.sub, { color: theme.muted }]}>用生物识别解锁以继续</Text>
+      <Text style={[styles.title, { color: theme.text }]}>{t("lock.title")}</Text>
+      <Text style={[styles.sub, { color: theme.muted }]}>{t("lock.subtitle")}</Text>
       {msg ? <Text style={[styles.msg, { color: theme.down }]}>{msg}</Text> : null}
       <Pressable
         accessibilityRole="button"
@@ -37,7 +39,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => Promise<AuthResult> }
         onPress={handle}
         style={[styles.btn, { backgroundColor: theme.brand }]}
       >
-        <Text style={[styles.btnText, { color: theme.bg }]}>解锁</Text>
+        <Text style={[styles.btnText, { color: theme.bg }]}>{t("lock.unlock")}</Text>
       </Pressable>
     </View>
   );

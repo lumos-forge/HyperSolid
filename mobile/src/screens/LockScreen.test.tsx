@@ -1,43 +1,54 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { LockScreen } from "./LockScreen";
+import { useLocaleStore } from "../state/localeStore";
 
 describe("LockScreen", () => {
+  beforeEach(() => act(() => useLocaleStore.getState().setLocale("en")));
+
   it("renders the unlock prompt and triggers onUnlock", async () => {
     const onUnlock = jest.fn().mockResolvedValue("success");
     render(<LockScreen onUnlock={onUnlock} />);
-    expect(screen.getByText("HyperSolid 已锁定")).toBeTruthy();
-    fireEvent.press(screen.getByText("解锁"));
+    expect(screen.getByText("HyperSolid locked")).toBeTruthy();
+    fireEvent.press(screen.getByText("Unlock"));
     await waitFor(() => expect(onUnlock).toHaveBeenCalled());
   });
 
   it("shows an error message when unlock fails", async () => {
     const onUnlock = jest.fn().mockResolvedValue("failed");
     render(<LockScreen onUnlock={onUnlock} />);
-    fireEvent.press(screen.getByText("解锁"));
-    await waitFor(() => expect(screen.getByText(/验证失败/)).toBeTruthy());
+    fireEvent.press(screen.getByText("Unlock"));
+    await waitFor(() => expect(screen.getByText(/Authentication failed/)).toBeTruthy());
   });
 
   it("guides the user when biometrics are unavailable", async () => {
     const onUnlock = jest.fn().mockResolvedValue("unavailable");
     render(<LockScreen onUnlock={onUnlock} />);
-    fireEvent.press(screen.getByText("解锁"));
-    await waitFor(() => expect(screen.getByText(/请在系统设置中启用/)).toBeTruthy());
+    fireEvent.press(screen.getByText("Unlock"));
+    await waitFor(() => expect(screen.getByText(/enable Face ID/)).toBeTruthy());
   });
 
   it("shows a security warning when the device is compromised", async () => {
     const onUnlock = jest.fn().mockResolvedValue("compromised");
     render(<LockScreen onUnlock={onUnlock} />);
-    fireEvent.press(screen.getByText("解锁"));
-    await waitFor(() => expect(screen.getByText(/设备安全检查未通过/)).toBeTruthy());
+    fireEvent.press(screen.getByText("Unlock"));
+    await waitFor(() => expect(screen.getByText(/security check failed/)).toBeTruthy());
+  });
+
+  it("renders the Chinese copy when the locale is zh", () => {
+    act(() => useLocaleStore.getState().setLocale("zh"));
+    const onUnlock = jest.fn().mockResolvedValue("success");
+    render(<LockScreen onUnlock={onUnlock} />);
+    expect(screen.getByText("HyperSolid 已锁定")).toBeTruthy();
+    expect(screen.getByText("解锁")).toBeTruthy();
   });
 
   it("re-enables and shows an error if onUnlock throws", async () => {
     const onUnlock = jest.fn().mockRejectedValue(new Error("boom"));
     render(<LockScreen onUnlock={onUnlock} />);
-    fireEvent.press(screen.getByText("解锁"));
-    await waitFor(() => expect(screen.getByText(/验证失败/)).toBeTruthy());
-    fireEvent.press(screen.getByText("解锁"));
+    fireEvent.press(screen.getByText("Unlock"));
+    await waitFor(() => expect(screen.getByText(/Authentication failed/)).toBeTruthy());
+    fireEvent.press(screen.getByText("Unlock"));
     await waitFor(() => expect(onUnlock).toHaveBeenCalledTimes(2));
   });
 });
