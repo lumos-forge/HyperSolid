@@ -166,7 +166,6 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     ["24h vol · USDC", ticker ? formatCompact(ticker.dayNtlVlm) : "—"],
     ["Open interest", ticker?.openInterest ? formatCompact(ticker.openInterest) : "—"],
     [`Funding · ${fundingCountdown(now)}`, ticker ? formatFundingPct(ticker.funding) : "—"],
-    ["Max leverage", ticker ? `${ticker.maxLeverage}×` : "—"],
   ];
 
   return (
