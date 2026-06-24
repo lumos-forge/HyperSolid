@@ -28,7 +28,7 @@ import { bookImbalance } from "../lib/hyperliquid/bookImbalance";
 
 type Props = NativeStackScreenProps<MarketsStackParamList, "MarketDetail">;
 
-const TIMEFRAMES = ["1H", "4H", "1D", "1W"] as const;
+const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h"] as const;
 const BOOK_TABS = ["book", "trades"] as const;
 
 /** Time left until the next hourly funding settlement (UTC), as HH:MM:SS. */
@@ -48,11 +48,9 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     () => new DetailDataService(createDetailInfoClient(network), createDetailSubsClient(network)),
     [network],
   );
-  const { candles, orderbook, trades } = useLiveDetail(service, coin);
+  const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("1h");
+  const { candles, orderbook, trades } = useLiveDetail(service, coin, timeframe);
 
-  // TODO: timeframe should drive the candle interval and trigger a refetch
-  // (DetailDataService.loadCandles currently uses a fixed interval — service-layer change).
-  const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("1H");
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("book");
   const [indicator, setIndicator] = useState<"none" | "MA" | "EMA" | "BOLL">("none");
 

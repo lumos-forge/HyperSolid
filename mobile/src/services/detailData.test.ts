@@ -53,6 +53,18 @@ describe("DetailDataService", () => {
     expect(end - start).toBe(3_600_000 * 100);
   });
 
+  it("loadCandles supports the v8 sub-hour/2h intervals (3m/30m/2h)", async () => {
+    const info = new FakeInfo();
+    const svc = new DetailDataService(info, new FakeSubs());
+    for (const [interval, step] of [["3m", 180_000], ["30m", 1_800_000], ["2h", 7_200_000]] as const) {
+      info.candleSnapshot.mockClear();
+      await svc.loadCandles("BTC", interval, 50, 1_000_000_000);
+      const [, iv, start, end] = info.candleSnapshot.mock.calls[0];
+      expect(iv).toBe(interval);
+      expect(end - start).toBe(step * 50);
+    }
+  });
+
   it("subscribeOrderbook forwards normalized book", async () => {
     const subs = new FakeSubs();
     const svc = new DetailDataService(new FakeInfo(), subs);

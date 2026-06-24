@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { DetailDataService } from "../services/detailData";
 import type { Candle, Orderbook, Trade } from "../lib/hyperliquid/types";
 
-export function useLiveDetail(service: DetailDataService, coin: string) {
+export function useLiveDetail(service: DetailDataService, coin: string, interval = "1h") {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -15,7 +15,7 @@ export function useLiveDetail(service: DetailDataService, coin: string) {
 
     (async () => {
       try {
-        const c = await service.loadCandles(coin);
+        const c = await service.loadCandles(coin, interval);
         if (cancelled) return;
         setCandles(c);
         obSub = await service.subscribeOrderbook(coin, setOrderbook);
@@ -30,7 +30,7 @@ export function useLiveDetail(service: DetailDataService, coin: string) {
       obSub?.unsubscribe().catch(() => {});
       trSub?.unsubscribe().catch(() => {});
     };
-  }, [service, coin]);
+  }, [service, coin, interval]);
 
   return { candles, orderbook, trades, error };
 }
