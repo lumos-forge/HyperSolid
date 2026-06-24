@@ -1,4 +1,5 @@
 import React from "react";
+import { Alert } from "react-native";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react-native";
 import { AccountScreen } from "./AccountScreen";
 import { useWalletStore } from "../state/walletStore";
@@ -7,6 +8,7 @@ import { useLocaleStore } from "../state/localeStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
 import type { PositionsService } from "../services/positionsData";
 import type { FundingsService } from "../services/fundingsData";
+import type { WalletManager } from "../wallet/walletManager";
 import type { PortfolioSnapshot, FundingEvent } from "../lib/hyperliquid/types";
 
 const mockWithdraw = jest.fn(async () => ({ ok: true }));
@@ -80,6 +82,35 @@ describe("AccountScreen", () => {
     expect(screen.getByText("Withdraw")).toBeTruthy();
     expect(screen.getByText("Sign out / switch wallet")).toBeTruthy();
     expect(screen.getByText("Network")).toBeTruthy();
+  });
+
+  it("reveals the recovery phrase via Export & backup (biometric-gated read)", async () => {
+    const phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident";
+    const manager = { exportMnemonic: jest.fn(async () => phrase) } as unknown as WalletManager;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={{ ...fakeDeps, manager }} />);
+    expect(screen.queryByText(phrase)).toBeNull();
+    fireEvent.press(screen.getByText("Export & backup"));
+    await waitFor(() => expect(screen.getByText(phrase)).toBeTruthy());
+    expect(manager.exportMnemonic).toHaveBeenCalled();
+    expect(screen.getByText("I've backed it up safely")).toBeTruthy();
+  });
+
+  it("surfaces a failure (and reveals nothing) when export is denied", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const manager = { exportMnemonic: jest.fn(async () => { throw new Error("cancelled"); }) } as unknown as WalletManager;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={{ ...fakeDeps, manager }} />);
+    fireEvent.press(screen.getByText("Export & backup"));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Export failed", expect.any(String)));
+    expect(screen.queryByText("I've backed it up safely")).toBeNull();
+    alertSpy.mockRestore();
+  });
+
+  it("hides Export & backup for a view-only wallet", () => {
+    useWalletStore.setState({ mode: "viewOnly", wallet: null, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    expect(screen.queryByText("Export & backup")).toBeNull();
   });
 
   it("shows a Language row that toggles the locale (en <-> zh)", () => {

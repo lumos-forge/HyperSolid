@@ -38,6 +38,7 @@ import type { LocalWalletService } from "../wallet/localWallet";
 export interface AccountScreenDeps {
   positions: PositionsService;
   fundings: FundingsService;
+  manager?: WalletManager;
 }
 
 const THEME_ORDER: ThemeName[] = ["electrum", "daylight", "oscilloscope"];
@@ -75,7 +76,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const toggleLocale = useLocaleStore((s) => s.toggleLocale);
   const t = useT();
   const { count: unconfirmedCount } = useUnconfirmedIntents();
-  const manager = useMemo(() => new WalletManager(new SecureStoreKeyStore()), []);
+  const manager = useMemo(() => deps?.manager ?? new WalletManager(new SecureStoreKeyStore()), [deps]);
 
   const services = useMemo<AccountScreenDeps>(
     () =>
@@ -177,6 +178,19 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
     await manager.signOut();
     reset();
     setNewMnemonic(null);
+  }
+
+  async function onExportBackup() {
+    try {
+      const mnemonic = await manager.exportMnemonic();
+      if (!mnemonic) {
+        Alert.alert(t("account.exportFailed"), t("account.exportFailedBody"));
+        return;
+      }
+      setNewMnemonic(mnemonic);
+    } catch {
+      Alert.alert(t("account.exportFailed"), t("account.exportFailedBody"));
+    }
   }
 
   function cycleTheme() {
@@ -483,6 +497,9 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         <SettingRow theme={theme} icon="swap" name={t("account.network")} value={network} onPress={toggleNetwork} />
         <SettingRow theme={theme} icon="agent" name={t("account.theme")} value={THEME_LABEL[themeName]} onPress={cycleTheme} />
         <SettingRow theme={theme} icon="repeat" name={t("settings.language")} value={LOCALE_LABEL[locale]} onPress={toggleLocale} />
+        {mode === "local" ? (
+          <SettingRow theme={theme} icon="key" name={t("account.exportBackup")} value="" onPress={onExportBackup} />
+        ) : null}
 
         <Pressable onPress={onSignOut} accessibilityRole="button" style={[styles.signOut, { borderColor: theme.down }]}>
           <Text style={[styles.signOutText, { color: theme.down }]}>{t("account.signOutSwitch")}</Text>
