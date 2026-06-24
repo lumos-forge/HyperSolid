@@ -34,6 +34,15 @@ export class WalletManager {
     return m ? new LocalWalletService(m) : null;
   }
 
+  /**
+   * Reveal the persisted mnemonic for backup/export. Reuses the gated store read: on device
+   * `SecureStoreKeyStore.loadMnemonic` reads with `requireAuthentication`, so the OS biometric
+   * prompt guards every export (and a cancel/fail rejects). Returns null when no wallet exists.
+   */
+  async exportMnemonic(): Promise<string | null> {
+    return this.store.loadMnemonic();
+  }
+
   async signOut(): Promise<void> {
     await this.store.clear();
   }

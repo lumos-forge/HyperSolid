@@ -31,4 +31,13 @@ describe("WalletManager (in-memory store)", () => {
     await mgr.signOut();
     expect(await mgr.hasWallet()).toBe(false);
   });
+
+  it("exports the persisted mnemonic for backup, or null when absent", async () => {
+    const mgr = new WalletManager(new InMemoryKeyStore());
+    expect(await mgr.exportMnemonic()).toBeNull();
+    const { mnemonic } = await mgr.createWallet();
+    expect(await mgr.exportMnemonic()).toBe(mnemonic);
+    await mgr.signOut();
+    expect(await mgr.exportMnemonic()).toBeNull();
+  });
 });
