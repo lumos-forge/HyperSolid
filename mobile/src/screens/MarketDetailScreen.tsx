@@ -5,6 +5,7 @@ import type { MarketsStackParamList } from "../navigation/types";
 import { useMarketStore } from "../state/marketStore";
 import { useEnvStore } from "../state/envStore";
 import { useTheme } from "../theme/useTheme";
+import { useT } from "../i18n/useT";
 import { useLiveDetail } from "../hooks/useLiveDetail";
 import { DetailDataService } from "../services/detailData";
 import { createDetailInfoClient, createDetailSubsClient } from "../lib/hyperliquid/client";
@@ -54,6 +55,7 @@ function fundingCountdown(nowMs: number): string {
 export function MarketDetailScreen({ route, navigation }: Props) {
   const { coin } = route.params;
   const theme = useTheme();
+  const t = useT();
   const network = useEnvStore((s) => s.network);
   const ticker = useMarketStore((s) => s.tickers.find((t) => t.coin === coin));
   const service = useMemo(
@@ -161,11 +163,11 @@ export function MarketDetailScreen({ route, navigation }: Props) {
   })();
 
   const stats: Array<[string, string]> = [
-    ["24h high", high24 != null ? formatPrice(high24) : "—"],
-    ["24h low", low24 != null ? formatPrice(low24) : "—"],
-    ["24h vol · USDC", ticker ? formatCompact(ticker.dayNtlVlm) : "—"],
-    ["Open interest", ticker?.openInterest ? formatCompact(ticker.openInterest) : "—"],
-    [`Funding · ${fundingCountdown(now)}`, ticker ? formatFundingPct(ticker.funding) : "—"],
+    [t("detail.stat24hHigh"), high24 != null ? formatPrice(high24) : "—"],
+    [t("detail.stat24hLow"), low24 != null ? formatPrice(low24) : "—"],
+    [t("detail.statVol"), ticker ? formatCompact(ticker.dayNtlVlm) : "—"],
+    [t("detail.statOpenInterest"), ticker?.openInterest ? formatCompact(ticker.openInterest) : "—"],
+    [t("detail.statFunding", { countdown: fundingCountdown(now) }), ticker ? formatFundingPct(ticker.funding) : "—"],
   ];
 
   return (
@@ -196,7 +198,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
             </Text>
           </View>
           <Text style={[styles.mark, { color: theme.muted }]}>
-            Mark <Text style={{ color: theme.text }}>{formatPrice(price)}</Text>
+            {t("detail.mark")} <Text style={{ color: theme.text }}>{formatPrice(price)}</Text>
           </Text>
         </View>
         <View style={styles.qRight}>
@@ -263,7 +265,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
                   },
                 ]}
               >
-                {tab === "book" ? "Order book" : "Trades"}
+                {tab === "book" ? t("detail.orderBook") : t("detail.trades")}
               </Text>
             </Pressable>
           ))}
@@ -282,12 +284,12 @@ export function MarketDetailScreen({ route, navigation }: Props) {
             <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} />
           </>
         ) : (
-          <Text style={[styles.muted, { color: theme.muted }]}>Loading order book…</Text>
+          <Text style={[styles.muted, { color: theme.muted }]}>{t("detail.loadingBook")}</Text>
         )
       ) : trades.length > 0 ? (
         <TradesList trades={trades} theme={theme} />
       ) : (
-        <Text style={[styles.muted, { color: theme.muted }]}>Loading trades…</Text>
+        <Text style={[styles.muted, { color: theme.muted }]}>{t("detail.loadingTrades")}</Text>
       )}
 
       <Pressable
@@ -295,7 +297,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
         accessibilityRole="button"
         onPress={() => navigation.getParent()?.navigate("Trade" as never)}
       >
-        <Text style={[styles.ctaText, { color: theme.bg }]}>Trade</Text>
+        <Text style={[styles.ctaText, { color: theme.bg }]}>{t("common.trade")}</Text>
         <Icon name="arrowRight" color={theme.bg} size={18} />
       </Pressable>
     </ScreenScaffold>
