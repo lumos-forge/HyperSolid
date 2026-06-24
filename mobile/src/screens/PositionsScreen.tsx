@@ -66,7 +66,7 @@ export function PositionsScreen({ deps }: { deps?: PositionsScreenDeps } = {}) {
   const tabs: Array<[Tab, string, number]> = [
     ["positions", "Positions", portfolio?.positions.length ?? 0],
     ["orders", "Orders", orders.length],
-    ["fills", "Fills", fills.length],
+    ["fills", "History", fills.length],
   ];
 
   return (

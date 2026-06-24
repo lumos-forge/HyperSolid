@@ -81,8 +81,8 @@ describe("PositionsScreen", () => {
     expect(fakeDeps.fills.loadRecent).toHaveBeenCalledWith(ADDR);
     expect(fakeDeps.orders.loadOpenOrders).toHaveBeenCalledWith(ADDR);
 
-    // switch to Fills
-    fireEvent.press(screen.getByText(/Fills/));
+    // switch to History (trade fills)
+    fireEvent.press(screen.getByText(/History/));
     expect(screen.getByText(/ETH/)).toBeTruthy();
 
     // switch to Orders

@@ -19,7 +19,6 @@ import { TradesList } from "../components/TradesList";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { NetworkWarning } from "../components/NetworkWarning";
 import { PriceText, formatPrice } from "../components/PriceText";
-import { ChangeText } from "../components/ChangeText";
 import { Chip } from "../components/Chip";
 import { IndicatorRow } from "../components/IndicatorRow";
 import { Icon } from "../components/Icon";
@@ -193,7 +192,9 @@ export function MarketDetailScreen({ route, navigation }: Props) {
         <View style={styles.qLeft}>
           <PriceText value={price} color={theme.text} size={32} glow glowColor={theme.glow} />
           <View style={styles.qSubRow}>
-            <ChangeText theme={theme} value={pct} size={12.5} />
+            <Text style={[styles.changeLine, { color: pct >= 0 ? theme.up : theme.down }]}>
+              {`${pct >= 0 ? "▲" : "▼"} $${formatPrice(Math.abs(price - (ticker?.prevDayPx ?? price)))} · ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
+            </Text>
           </View>
           <Text style={[styles.mark, { color: theme.muted }]}>
             Mark <Text style={{ color: theme.text }}>{formatPrice(price)}</Text>
@@ -308,6 +309,7 @@ const styles = StyleSheet.create({
   quote: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
   qLeft: { flex: 1 },
   qSubRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  changeLine: { fontFamily: fonts.mono.bold, fontSize: 12.5, fontVariant: ["tabular-nums"] },
   mark: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 6 },
   qRight: { flex: 1, alignItems: "flex-end", gap: 3 },
   statRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", gap: 10 },
