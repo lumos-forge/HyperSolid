@@ -343,6 +343,19 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           </View>
         ) : null}
 
+        {mode === "local" && summary && summary.accountValue <= 0 && sheet !== "deposit" ? (
+          <Pressable
+            onPress={onDeposit}
+            accessibilityRole="button"
+            testID="fund-nudge"
+            style={[styles.fundNudge, { borderColor: theme.brand, backgroundColor: withAlpha(theme.brand, 0.08) }]}
+          >
+            <Icon name="alert" color={theme.brand} size={15} />
+            <Text style={[styles.fundNudgeText, { color: theme.text }]}>{t("account.fundNudge")}</Text>
+            <Icon name="chevronRight" color={theme.brand} size={15} strokeWidth={2} />
+          </Pressable>
+        ) : null}
+
         {mode === "local" && sheet === "deposit" ? (
           <SurfaceCard theme={theme} testID="deposit-panel" style={styles.card}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{t("account.depositTitle")}</Text>
@@ -668,6 +681,8 @@ const styles = StyleSheet.create({
   copyBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   copyText: { fontFamily: fonts.display.bold, fontSize: 12 },
   fundHint: { fontFamily: fonts.body.regular, fontSize: 11, lineHeight: 16, marginBottom: 12 },
+  fundNudge: { flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 14 },
+  fundNudgeText: { flex: 1, fontFamily: fonts.body.semibold, fontSize: 12.5, lineHeight: 17 },
   depAddr: { fontFamily: fonts.mono.regular, fontSize: 13, marginBottom: 14 },
   dangerNote: { fontFamily: fonts.body.semibold, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   feeLine: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 10 },

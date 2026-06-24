@@ -131,6 +131,29 @@ describe("AccountScreen", () => {
     await waitFor(() => expect(screen.getByText("Copied")).toBeTruthy());
   });
 
+  it("nudges an unfunded wallet to deposit", async () => {
+    const unfunded = {
+      summary: { accountValue: 0, totalNtlPos: 0, totalMarginUsed: 0, withdrawable: 0, totalUnrealizedPnl: 0 },
+      positions: [],
+    };
+    const deps = {
+      positions: { loadPortfolio: jest.fn(async () => unfunded) },
+      fundings: { load: jest.fn(async () => []) },
+    } as unknown as typeof fakeDeps;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={deps} />);
+    await waitFor(() => expect(screen.getByTestId("fund-nudge")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("fund-nudge"));
+    await waitFor(() => expect(screen.getByTestId("deposit-panel")).toBeTruthy());
+  });
+
+  it("hides the fund nudge once the wallet has a balance", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    await waitFor(() => expect(fakeDeps.positions.loadPortfolio).toHaveBeenCalled());
+    expect(screen.queryByTestId("fund-nudge")).toBeNull();
+  });
+
   it("requires backup verification after creating a wallet (not a one-tap dismiss)", async () => {
     const phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident";
     const manager = {

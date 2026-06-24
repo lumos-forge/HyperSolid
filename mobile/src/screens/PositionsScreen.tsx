@@ -35,7 +35,13 @@ export interface PositionsScreenDeps {
 
 type Tab = "positions" | "fills" | "orders";
 
-export function PositionsScreen({ deps }: { deps?: PositionsScreenDeps } = {}) {
+export function PositionsScreen({
+  deps,
+  navigation,
+}: {
+  deps?: PositionsScreenDeps;
+  navigation?: { navigate: (name: string) => void };
+} = {}) {
   const theme = useTheme();
   const t = useT();
   const network = useEnvStore((s) => s.network);
@@ -129,7 +135,19 @@ export function PositionsScreen({ deps }: { deps?: PositionsScreenDeps } = {}) {
 
           {tab === "positions" ? (
             portfolio.positions.length === 0 ? (
-              <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyPositions")}</Text>
+              <View>
+                <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyPositions")}</Text>
+                {walletAddress && address.trim().toLowerCase() === walletAddress.toLowerCase() ? (
+                  <Pressable
+                    onPress={() => navigation?.navigate("Trade")}
+                    accessibilityRole="button"
+                    testID="first-trade-cta"
+                    style={[styles.firstTrade, { backgroundColor: theme.brand }]}
+                  >
+                    <Text style={[styles.firstTradeText, { color: theme.bg }]}>{t("positions.firstTrade")}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ) : (
               portfolio.positions.map((p) => <PositionRow key={p.coin} position={p} theme={theme} />)
             )
@@ -270,6 +288,8 @@ const styles = StyleSheet.create({
   btn: { paddingHorizontal: 18, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   btnText: { fontFamily: fonts.display.bold, fontSize: 14 },
   msg: { fontFamily: fonts.body.regular, fontSize: 13, marginTop: 14 },
+  firstTrade: { marginTop: 14, paddingVertical: 13, borderRadius: 12, alignItems: "center" },
+  firstTradeText: { fontFamily: fonts.display.bold, fontSize: 15, letterSpacing: 0.3 },
   eqCard: { marginTop: 16, padding: 16 },
   eqTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   eqLabel: { fontFamily: fonts.body.regular, fontSize: 11 },

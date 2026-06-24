@@ -89,4 +89,36 @@ describe("PositionsScreen", () => {
     fireEvent.press(screen.getByText(/Orders/));
     expect(screen.getByText(/Filled 2\/2/)).toBeTruthy();
   });
+
+  it("offers a Place your first trade CTA when the connected wallet has no positions", async () => {
+    const empty = { summary: portfolio.summary, positions: [] };
+    const deps = {
+      positions: { loadPortfolio: jest.fn(async () => empty) },
+      fills: { loadRecent: jest.fn(async () => []) },
+      orders: { loadOpenOrders: jest.fn(async () => []) },
+    } as unknown as typeof fakeDeps;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    const navigate = jest.fn();
+    render(<PositionsScreen deps={deps} navigation={{ navigate }} />);
+    fireEvent.press(screen.getByText("Query"));
+    await waitFor(() => expect(screen.getByTestId("first-trade-cta")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("first-trade-cta"));
+    expect(navigate).toHaveBeenCalledWith("Trade");
+  });
+
+  it("hides the first-trade CTA when viewing someone else's address", async () => {
+    const empty = { summary: portfolio.summary, positions: [] };
+    const deps = {
+      positions: { loadPortfolio: jest.fn(async () => empty) },
+      fills: { loadRecent: jest.fn(async () => []) },
+      orders: { loadOpenOrders: jest.fn(async () => []) },
+    } as unknown as typeof fakeDeps;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={deps} />);
+    const other = "0x" + "b".repeat(40);
+    fireEvent.changeText(screen.getByPlaceholderText("0x… wallet address"), other);
+    fireEvent.press(screen.getByText("Query"));
+    await waitFor(() => expect(screen.getByText(/No open positions/)).toBeTruthy());
+    expect(screen.queryByTestId("first-trade-cta")).toBeNull();
+  });
 });
