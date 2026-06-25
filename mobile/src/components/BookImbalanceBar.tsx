@@ -13,17 +13,19 @@ export function BookImbalanceBar({
   theme,
   bidPct,
   askPct,
+  compact = false,
 }: {
   theme: ThemeTokens;
   bidPct: number;
   askPct: number;
+  compact?: boolean;
 }) {
   const t = useT();
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
-        <Text style={[styles.caption, { color: theme.faint }]}>{t("detail.bookImbalance")}</Text>
-        <View style={styles.legend}>
+        {compact ? null : <Text style={[styles.caption, { color: theme.faint }]}>{t("detail.bookImbalance")}</Text>}
+        <View style={[styles.legend, compact && styles.legendCompact]}>
           <Text style={[styles.pct, { color: theme.up }]}>{`B ${bidPct.toFixed(1)}%`}</Text>
           <Text style={[styles.pct, { color: theme.down }]}>{`${askPct.toFixed(1)}% A`}</Text>
         </View>
@@ -40,6 +42,7 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
   caption: { fontFamily: fonts.body.regular, fontSize: 10.5 },
   legend: { flexDirection: "row", gap: 10 },
+  legendCompact: { flex: 1, justifyContent: "space-between", gap: 0 },
   pct: { fontFamily: fonts.mono.bold, fontSize: 10.5 },
   bar: { height: 6, borderRadius: 3, overflow: "hidden" },
   fill: { height: 6 },

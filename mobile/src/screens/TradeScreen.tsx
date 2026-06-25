@@ -408,7 +408,12 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
               },
             ]}
           >
-            <Text style={[styles.sideText, { color: side === s ? theme.bg : theme.text }]}>
+            <Text
+              style={[styles.sideText, { color: side === s ? theme.bg : theme.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {t(s === "buy" ? "trade.sideBuy" : "trade.sideSell")}
             </Text>
           </Pressable>

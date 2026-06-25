@@ -72,7 +72,7 @@ export function OrderBookPanel({
         <>
           <OrderbookView book={orderbook} theme={theme} compact onPickPrice={onPickPrice} />
           <View style={styles.imbalance}>
-            <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} />
+            <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} compact />
           </View>
         </>
       ) : (
