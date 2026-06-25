@@ -167,6 +167,10 @@ describe("AccountScreen", () => {
     expect(screen.queryByText("I've backed it up safely")).toBeNull();
     fireEvent.press(screen.getByText("Continue"));
     expect(screen.getByText("Confirm your backup")).toBeTruthy();
+    // Escape hatch: a user who didn't memorize can return to see the phrase again.
+    fireEvent.press(screen.getByTestId("verify-back"));
+    expect(screen.getByText(phrase)).toBeTruthy();
+    expect(screen.getByText("Continue")).toBeTruthy();
   });
 
   it("shows a Language row that toggles the locale (en <-> zh)", () => {

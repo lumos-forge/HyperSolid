@@ -46,10 +46,12 @@ export function buildMnemonicChallenge(
 export function MnemonicVerify({
   mnemonic,
   onVerified,
+  onBack,
   rand = Math.random,
 }: {
   mnemonic: string;
   onVerified: () => void;
+  onBack?: () => void;
   rand?: () => number;
 }) {
   const theme = useTheme();
@@ -91,6 +93,11 @@ export function MnemonicVerify({
         ))}
       </View>
       {wrong ? <Text style={[styles.wrong, { color: theme.down }]}>{t("account.verifyWrong")}</Text> : null}
+      {onBack ? (
+        <Pressable accessibilityRole="button" testID="verify-back" onPress={onBack} style={styles.backBtn}>
+          <Text style={[styles.backText, { color: theme.muted }]}>{t("account.viewPhraseAgain")}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -103,4 +110,6 @@ const styles = StyleSheet.create({
   option: { borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   optionText: { fontFamily: fonts.mono.medium, fontSize: 14 },
   wrong: { fontFamily: fonts.body.semibold, fontSize: 12, marginTop: 10 },
+  backBtn: { marginTop: 12, alignItems: "center" },
+  backText: { fontFamily: fonts.body.medium, fontSize: 12.5, textDecorationLine: "underline" },
 });

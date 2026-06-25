@@ -526,6 +526,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         {newMnemonic && verifyPhrase ? (
           <MnemonicVerify
             mnemonic={newMnemonic}
+            onBack={() => setVerifyPhrase(false)}
             onVerified={() => {
               setNewMnemonic(null);
               setNeedsVerify(false);

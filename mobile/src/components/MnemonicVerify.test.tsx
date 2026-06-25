@@ -59,4 +59,16 @@ describe("MnemonicVerify", () => {
     expect(screen.getByText(/Not quite/)).toBeTruthy();
     expect(onVerified).not.toHaveBeenCalled();
   });
+
+  it("offers a back-out to view the phrase again when onBack is provided", () => {
+    const onBack = jest.fn();
+    render(<MnemonicVerify mnemonic={WORDS.join(" ")} onVerified={jest.fn()} onBack={onBack} rand={makeRng()} />);
+    fireEvent.press(screen.getByTestId("verify-back"));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the back-out when onBack is not provided", () => {
+    render(<MnemonicVerify mnemonic={WORDS.join(" ")} onVerified={jest.fn()} rand={makeRng()} />);
+    expect(screen.queryByTestId("verify-back")).toBeNull();
+  });
 });
