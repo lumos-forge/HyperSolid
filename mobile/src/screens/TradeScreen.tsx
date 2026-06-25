@@ -519,6 +519,7 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
 
       <Dropdown
         testID="order-type"
+        center
         value={orderType}
         options={ORDER_TYPES.map(([type, labelKey]) => ({ value: type, label: t(labelKey) }))}
         onChange={(v) => {
@@ -527,56 +528,57 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
         }}
       />
       {usesLimitPrice ? (
-        <Field
-          label={t("trade.priceUsdc")}
-          value={price}
-          onChange={onChangePrice}
-          theme={theme}
-          keyboard
-          testID="field-price"
-          accessory={
-            mid > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                testID="price-mid"
-                onPress={() => onChangePrice(toHlPrice(mid, szDec, "perp"))}
-                style={[styles.midBtn, { borderColor: theme.line }]}
-              >
-                <Text style={[styles.midText, { color: theme.brand }]}>{t("trade.mid")}</Text>
-              </Pressable>
-            ) : undefined
-          }
-        />
+        <View style={styles.priceRow}>
+          <InlineField
+            label={t("trade.priceUsdc")}
+            value={price}
+            onChange={onChangePrice}
+            theme={theme}
+            testID="field-price"
+            style={styles.priceField}
+          />
+          {mid > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              testID="price-mid"
+              onPress={() => onChangePrice(toHlPrice(mid, szDec, "perp"))}
+              style={[styles.bboBox, { borderColor: theme.line, backgroundColor: theme.surface }]}
+            >
+              <Text style={[styles.bboText, { color: theme.muted }]}>{t("trade.bbo")}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
       {shape.isTrigger ? (
-        <Field label={t("trade.triggerPriceUsdc")} value={stopPrice} onChange={edit(setStopPrice)} theme={theme} keyboard testID="field-stop" />
+        <InlineField label={t("trade.triggerPriceUsdc")} value={stopPrice} onChange={edit(setStopPrice)} theme={theme} testID="field-stop" />
       ) : null}
       {isScale ? (
         <>
-          <Field label={t("trade.scaleStart")} value={scaleStart} onChange={edit(setScaleStart)} theme={theme} keyboard testID="field-scale-start" />
-          <Field label={t("trade.scaleEnd")} value={scaleEnd} onChange={edit(setScaleEnd)} theme={theme} keyboard testID="field-scale-end" />
-          <Field label={t("trade.scaleCount")} value={scaleCount} onChange={edit(setScaleCount)} theme={theme} keyboard testID="field-scale-count" />
+          <InlineField label={t("trade.scaleStart")} value={scaleStart} onChange={edit(setScaleStart)} theme={theme} testID="field-scale-start" />
+          <InlineField label={t("trade.scaleEnd")} value={scaleEnd} onChange={edit(setScaleEnd)} theme={theme} testID="field-scale-end" />
+          <InlineField label={t("trade.scaleCount")} value={scaleCount} onChange={edit(setScaleCount)} theme={theme} testID="field-scale-count" />
         </>
       ) : null}
       {isTwap ? (
         <>
-          <Field label={t("trade.twapMinutes")} value={twapMinutes} onChange={edit(setTwapMinutes)} theme={theme} keyboard testID="field-twap-minutes" />
+          <InlineField label={t("trade.twapMinutes")} value={twapMinutes} onChange={edit(setTwapMinutes)} theme={theme} testID="field-twap-minutes" />
           <View style={styles.optRow}>
             <Text style={[styles.optLabel, { color: theme.text }]}>{t("trade.twapRandomize")}</Text>
             <Toggle theme={theme} value={twapRandomize} onValueChange={edit(setTwapRandomize)} accessibilityLabel="twap-randomize" />
           </View>
         </>
       ) : null}
-      <Field
+      <InlineField
         label={t("trade.sizeLabel")}
         value={size}
         onChange={edit(setSize)}
         theme={theme}
-        keyboard
         testID="field-size"
-        accessory={
+        placeholderAsLabel
+        rightInside={
           <Dropdown
             compact
+            bare
             testID="size-unit"
             value={sizeUnit}
             options={[
@@ -780,43 +782,46 @@ function SummaryRow({ theme, label, value }: { theme: ThemeTokens; label: string
   );
 }
 
-function Field({
+function InlineField({
   label,
   value,
   onChange,
   theme,
-  keyboard,
-  autoCap,
   testID,
-  accessory,
+  keyboard = true,
+  autoCap,
+  placeholderAsLabel = false,
+  rightInside,
+  style,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   theme: ThemeTokens;
+  testID?: string;
   keyboard?: boolean;
   autoCap?: boolean;
-  testID?: string;
-  accessory?: React.ReactNode;
+  placeholderAsLabel?: boolean;
+  rightInside?: React.ReactNode;
+  style?: object;
 }) {
   return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
-      <View>
+    <View style={[styles.inlineBox, { borderColor: theme.line, backgroundColor: theme.surface }, style]}>
+      <View style={styles.inlineMain}>
+        {placeholderAsLabel ? null : <Text style={[styles.inlineLabel, { color: theme.muted }]}>{label}</Text>}
         <TextInput
           value={value}
           onChangeText={onChange}
           testID={testID}
           keyboardType={keyboard ? "decimal-pad" : "default"}
           autoCapitalize={autoCap ? "characters" : "none"}
-          style={[
-            styles.input,
-            accessory ? styles.inputWithAccessory : null,
-            { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface },
-          ]}
+          placeholder={placeholderAsLabel ? label : "0"}
+          placeholderTextColor={theme.faint}
+          style={[placeholderAsLabel ? styles.inlinePlaceholderInput : styles.inlineInput, { color: theme.text }]}
         />
-        {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
       </View>
+      {rightInside ? <View style={[styles.inlineDivider, { backgroundColor: theme.line }]} /> : null}
+      {rightInside}
     </View>
   );
 }
@@ -845,19 +850,24 @@ const styles = StyleSheet.create({
   levMax: { fontFamily: fonts.mono.regular, fontSize: 10.5 },
   levChips: { flexDirection: "row", gap: 7, flexWrap: "wrap" },
   field: { marginBottom: 12 },
-  label: { fontFamily: fonts.body.regular, fontSize: 11, marginBottom: 4 },
-  input: {
+  priceField: { flex: 1, marginBottom: 0 },
+  priceRow: { flexDirection: "row", alignItems: "stretch", gap: 10, marginBottom: 12 },
+  inlineBox: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: fonts.mono.medium,
-    fontSize: 14,
+    minHeight: 60,
+    marginBottom: 12,
   },
-  inputWithAccessory: { paddingRight: 64 },
-  accessory: { position: "absolute", right: 6, top: 0, bottom: 0, justifyContent: "center" },
-  midBtn: { borderWidth: 1, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 5 },
-  midText: { fontFamily: fonts.mono.bold, fontSize: 11, letterSpacing: 0.3 },
+  inlineMain: { flex: 1, justifyContent: "center", paddingVertical: 9 },
+  inlineLabel: { fontFamily: fonts.body.regular, fontSize: 11, textAlign: "center", marginBottom: 3 },
+  inlineInput: { fontFamily: fonts.mono.bold, fontSize: 19, textAlign: "center", padding: 0 },
+  inlinePlaceholderInput: { fontFamily: fonts.mono.medium, fontSize: 18, textAlign: "center", padding: 0 },
+  inlineDivider: { width: 1, height: 28, marginHorizontal: 10 },
+  bboBox: { justifyContent: "center", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 16 },
+  bboText: { fontFamily: fonts.mono.bold, fontSize: 13, letterSpacing: 0.5 },
   preview: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 4, marginBottom: 14 },
   sliderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2, marginBottom: 8 },
   optsCol: { marginBottom: 14, gap: 12, zIndex: 20 },

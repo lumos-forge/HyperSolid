@@ -22,6 +22,8 @@ export function Dropdown<T extends string>({
   onChange,
   testID,
   compact = false,
+  center = false,
+  bare = false,
 }: {
   label?: string;
   prefix?: string;
@@ -30,11 +32,14 @@ export function Dropdown<T extends string>({
   onChange: (v: T) => void;
   testID?: string;
   compact?: boolean;
+  center?: boolean;
+  bare?: boolean;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.value === value);
   const display = `${prefix ? `${prefix} ` : ""}${current?.label ?? value}`;
+  const centered = center && !compact;
   return (
     <View style={compact ? styles.wrapCompact : styles.wrap}>
       {label ? <Text style={[styles.label, { color: theme.muted }]}>{label}</Text> : null}
@@ -44,11 +49,20 @@ export function Dropdown<T extends string>({
         onPress={() => setOpen((o) => !o)}
         style={[
           compact ? styles.controlCompact : styles.control,
-          { borderColor: theme.line, backgroundColor: theme.surface },
+          centered ? styles.controlCenter : null,
+          bare ? styles.controlBare : { borderColor: theme.line, backgroundColor: theme.surface },
         ]}
       >
-        <Text style={[compact ? styles.valueCompact : styles.value, { color: theme.text }]}>{display}</Text>
-        <Icon name="chevronDown" color={theme.muted} size={compact ? 13 : 16} />
+        <Text style={[compact ? styles.valueCompact : styles.value, centered ? styles.valueCenter : null, { color: theme.text }]}>
+          {display}
+        </Text>
+        {centered ? (
+          <View style={styles.centerChevron}>
+            <Icon name="chevronDown" color={theme.muted} size={16} />
+          </View>
+        ) : (
+          <Icon name="chevronDown" color={theme.muted} size={compact ? 13 : 16} />
+        )}
       </Pressable>
       {open ? (
         <View
@@ -92,6 +106,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
+  controlCenter: { justifyContent: "center" },
+  controlBare: { borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0 },
+  centerChevron: { position: "absolute", right: 12 },
+  valueCenter: { textAlign: "center" },
   controlCompact: {
     flexDirection: "row",
     alignItems: "center",
