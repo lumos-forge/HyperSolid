@@ -79,6 +79,16 @@ describe("AgentScreen", () => {
     await waitFor(() => expect(screen.getByTestId("agent-approve")).toBeTruthy());
   });
 
+  it("leads with the strategy value + a DCA preview before asking to connect", () => {
+    render(<AgentScreen />);
+    // value proposition and a concrete strategy preview are shown pre-connect
+    expect(screen.getByText(/autopilot/i)).toBeTruthy();
+    expect(screen.getByTestId("strategy-preview-dca")).toBeTruthy();
+    expect(screen.getByText("Recurring buy (DCA)")).toBeTruthy();
+    // connect is demoted to a "Connect to enable" CTA, not the headline
+    expect(screen.getByText("Connect to enable")).toBeTruthy();
+  });
+
   it("authorizes the trading agent (provision -> sign -> confirm)", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));

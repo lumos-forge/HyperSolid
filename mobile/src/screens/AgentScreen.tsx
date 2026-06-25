@@ -81,9 +81,19 @@ export function AgentScreen({ navigation }: { navigation?: { navigate: (name: st
       ) : !token ? (
         <SurfaceCard theme={theme} testID="strategy-connect" style={styles.card}>
           <Text style={[styles.title, { color: theme.text }]}>{t("agent.automationTitle")}</Text>
-          <Text style={[styles.hint, { color: theme.muted }]}>
-            {t("agent.connectHint")}
-          </Text>
+          <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.valueProp")}</Text>
+
+          <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.availableStrategies")}</Text>
+          <View style={[styles.preview, { borderColor: theme.line }]} testID="strategy-preview-dca">
+            <View style={styles.previewHead}>
+              <Text style={[styles.previewTitle, { color: theme.text }]}>{t("agent.previewDcaTitle")}</Text>
+              <Text style={[styles.previewTag, { color: theme.faint, borderColor: theme.lineStrong }]}>
+                {t("agent.previewTag")}
+              </Text>
+            </View>
+            <Text style={[styles.previewDesc, { color: theme.muted }]}>{t("agent.previewDcaDesc")}</Text>
+          </View>
+
           <Pressable
             onPress={connect}
             accessibilityRole="button"
@@ -93,9 +103,10 @@ export function AgentScreen({ navigation }: { navigation?: { navigate: (name: st
             {connecting ? (
               <ActivityIndicator color={theme.bg} />
             ) : (
-              <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.connect")}</Text>
+              <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.connectEnable")}</Text>
             )}
           </Pressable>
+          <Text style={[styles.footnote, { color: theme.faint }]}>{t("agent.connectHint")}</Text>
         </SurfaceCard>
       ) : (
         <StrategyPanel
@@ -274,6 +285,12 @@ const styles = StyleSheet.create({
   hint: { fontFamily: fonts.body.regular, fontSize: 12, lineHeight: 17, marginBottom: 12 },
   mono: { fontFamily: fonts.mono.regular, fontSize: 12, marginBottom: 12 },
   eyebrow: { fontFamily: fonts.display.bold, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginTop: 6, marginBottom: 8 },
+  preview: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 16 },
+  previewHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  previewTitle: { fontFamily: fonts.display.bold, fontSize: 13.5 },
+  previewTag: { fontFamily: fonts.mono.bold, fontSize: 9, letterSpacing: 0.5, borderWidth: 1, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden", textTransform: "uppercase" },
+  previewDesc: { fontFamily: fonts.body.regular, fontSize: 12, lineHeight: 17 },
+  footnote: { fontFamily: fonts.body.regular, fontSize: 11, lineHeight: 16, marginTop: 10 },
   cta: { paddingVertical: 13, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   ctaOutline: { paddingVertical: 13, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, marginTop: 6, marginBottom: 12 },
   ctaText: { fontFamily: fonts.display.bold, fontSize: 14, letterSpacing: 0.3 },
