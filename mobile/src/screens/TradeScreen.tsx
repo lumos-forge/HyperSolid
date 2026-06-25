@@ -574,7 +574,6 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
         onChange={edit(setSize)}
         theme={theme}
         testID="field-size"
-        placeholderAsLabel
         rightInside={
           <Dropdown
             compact
@@ -790,7 +789,6 @@ function InlineField({
   testID,
   keyboard = true,
   autoCap,
-  placeholderAsLabel = false,
   rightInside,
   style,
 }: {
@@ -801,23 +799,22 @@ function InlineField({
   testID?: string;
   keyboard?: boolean;
   autoCap?: boolean;
-  placeholderAsLabel?: boolean;
   rightInside?: React.ReactNode;
   style?: object;
 }) {
   return (
     <View style={[styles.inlineBox, { borderColor: theme.line, backgroundColor: theme.surface }, style]}>
       <View style={styles.inlineMain}>
-        {placeholderAsLabel ? null : <Text style={[styles.inlineLabel, { color: theme.muted }]}>{label}</Text>}
+        <Text style={[styles.inlineLabel, { color: theme.muted }]}>{label}</Text>
         <TextInput
           value={value}
           onChangeText={onChange}
           testID={testID}
           keyboardType={keyboard ? "decimal-pad" : "default"}
           autoCapitalize={autoCap ? "characters" : "none"}
-          placeholder={placeholderAsLabel ? label : "0"}
+          placeholder="0"
           placeholderTextColor={theme.faint}
-          style={[placeholderAsLabel ? styles.inlinePlaceholderInput : styles.inlineInput, { color: theme.text }]}
+          style={[styles.inlineInput, { color: theme.text }]}
         />
       </View>
       {rightInside ? <View style={[styles.inlineDivider, { backgroundColor: theme.line }]} /> : null}
@@ -864,7 +861,6 @@ const styles = StyleSheet.create({
   inlineMain: { flex: 1, justifyContent: "center", paddingVertical: 9 },
   inlineLabel: { fontFamily: fonts.body.regular, fontSize: 11, textAlign: "center", marginBottom: 3 },
   inlineInput: { fontFamily: fonts.mono.bold, fontSize: 19, textAlign: "center", padding: 0 },
-  inlinePlaceholderInput: { fontFamily: fonts.mono.medium, fontSize: 18, textAlign: "center", padding: 0 },
   inlineDivider: { width: 1, height: 28, marginHorizontal: 10 },
   bboBox: { justifyContent: "center", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 16 },
   bboText: { fontFamily: fonts.mono.bold, fontSize: 13, letterSpacing: 0.5 },
