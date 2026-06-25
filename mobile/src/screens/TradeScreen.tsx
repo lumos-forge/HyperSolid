@@ -26,6 +26,7 @@ import { PositionsService } from "../services/positionsData";
 import { useAvailableBalance } from "../hooks/useAvailableBalance";
 import { useCoinPosition } from "../hooks/useCoinPosition";
 import { Toggle } from "../components/Toggle";
+import { Checkbox } from "../components/Checkbox";
 import { PriceText, formatPrice } from "../components/PriceText";
 import { ChangeText } from "../components/ChangeText";
 import { Icon } from "../components/Icon";
@@ -602,37 +603,43 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
 
       <Slider value={sizePct} onChange={onSlide} testID="size-slider" />
 
-      <View style={styles.opts}>
-        <View style={styles.optRow}>
-          <Text style={[styles.optLabel, { color: theme.text }]}>{t("positions.reduceOnly")}</Text>
-          <Toggle theme={theme} value={reduceOnly} onValueChange={edit(setReduceOnly)} accessibilityLabel="reduce-only" />
-        </View>
+      <View style={styles.optsCol}>
         {!shape.isTrigger && !isTwap && !isScale ? (
-          <View style={styles.optRow}>
-            <Text style={[styles.optLabel, { color: theme.text }]}>{t("trade.tpSl")}</Text>
-            <Toggle theme={theme} value={tpSlOn} onValueChange={edit(setTpSlOn)} accessibilityLabel="tpsl-toggle" />
-          </View>
-        ) : null}
-      </View>
-      {usesLimitPrice ? (
-        <View style={styles.tifRow}>
-          <Dropdown
-            compact
-            prefix="TIF"
-            testID="tif"
-            value={tif}
-            options={[
-              { value: "Gtc" as const, label: t("trade.tifGtc") },
-              { value: "Ioc" as const, label: t("trade.tifIoc") },
-              { value: "Alo" as const, label: t("trade.tifAlo") },
-            ]}
-            onChange={(v) => {
-              clearRetry();
-              setTif(v);
-            }}
+          <Checkbox
+            theme={theme}
+            value={tpSlOn}
+            onValueChange={edit(setTpSlOn)}
+            label={t("trade.tpSl")}
+            accessibilityLabel="tpsl-toggle"
           />
+        ) : null}
+        <View style={styles.reduceRow}>
+          <Checkbox
+            theme={theme}
+            value={reduceOnly}
+            onValueChange={edit(setReduceOnly)}
+            label={t("positions.reduceOnly")}
+            accessibilityLabel="reduce-only"
+          />
+          {usesLimitPrice ? (
+            <Dropdown
+              compact
+              prefix="TIF"
+              testID="tif"
+              value={tif}
+              options={[
+                { value: "Gtc" as const, label: t("trade.tifGtc") },
+                { value: "Ioc" as const, label: t("trade.tifIoc") },
+                { value: "Alo" as const, label: t("trade.tifAlo") },
+              ]}
+              onChange={(v) => {
+                clearRetry();
+                setTif(v);
+              }}
+            />
+          ) : null}
         </View>
-      ) : null}
+      </View>
 
       {!shape.isTrigger && !isTwap && !isScale && tpSlOn ? (
         <SurfaceCard theme={theme} rule={false} style={styles.tpsl}>
@@ -853,9 +860,8 @@ const styles = StyleSheet.create({
   midText: { fontFamily: fonts.mono.bold, fontSize: 11, letterSpacing: 0.3 },
   preview: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 4, marginBottom: 14 },
   sliderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2, marginBottom: 8 },
-  opts: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 5 },
-  tifRow: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 14, zIndex: 20 },
-  optGroup: { flexDirection: "row", gap: 18, alignItems: "center" },
+  optsCol: { marginBottom: 14, gap: 12, zIndex: 20 },
+  reduceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 20 },
   optRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   optLabel: { fontFamily: fonts.body.medium, fontSize: 12 },
   tpsl: { padding: 12 },

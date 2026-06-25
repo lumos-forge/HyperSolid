@@ -23,7 +23,8 @@ export type IconName =
   | "bolt"
   | "shield"
   | "backspace"
-  | "plus";
+  | "plus"
+  | "check";
 
 export interface IconProps {
   name: IconName;
@@ -173,6 +174,8 @@ function renderGlyph(
       );
     case "plus":
       return <Path d="M12 5v14M5 12h14" />;
+    case "check":
+      return <Path d="M4 12.5 9.5 18 20 6.5" />;
     case "arrowRight":
       return (
         <>
