@@ -154,6 +154,28 @@ describe("AccountScreen", () => {
     expect(screen.queryByTestId("fund-nudge")).toBeNull();
   });
 
+  it("offers a Start trading CTA that jumps to Trade once the wallet is funded", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    const navigate = jest.fn();
+    render(<AccountScreen deps={fakeDeps} navigation={{ navigate }} />);
+    await waitFor(() => expect(screen.getByTestId("start-trading-cta")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("start-trading-cta"));
+    expect(navigate).toHaveBeenCalledWith("Trade");
+  });
+
+  it("refreshes the balance on demand (re-fetches the portfolio)", async () => {
+    const load = jest.fn(async () => portfolio);
+    const deps = {
+      positions: { loadPortfolio: load },
+      fundings: { load: jest.fn(async () => []) },
+    } as unknown as typeof fakeDeps;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={deps} />);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    fireEvent.press(screen.getByTestId("refresh-balance"));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
+
   it("requires backup verification after creating a wallet (not a one-tap dismiss)", async () => {
     const phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident";
     const manager = {

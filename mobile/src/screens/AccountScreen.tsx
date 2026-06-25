@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../theme/useTheme";
@@ -62,7 +62,13 @@ function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
-export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
+export function AccountScreen({
+  deps,
+  navigation,
+}: {
+  deps?: AccountScreenDeps;
+  navigation?: { navigate: (name: string) => void };
+} = {}) {
   const theme = useTheme();
   const mode = useWalletStore((s) => s.mode);
   const address = useWalletStore((s) => s.address);
@@ -109,11 +115,13 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
   const [depositBalances, setDepositBalances] = useState<{ usdc: number; eth: number } | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
 
-  useEffect(() => {
+  // Reusable balance/funding fetch so we can refresh after a deposit/withdraw and on demand
+  // (the Arbitrum→HL bridge credits a deposit ~1 min later, so a manual refresh is what surfaces it).
+  const reloadSummary = useCallback(() => {
     if (mode === "none" || !address || !isValidAddress(address)) {
       setSummary(null);
       setFundingTotal(null);
-      return;
+      return () => {};
     }
     let active = true;
     services.positions
@@ -128,6 +136,8 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
       active = false;
     };
   }, [mode, address, services]);
+
+  useEffect(() => reloadSummary(), [reloadSummary]);
 
   // Deposit precheck (§B2b): when the deposit sheet opens, read the wallet's Arbitrum USDC (depositable)
   // and ETH (gas) balances via the server-delivered RPC. Cleared when the sheet closes / RPC absent.
@@ -257,6 +267,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         setSheet("none");
         setMainnetConfirm(false);
         setDepositAmount("");
+        reloadSummary();
       } else if (res.uncertain) {
         Alert.alert(t("common.uncertainReceipt"), t("account.depositUncertain", { error: res.error }));
       } else {
@@ -288,6 +299,7 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
         setSheet("none");
         setWithdrawMainnetConfirm(false);
         setAmountInput("");
+        reloadSummary();
       } else if (res.uncertain) {
         Alert.alert(t("common.uncertainReceipt"), t("account.withdrawUncertain", { error: res.error }));
       } else {
@@ -320,11 +332,16 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           <Text style={[styles.addr, { color: theme.muted }]}>{address ? shortAddr(address) : "—"}</Text>
           <View style={styles.balRow}>
             <Text style={[styles.balLabel, { color: theme.muted }]}>{t("account.balance")}</Text>
-            {summary ? (
-              <PriceText value={summary.accountValue} color={theme.text} size={18} glow glowColor={theme.glow} />
-            ) : (
-              <Text style={[styles.balPlaceholder, { color: theme.faint }]}>—</Text>
-            )}
+            <View style={styles.balRight}>
+              {summary ? (
+                <PriceText value={summary.accountValue} color={theme.text} size={18} glow glowColor={theme.glow} />
+              ) : (
+                <Text style={[styles.balPlaceholder, { color: theme.faint }]}>—</Text>
+              )}
+              <Pressable onPress={() => reloadSummary()} accessibilityRole="button" testID="refresh-balance" hitSlop={8}>
+                <Text style={[styles.refreshText, { color: theme.brand }]}>{t("account.refreshBalance")}</Text>
+              </Pressable>
+            </View>
           </View>
         </SurfaceCard>
 
@@ -352,6 +369,19 @@ export function AccountScreen({ deps }: { deps?: AccountScreenDeps } = {}) {
           >
             <Icon name="alert" color={theme.brand} size={15} />
             <Text style={[styles.fundNudgeText, { color: theme.text }]}>{t("account.fundNudge")}</Text>
+            <Icon name="chevronRight" color={theme.brand} size={15} strokeWidth={2} />
+          </Pressable>
+        ) : null}
+
+        {mode === "local" && summary && summary.accountValue > 0 ? (
+          <Pressable
+            onPress={() => navigation?.navigate("Trade")}
+            accessibilityRole="button"
+            testID="start-trading-cta"
+            style={[styles.fundNudge, { borderColor: theme.brand, backgroundColor: withAlpha(theme.brand, 0.08) }]}
+          >
+            <Icon name="trade" color={theme.brand} size={15} />
+            <Text style={[styles.fundNudgeText, { color: theme.text }]}>{t("account.startTrading")}</Text>
             <Icon name="chevronRight" color={theme.brand} size={15} strokeWidth={2} />
           </Pressable>
         ) : null}
@@ -669,6 +699,8 @@ const styles = StyleSheet.create({
   badge: { fontFamily: fonts.mono.bold, fontSize: 9, letterSpacing: 0.4, borderWidth: 1, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden" },
   addr: { fontFamily: fonts.mono.regular, fontSize: 13, marginBottom: 12 },
   balRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  balRight: { flexDirection: "row", alignItems: "center", gap: 12 },
+  refreshText: { fontFamily: fonts.body.medium, fontSize: 12, textDecorationLine: "underline" },
   balLabel: { fontFamily: fonts.body.regular, fontSize: 12 },
   balPlaceholder: { fontFamily: fonts.mono.medium, fontSize: 18 },
   actions: { flexDirection: "row", gap: 10, marginBottom: 14 },
