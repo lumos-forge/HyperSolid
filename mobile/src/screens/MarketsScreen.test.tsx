@@ -46,9 +46,8 @@ describe("MarketsScreen", () => {
     expect(screen.getByText(/network down/i)).toBeTruthy();
   });
 
-  it("renders the v8 chrome: Markets title, search and All/Watchlist tabs", () => {
+  it("renders the v8 chrome: search and All/Watchlist tabs", () => {
     render(<MarketsScreen />);
-    expect(screen.getByText("Markets")).toBeTruthy();
     expect(screen.getByPlaceholderText("Search markets")).toBeTruthy();
     expect(screen.getByText("All")).toBeTruthy();
     expect(screen.getByText("Watchlist")).toBeTruthy();

@@ -275,7 +275,6 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
     return (
       <ScreenScaffold
         theme={theme}
-        statusTitle={t("tab.trade")}
         pill={<NetworkWarning variant="chip" />}
       >
         <NetworkWarning variant="strip" />
@@ -311,7 +310,6 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
   return (
     <ScreenScaffold
       theme={theme}
-      statusTitle={t("tab.trade")}
       pill={<NetworkWarning variant="chip" />}
     >
       <NetworkWarning variant="strip" />

@@ -59,7 +59,6 @@ describe("PositionsScreen", () => {
   it("renders the v8 chrome without any view-only address entry", async () => {
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<PositionsScreen deps={fakeDeps} />);
-    expect(screen.getByText("Positions")).toBeTruthy();
     expect(screen.queryByText("Query")).toBeNull();
     expect(screen.queryByText(/View-only/)).toBeNull();
     await waitFor(() => expect(fakeDeps.positions.loadPortfolio).toHaveBeenCalledWith(ADDR));

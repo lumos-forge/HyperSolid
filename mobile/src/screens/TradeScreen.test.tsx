@@ -62,7 +62,6 @@ describe("TradeScreen", () => {
 
   it("prompts to connect a wallet when none is set", () => {
     render(<TradeScreen />);
-    expect(screen.getByText("Trade")).toBeTruthy();
     expect(screen.getByText(/Connect a wallet in Wallet/)).toBeTruthy();
   });
 

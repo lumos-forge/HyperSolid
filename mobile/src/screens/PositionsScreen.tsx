@@ -88,7 +88,7 @@ export function PositionsScreen({
 
   if (mode === "none") {
     return (
-      <ScreenScaffold theme={theme} statusTitle={t("tab.positions")} pill={<NetworkWarning variant="chip" />}>
+      <ScreenScaffold theme={theme} pill={<NetworkWarning variant="chip" />}>
         <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.gatedNoWallet")}</Text>
         <Pressable
           accessibilityRole="button"
@@ -103,7 +103,7 @@ export function PositionsScreen({
   }
 
   return (
-    <ScreenScaffold theme={theme} statusTitle={t("tab.positions")} pill={<NetworkWarning variant="chip" />}>
+    <ScreenScaffold theme={theme} pill={<NetworkWarning variant="chip" />}>
       <UnconfirmedBanner theme={theme} count={unconfirmedCount} />
 
       {error ? <Text style={[styles.msg, { color: theme.down }]}>{error}</Text> : null}

@@ -60,7 +60,7 @@ export function AgentScreen({ navigation }: { navigation?: { navigate: (name: st
   }
 
   return (
-    <ScreenScaffold theme={theme} statusTitle={t("tab.strategy")} pill={<NetworkWarning variant="chip" />}>
+    <ScreenScaffold theme={theme} pill={<NetworkWarning variant="chip" />}>
       {!ready ? (
         <SurfaceCard theme={theme} testID="strategy-gated" style={styles.card}>
           <Text style={[styles.title, { color: theme.text }]}>{t("agent.automationTitle")}</Text>

@@ -347,7 +347,7 @@ export function AccountScreen({
     const withdrawFee = withdrawFeeFor(network);
     const withdrawNet = Math.max(0, (Number(amountInput) || 0) - withdrawFee).toFixed(2);
     return (
-      <ScreenScaffold theme={theme} statusTitle={t("tab.wallet")} pill={<NetworkWarning variant="chip" />}>
+      <ScreenScaffold theme={theme} pill={<NetworkWarning variant="chip" />}>
         <UnconfirmedBanner theme={theme} count={unconfirmedCount} />
 
         <SurfaceCard theme={theme} style={styles.wcard}>
@@ -645,7 +645,6 @@ export function AccountScreen({
   return (
     <ScreenScaffold
       theme={theme}
-      statusTitle={t("tab.wallet")}
       pill={<NetworkWarning variant="chip" />}
       heading={t("account.welcome")}
     >

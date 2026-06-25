@@ -55,7 +55,6 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
   return (
     <ScreenScaffold
       theme={theme}
-      statusTitle={t("tab.markets")}
       pill={<NetworkWarning variant="chip" />}
       scroll={false}
     >
