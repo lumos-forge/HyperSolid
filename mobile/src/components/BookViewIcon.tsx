@@ -10,13 +10,14 @@ export type BookView = "balanced" | "asks" | "bids";
  * bids).
  */
 export function BookViewIcon({ theme, mode, size = 18 }: { theme: ThemeTokens; mode: BookView; size?: number }) {
-  const askFlex = mode === "asks" ? 2 : mode === "bids" ? 1 : 1.4;
-  const bidFlex = mode === "bids" ? 2 : mode === "asks" ? 1 : 1.4;
+  // Single-side modes hide the other block (flex 0); balanced shows both equally.
+  const askFlex = mode === "bids" ? 0 : 1;
+  const bidFlex = mode === "asks" ? 0 : 1;
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
       <View style={styles.left}>
-        <View style={[styles.block, { flex: askFlex, backgroundColor: theme.down, opacity: mode === "bids" ? 0.4 : 1 }]} />
-        <View style={[styles.block, { flex: bidFlex, backgroundColor: theme.up, opacity: mode === "asks" ? 0.4 : 1 }]} />
+        <View style={[styles.block, { flex: askFlex, backgroundColor: theme.down }]} />
+        <View style={[styles.block, { flex: bidFlex, backgroundColor: theme.up }]} />
       </View>
       <View style={[styles.bar, { backgroundColor: theme.muted }]} />
     </View>

@@ -52,11 +52,11 @@ export function OrderBookPanel({
   // Server-side book aggregation (HL nSigFigs). 5 = finest; lower = coarser tick, ALWAYS a full
   // ~20-level book (so changing it never collapses the ladder the way client-side bucketing did).
   const [nSigFigs, setNSigFigs] = useState<BookSigFigs>(5);
-  // Order-book display emphasis (HL's red/green toggle): balanced shows equal asks/bids; asks/bids
-  // shift more rows to that side while keeping the panel height stable.
+  // Order-book display mode (HL's red/green toggle): balanced shows equal asks/bids; bids/asks show
+  // ONLY that side (full depth) while keeping the panel height stable.
   const [bookView, setBookView] = useState<BookView>("balanced");
-  const askDepth = bookView === "asks" ? 14 : bookView === "bids" ? 5 : 9;
-  const bidDepth = bookView === "bids" ? 14 : bookView === "asks" ? 5 : 9;
+  const askDepth = bookView === "asks" ? 18 : bookView === "bids" ? 0 : 9;
+  const bidDepth = bookView === "bids" ? 18 : bookView === "asks" ? 0 : 9;
 
   // Clear the ladder only when the coin changes (a tick change keeps the old book visible until the
   // re-aggregated one arrives, avoiding a flicker).
@@ -152,7 +152,7 @@ export function OrderBookPanel({
               testID="book-view"
               accessibilityRole="button"
               hitSlop={6}
-              onPress={() => setBookView((v) => (v === "balanced" ? "asks" : v === "asks" ? "bids" : "balanced"))}
+              onPress={() => setBookView((v) => (v === "balanced" ? "bids" : v === "bids" ? "asks" : "balanced"))}
               style={[styles.viewBtn, { borderColor: theme.line, backgroundColor: theme.surface }]}
             >
               <BookViewIcon theme={theme} mode={bookView} />
