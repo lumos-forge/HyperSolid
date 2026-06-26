@@ -695,26 +695,7 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
         </Text>
       ) : null}
 
-      <View style={styles.sliderMeta}>
-        <Text style={[styles.sliderPct, { color: theme.text }]} testID="size-pct">{`${Math.round(sizePct)}%`}</Text>
-      </View>
-      <Slider value={sizePct} onChange={onSlide} snap testID="size-slider" />
-      <View style={styles.presetRow}>
-        {[25, 50, 75, 100].map((p) => {
-          const active = Math.round(sizePct) === p;
-          return (
-            <Pressable
-              key={p}
-              testID={`size-pct-${p}`}
-              accessibilityRole="button"
-              onPress={() => onSlide(p)}
-              style={[styles.presetChip, { borderColor: active ? theme.brand : theme.line }]}
-            >
-              <Text style={[styles.presetText, { color: active ? theme.brand : theme.muted }]}>{`${p}%`}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Slider value={sizePct} onChange={onSlide} testID="size-slider" />
 
       <View style={styles.optsCol}>
         {showTpSl ? (
@@ -802,7 +783,6 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
         </View>
       ) : null}
 
-      <SummaryRow theme={theme} label={t("trade.summaryOrderValue")} value={`${notional.toFixed(2)} USDC`} />
       {(["buy", "sell"] as const).map((s) => {
         const sideColor = s === "buy" ? theme.up : theme.down;
         return (
@@ -980,11 +960,6 @@ const styles = StyleSheet.create({
   bboModeLabel: { fontFamily: fonts.body.regular, fontSize: 11, textAlign: "center", marginBottom: 2 },
   bboModeValue: { fontFamily: fonts.display.bold, fontSize: 16, textAlign: "center" },
   preview: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 4, marginBottom: 14 },
-  sliderMeta: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: 2, marginBottom: 2 },
-  sliderPct: { fontFamily: fonts.mono.medium, fontSize: 11.5 },
-  presetRow: { flexDirection: "row", gap: 6, marginTop: 8, marginBottom: 6 },
-  presetChip: { flex: 1, alignItems: "center", borderWidth: 1, borderRadius: 7, paddingVertical: 6 },
-  presetText: { fontFamily: fonts.mono.medium, fontSize: 11 },
   optsCol: { marginBottom: 14, gap: 12, zIndex: 20 },
   optsRowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 2 },
   optsRowBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },

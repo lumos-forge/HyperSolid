@@ -35,21 +35,26 @@ export function Slider({
   const theme = useTheme();
   const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
+  // Keep the latest onChange/snap so the (once-created) PanResponder never calls a stale closure
+  // (e.g. an onSlide captured before the balance loaded, which would no-op forever).
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
+
+  const reportRef = useRef((x: number): number => {
+    const pct = pctFromX(x, widthRef.current);
+    return snapRef.current ? snapPct(pct) : pct;
+  });
 
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => onChange(report(e.nativeEvent.locationX)),
-      onPanResponderMove: (e) => onChange(report(e.nativeEvent.locationX)),
+      onPanResponderGrant: (e) => onChangeRef.current(reportRef.current(e.nativeEvent.locationX)),
+      onPanResponderMove: (e) => onChangeRef.current(reportRef.current(e.nativeEvent.locationX)),
     }),
   ).current;
-
-  function report(x: number): number {
-    const pct = pctFromX(x, widthRef.current);
-    return snap ? snapPct(pct) : pct;
-  }
-
   function onLayout(e: LayoutChangeEvent) {
     const w = e.nativeEvent.layout.width;
     widthRef.current = w;
