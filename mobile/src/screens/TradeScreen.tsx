@@ -27,7 +27,6 @@ import { useAvailableBalance } from "../hooks/useAvailableBalance";
 import { useCoinPosition } from "../hooks/useCoinPosition";
 import { Toggle } from "../components/Toggle";
 import { Checkbox } from "../components/Checkbox";
-import { Segmented } from "../components/Segmented";
 import { PriceText, formatPrice } from "../components/PriceText";
 import { ChangeText } from "../components/ChangeText";
 import { Icon } from "../components/Icon";
@@ -455,6 +454,27 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
   const liqBuy = estLiqPrice(refPrice, leverage, "buy");
   const liqSell = estLiqPrice(refPrice, leverage, "sell");
 
+  // TP/SL applies to plain entries (not trigger/twap/scale). The compact TIF dropdown rides on that
+  // row when shown, otherwise on the reduce-only row.
+  const showTpSl = !shape.isTrigger && !isTwap && !isScale;
+  const tifControl = (
+    <Dropdown
+      compact
+      prefix="TIF"
+      testID="tif"
+      value={tif}
+      options={[
+        { value: "Gtc" as const, label: t("trade.tifGtc") },
+        { value: "Ioc" as const, label: t("trade.tifIoc") },
+        { value: "Alo" as const, label: t("trade.tifAloShort") },
+      ]}
+      onChange={(v) => {
+        clearRetry();
+        setTif(v);
+      }}
+    />
+  );
+
   // What will actually be sent, snapped to HL tick/lot — surfaced so the user sees exactly what they
   // submit (the encoder applies the same rounding). Market/trigger-market fill at market.
   const previewPrice = usesLimitPrice && Number(price) > 0 ? toHlPrice(Number(price), szDec, "perp") : null;
@@ -550,23 +570,6 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
           ) : null}
         </View>
       ) : null}
-      {usesLimitPrice ? (
-        <Segmented
-          theme={theme}
-          testID="tif"
-          label="TIF"
-          value={tif}
-          options={[
-            { value: "Gtc" as const, label: t("trade.tifGtc") },
-            { value: "Ioc" as const, label: t("trade.tifIoc") },
-            { value: "Alo" as const, label: t("trade.tifAloShort") },
-          ]}
-          onChange={(v) => {
-            clearRetry();
-            setTif(v);
-          }}
-        />
-      ) : null}
       {shape.isTrigger ? (
         <InlineField label={t("trade.triggerPriceUsdc")} value={stopPrice} onChange={edit(setStopPrice)} theme={theme} testID="field-stop" />
       ) : null}
@@ -623,22 +626,28 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
       <Slider value={sizePct} onChange={onSlide} testID="size-slider" />
 
       <View style={styles.optsCol}>
-        {!shape.isTrigger && !isTwap && !isScale ? (
+        {showTpSl ? (
+          <View style={styles.optsRowTop}>
+            <Checkbox
+              theme={theme}
+              value={tpSlOn}
+              onValueChange={edit(setTpSlOn)}
+              label={t("trade.tpSl")}
+              accessibilityLabel="tpsl-toggle"
+            />
+            {usesLimitPrice ? tifControl : null}
+          </View>
+        ) : null}
+        <View style={styles.optsRowBottom}>
           <Checkbox
             theme={theme}
-            value={tpSlOn}
-            onValueChange={edit(setTpSlOn)}
-            label={t("trade.tpSl")}
-            accessibilityLabel="tpsl-toggle"
+            value={reduceOnly}
+            onValueChange={edit(setReduceOnly)}
+            label={t("positions.reduceOnly")}
+            accessibilityLabel="reduce-only"
           />
-        ) : null}
-        <Checkbox
-          theme={theme}
-          value={reduceOnly}
-          onValueChange={edit(setReduceOnly)}
-          label={t("positions.reduceOnly")}
-          accessibilityLabel="reduce-only"
-        />
+          {usesLimitPrice && !showTpSl ? tifControl : null}
+        </View>
       </View>
 
       {!shape.isTrigger && !isTwap && !isScale && tpSlOn ? (
@@ -866,6 +875,8 @@ const styles = StyleSheet.create({
   preview: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 4, marginBottom: 14 },
   sliderMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2, marginBottom: 8 },
   optsCol: { marginBottom: 14, gap: 12, zIndex: 20 },
+  optsRowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 2 },
+  optsRowBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
   optRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   optLabel: { fontFamily: fonts.body.medium, fontSize: 12 },
   tpsl: { padding: 12 },

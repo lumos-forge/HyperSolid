@@ -533,7 +533,7 @@ describe("TradeScreen", () => {
     expect(mockPlaceBracket).not.toHaveBeenCalled();
   });
 
-  it("sets TIF to ALO (post-only) on a limit order via the TIF selector", async () => {
+  it("sets TIF to ALO (post-only) on a limit order via the TIF dropdown", async () => {
     mockPlaceOrder.mockResolvedValue({
       ok: true,
       cloid: ("0x" + "a".repeat(32)) as `0x${string}`,
@@ -543,7 +543,8 @@ describe("TradeScreen", () => {
     render(<TradeScreen />);
     fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
     fireEvent.changeText(screen.getByTestId("field-price"), "60000");
-    fireEvent.press(screen.getByTestId("tif-Alo"));
+    fireEvent.press(screen.getByTestId("tif"));
+    fireEvent.press(screen.getByTestId("tif-opt-Alo"));
     fireEvent.press(screen.getByTestId("submit-buy"));
     await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalled());
     expect(mockPlaceOrder.mock.calls[0][0].tif).toBe("Alo");
