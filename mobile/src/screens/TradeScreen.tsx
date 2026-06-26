@@ -795,49 +795,49 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
       ) : null}
 
       <SummaryRow theme={theme} label={t("trade.requiredMargin")} value={`≈ ${margin.toFixed(2)} USDC`} />
-      <View style={styles.sideButtons}>
-        {(["buy", "sell"] as const).map((s) => {
-          const sideColor = s === "buy" ? theme.up : theme.down;
-          const liq = s === "buy" ? liqBuy : liqSell;
-          return (
-            <View key={s} style={styles.sideCol}>
-              <Text style={[styles.sideMax, { color: theme.muted }]} numberOfLines={1}>
+      {(["buy", "sell"] as const).map((s) => {
+        const sideColor = s === "buy" ? theme.up : theme.down;
+        const liq = s === "buy" ? liqBuy : liqSell;
+        return (
+          <View key={s} style={styles.sideBlock}>
+            <View style={styles.sideMeta}>
+              <Text style={[styles.sideMetaText, { color: theme.muted }]} numberOfLines={1}>
                 {`${t(s === "buy" ? "trade.maxLong" : "trade.maxShort")} ${maxBase > 0 ? maxBase.toFixed(szDec) : "—"}`}
               </Text>
               {liq > 0 ? (
-                <Text style={[styles.sideMax, { color: theme.faint }]} numberOfLines={1}>
+                <Text style={[styles.sideMetaText, { color: theme.faint }]} numberOfLines={1}>
                   {t("trade.liqShort", { price: formatPrice(liq) })}
                 </Text>
               ) : null}
-              <Pressable
-                disabled={!canSubmit || busy}
-                onPress={() => onSubmit(s)}
-                accessibilityRole="button"
-                testID={s === "buy" ? "submit-buy" : "submit-sell"}
-                style={[
-                  styles.submitBtn,
-                  canSubmit
-                    ? { backgroundColor: sideColor, borderColor: sideColor }
-                    : { backgroundColor: withAlpha(sideColor, 0.14), borderColor: withAlpha(sideColor, 0.45) },
-                ]}
-              >
-                {busy && pendingSide === s ? (
-                  <ActivityIndicator color={theme.bg} />
-                ) : (
-                  <Text
-                    style={[styles.submitText, { color: canSubmit ? theme.bg : withAlpha(sideColor, 0.85) }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.6}
-                  >
-                    {t(s === "buy" ? "trade.sideBuy" : "trade.sideSell")}
-                  </Text>
-                )}
-              </Pressable>
             </View>
-          );
-        })}
-      </View>
+            <Pressable
+              disabled={!canSubmit || busy}
+              onPress={() => onSubmit(s)}
+              accessibilityRole="button"
+              testID={s === "buy" ? "submit-buy" : "submit-sell"}
+              style={[
+                styles.submitBtn,
+                canSubmit
+                  ? { backgroundColor: sideColor, borderColor: sideColor }
+                  : { backgroundColor: withAlpha(sideColor, 0.14), borderColor: withAlpha(sideColor, 0.45) },
+              ]}
+            >
+              {busy && pendingSide === s ? (
+                <ActivityIndicator color={theme.bg} />
+              ) : (
+                <Text
+                  style={[styles.submitText, { color: canSubmit ? theme.bg : withAlpha(sideColor, 0.85) }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {t(s === "buy" ? "trade.sideBuy" : "trade.sideSell")}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        );
+      })}
         </View>
 
         <View style={styles.rightCol}>
@@ -1008,9 +1008,9 @@ const styles = StyleSheet.create({
   retry: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: "center" },
   retryText: { fontFamily: fonts.body.semibold, fontSize: 14 },
   belowMin: { fontFamily: fonts.body.regular, fontSize: 12, marginBottom: 8 },
-  sideButtons: { flexDirection: "row", gap: 10, marginTop: 8 },
-  sideCol: { flex: 1, alignItems: "stretch" },
-  sideMax: { fontFamily: fonts.mono.regular, fontSize: 10.5, textAlign: "center", marginBottom: 3 },
-  submitBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, marginTop: 4 },
+  sideBlock: { marginTop: 10 },
+  sideMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 5 },
+  sideMetaText: { fontFamily: fonts.mono.regular, fontSize: 11 },
+  submitBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   submitText: { fontFamily: fonts.display.bold, fontSize: 15, letterSpacing: 0.3 },
 });
