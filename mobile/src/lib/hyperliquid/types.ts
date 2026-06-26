@@ -112,8 +112,14 @@ export interface DetailInfoLike {
     endTime: number,
   ): Promise<RawCandle[]>;
 }
+/** Significant-figure aggregation level accepted by HL's l2Book (coarser book = fewer sig figs). */
+export type BookSigFigs = 2 | 3 | 4 | 5;
 export interface DetailSubsLike {
-  l2Book(coin: string, listener: (book: RawL2Book) => void): Promise<Subscription>;
+  l2Book(
+    coin: string,
+    listener: (book: RawL2Book) => void,
+    nSigFigs?: BookSigFigs,
+  ): Promise<Subscription>;
   trades(coin: string, listener: (trades: RawTrade[]) => void): Promise<Subscription>;
 }
 

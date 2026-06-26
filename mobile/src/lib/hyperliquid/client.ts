@@ -41,11 +41,12 @@ export function createDetailSubsClient(network: Network): DetailSubsLike {
   const subs = new SubscriptionClient({
     transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network) }),
   }) as unknown as {
-    l2Book(args: { coin: string }, cb: (b: unknown) => void): Promise<unknown>;
+    l2Book(args: { coin: string; nSigFigs?: number }, cb: (b: unknown) => void): Promise<unknown>;
     trades(args: { coin: string }, cb: (t: unknown) => void): Promise<unknown>;
   };
   return {
-    l2Book: (coin, listener) => subs.l2Book({ coin }, (b) => listener(b as never)) as never,
+    l2Book: (coin, listener, nSigFigs) =>
+      subs.l2Book({ coin, nSigFigs }, (b) => listener(b as never)) as never,
     trades: (coin, listener) => subs.trades({ coin }, (t) => listener(t as never)) as never,
   };
 }

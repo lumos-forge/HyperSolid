@@ -2,6 +2,7 @@ import type {
   Candle,
   DetailInfoLike,
   DetailSubsLike,
+  BookSigFigs,
   Orderbook,
   Subscription,
   Trade,
@@ -36,8 +37,12 @@ export class DetailDataService {
     return candles.map((c) => c.close);
   }
 
-  async subscribeOrderbook(coin: string, onBook: (ob: Orderbook) => void): Promise<Subscription> {
-    return this.subs.l2Book(coin, (raw) => onBook(normalizeOrderbook(raw)));
+  async subscribeOrderbook(
+    coin: string,
+    onBook: (ob: Orderbook) => void,
+    nSigFigs?: BookSigFigs,
+  ): Promise<Subscription> {
+    return this.subs.l2Book(coin, (raw) => onBook(normalizeOrderbook(raw)), nSigFigs);
   }
 
   async subscribeTrades(coin: string, onTrades: (trades: Trade[]) => void): Promise<Subscription> {

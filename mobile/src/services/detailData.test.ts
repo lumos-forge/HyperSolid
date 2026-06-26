@@ -31,10 +31,12 @@ class FakeSubs implements DetailSubsLike {
   bookListener: ((b: RawL2Book) => void) | null = null;
   tradeListener: ((t: RawTrade[]) => void) | null = null;
   unsub = jest.fn(async () => {});
-  l2Book = jest.fn(async (_c: string, cb: (b: RawL2Book) => void): Promise<Subscription> => {
-    this.bookListener = cb;
-    return { unsubscribe: this.unsub };
-  });
+  l2Book = jest.fn(
+    async (_c: string, cb: (b: RawL2Book) => void, _nSigFigs?: 2 | 3 | 4 | 5): Promise<Subscription> => {
+      this.bookListener = cb;
+      return { unsubscribe: this.unsub };
+    },
+  );
   trades = jest.fn(async (_c: string, cb: (t: RawTrade[]) => void): Promise<Subscription> => {
     this.tradeListener = cb;
     return { unsubscribe: this.unsub };
@@ -72,6 +74,13 @@ describe("DetailDataService", () => {
     await svc.subscribeOrderbook("BTC", (ob) => (received = ob.spread));
     subs.bookListener!(book);
     expect(received).toBe(1);
+  });
+
+  it("subscribeOrderbook forwards the nSigFigs aggregation level to l2Book", async () => {
+    const subs = new FakeSubs();
+    const svc = new DetailDataService(new FakeInfo(), subs);
+    await svc.subscribeOrderbook("BTC", () => {}, 4);
+    expect(subs.l2Book.mock.calls[0][2]).toBe(4);
   });
 
   it("subscribeTrades forwards normalized trades", async () => {
