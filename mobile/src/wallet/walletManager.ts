@@ -1,4 +1,4 @@
-import { generateWalletMnemonic, LocalWalletService } from "./localWallet";
+import { generateWalletMnemonic, isPrivateKey, LocalWalletService } from "./localWallet";
 import type { KeyStore, WalletService } from "./types";
 
 /**
@@ -25,6 +25,19 @@ export class WalletManager {
     const m = mnemonic.trim();
     const wallet = new LocalWalletService(m); // throws if invalid
     await this.store.saveMnemonic(m);
+    return wallet;
+  }
+
+  /**
+   * Import an existing raw private key (`0x` + 64 hex). The key is wrapped in the SAME
+   * biometric-gated, device-only secure store as a created mnemonic (only the secret shape differs).
+   * Throws on a malformed key.
+   */
+  async importPrivateKey(privateKey: string): Promise<WalletService> {
+    const pk = privateKey.trim();
+    if (!isPrivateKey(pk)) throw new Error("Invalid private key: expected 0x + 64 hex characters");
+    const wallet = new LocalWalletService(pk);
+    await this.store.saveMnemonic(pk);
     return wallet;
   }
 

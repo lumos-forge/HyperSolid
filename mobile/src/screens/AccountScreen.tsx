@@ -129,6 +129,7 @@ export function AccountScreen({
 
   const [busy, setBusy] = useState(false);
   const [mnemonicInput, setMnemonicInput] = useState("");
+  const [pkInput, setPkInput] = useState("");
   const [addrInput, setAddrInput] = useState("");
   const [newMnemonic, setNewMnemonic] = useState<string | null>(null);
   // Created phrases must pass a backup-confirmation quiz before dismissal; exported ones don't.
@@ -212,6 +213,20 @@ export function AccountScreen({
       requirePinSetup();
     } catch {
       Alert.alert(t("account.restoreFailed"), t("account.invalidMnemonic"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onImportPk() {
+    setBusy(true);
+    try {
+      const wallet = await manager.importPrivateKey(pkInput);
+      setLocalWallet(wallet);
+      setPkInput("");
+      requirePinSetup();
+    } catch {
+      Alert.alert(t("account.importPkFailed"), t("account.invalidPk"));
     } finally {
       setBusy(false);
     }
@@ -674,6 +689,25 @@ export function AccountScreen({
         <View style={styles.btnInner}>
           <Icon name="key" color={theme.brand} size={18} />
           <Text style={[styles.btnOutlineText, { color: theme.brand }]}>{t("account.restoreWalletBtn")}</Text>
+        </View>
+      </Pressable>
+
+      <SectionLabel theme={theme}>{t("account.importPk")}</SectionLabel>
+      <Text style={[styles.optionHint, { color: theme.faint }]}>{t("account.importPkHint")}</Text>
+      <TextInput
+        value={pkInput}
+        onChangeText={setPkInput}
+        placeholder={t("account.pkPlaceholder")}
+        placeholderTextColor={theme.faint}
+        autoCapitalize="none"
+        secureTextEntry
+        testID="import-pk-input"
+        style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
+      />
+      <Pressable disabled={busy} onPress={onImportPk} accessibilityRole="button" testID="import-pk-btn" style={[styles.btnOutline, { borderColor: theme.brand }]}>
+        <View style={styles.btnInner}>
+          <Icon name="key" color={theme.brand} size={18} />
+          <Text style={[styles.btnOutlineText, { color: theme.brand }]}>{t("account.importPkBtn")}</Text>
         </View>
       </Pressable>
 
