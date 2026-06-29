@@ -70,7 +70,7 @@ describe("TradeScreen", () => {
   beforeEach(() => {
     useEnvStore.setState({ network: "mainnet" });
     useMarketStore.setState({ tickers: [btc], loading: false, error: null });
-    useTradeStore.setState({ selectedCoin: null });
+    useTradeStore.setState({ selectedCoin: null, prefill: null });
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
     useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
     useToastStore.setState({ message: null, kind: "info" });
@@ -333,6 +333,21 @@ describe("TradeScreen", () => {
     expect(screen.getByText("ETH-USDC")).toBeTruthy();
     // store consumed once so manual coin changes aren't overridden later
     expect(useTradeStore.getState().selectedCoin).toBeNull();
+  });
+
+  it("applies a reduce-only size prefill when opened from Positions close/reduce", () => {
+    useMarketStore.setState({
+      tickers: [btc, { ...btc, coin: "ETH", midPx: 3000 }],
+      loading: false,
+      error: null,
+    });
+    useTradeStore.setState({ selectedCoin: "ETH", prefill: { size: "1.5", reduceOnly: true } });
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    expect(screen.getByText("ETH-USDC")).toBeTruthy();
+    expect(screen.getByTestId("field-size").props.value).toBe("1.5");
+    expect(screen.getByLabelText("reduce-only").props.accessibilityState.checked).toBe(true);
+    expect(useTradeStore.getState().prefill).toBeNull();
   });
 
   it("applies the selected leverage to the venue before placing the order", async () => {

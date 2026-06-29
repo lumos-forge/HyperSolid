@@ -133,6 +133,13 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
     if (!selectedCoin) return;
     setCoin(selectedCoin);
     setPriceEdited(false);
+    const pre = useTradeStore.getState().prefill;
+    if (pre) {
+      setSizeUnit("base");
+      setSize(pre.size);
+      setReduceOnly(pre.reduceOnly);
+      useTradeStore.getState().clearPrefill();
+    }
     useTradeStore.getState().clearSelectedCoin();
   }, [selectedCoin]);
 

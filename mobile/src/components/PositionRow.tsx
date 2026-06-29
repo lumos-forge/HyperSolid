@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import type { Position } from "../lib/hyperliquid/types";
 import type { ThemeTokens } from "../theme/tokens";
 import { SurfaceCard } from "./SurfaceCard";
@@ -9,8 +9,22 @@ import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
 import { useT } from "../i18n/useT";
 
+/** Trim float noise (e.g. 0.018550000001) to the position's own precision, then drop trailing zeros. */
+function fmtSize(size: number): string {
+  return Number(size.toFixed(6)).toString();
+}
+
 /** v8 position card: header (coin · PERP · Long/Short tag · ▲▼ PnL) + Size/Entry/Mark/ROE grid. */
-export function PositionRow({ position, theme }: { position: Position; theme: ThemeTokens }) {
+export function PositionRow({
+  position,
+  theme,
+  onTrade,
+}: {
+  position: Position;
+  theme: ThemeTokens;
+  /** Open the Trade ticket pre-filled for closing/reducing this position (size, reduce-only). */
+  onTrade?: (coin: string, size: string, reduceOnly: boolean) => void;
+}) {
   const t = useT();
   const up = position.unrealizedPnl >= 0;
   const dir = up ? theme.up : theme.down;
@@ -52,6 +66,29 @@ export function PositionRow({ position, theme }: { position: Position; theme: Th
           <ChangeText theme={theme} value={roe} size={12} showArrow={false} />
         </View>
       </View>
+      {onTrade ? (
+        <View style={[styles.actions, { borderTopColor: theme.line }]}>
+          {[25, 50, 75].map((pct) => (
+            <Pressable
+              key={pct}
+              accessibilityRole="button"
+              testID={`reduce-${position.coin}-${pct}`}
+              onPress={() => onTrade(position.coin, fmtSize((position.size * pct) / 100), true)}
+              style={[styles.reduceBtn, { borderColor: theme.lineStrong }]}
+            >
+              <Text style={[styles.reduceText, { color: theme.text }]}>{pct}%</Text>
+            </Pressable>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            testID={`close-${position.coin}`}
+            onPress={() => onTrade(position.coin, fmtSize(position.size), true)}
+            style={[styles.closeBtn, { backgroundColor: withAlpha(theme.brand, 0.16), borderColor: theme.brand }]}
+          >
+            <Text style={[styles.closeText, { color: theme.brand }]}>{t("positions.close")}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </SurfaceCard>
   );
 }
@@ -76,4 +113,9 @@ const styles = StyleSheet.create({
   cell: { flex: 1 },
   gl: { fontFamily: fonts.body.regular, fontSize: 10, marginBottom: 3 },
   gv: { fontFamily: fonts.mono.medium, fontSize: 12.5 },
+  actions: { flexDirection: "row", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
+  reduceBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: "center" },
+  reduceText: { fontFamily: fonts.mono.medium, fontSize: 12 },
+  closeBtn: { flex: 1.4, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: "center" },
+  closeText: { fontFamily: fonts.display.bold, fontSize: 12.5, letterSpacing: 0.3 },
 });

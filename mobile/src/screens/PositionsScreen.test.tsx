@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import { PositionsScreen } from "./PositionsScreen";
 import { useEnvStore } from "../state/envStore";
 import { useWalletStore } from "../state/walletStore";
+import { useTradeStore } from "../state/tradeStore";
 import { useLedgerStore } from "../state/ledgerStore";
 import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { PositionsService } from "../services/positionsData";
@@ -91,6 +92,35 @@ describe("PositionsScreen", () => {
     // switch to Orders
     fireEvent.press(screen.getByText(/Orders/));
     expect(screen.getByText(/Filled 2\/2/)).toBeTruthy();
+  });
+
+  it("Close hands a full reduce-only size to the Trade tab and navigates", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    useTradeStore.setState({ selectedCoin: null, prefill: null });
+    const navigate = jest.fn();
+    render(<PositionsScreen deps={fakeDeps} navigation={{ navigate }} />);
+    await waitFor(() => expect(screen.getByTestId("close-BTC")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("close-BTC"));
+    expect(useTradeStore.getState().selectedCoin).toBe("BTC");
+    expect(useTradeStore.getState().prefill).toEqual({ size: "0.5", reduceOnly: true });
+    expect(navigate).toHaveBeenCalledWith("Trade");
+  });
+
+  it("Reduce 50% prefills half the position size reduce-only", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    useTradeStore.setState({ selectedCoin: null, prefill: null });
+    render(<PositionsScreen deps={fakeDeps} navigation={{ navigate: jest.fn() }} />);
+    await waitFor(() => expect(screen.getByTestId("reduce-BTC-50")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("reduce-BTC-50"));
+    expect(useTradeStore.getState().prefill).toEqual({ size: "0.25", reduceOnly: true });
+  });
+
+  it("exposes a cancel control for each open order", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    await waitFor(() => expect(screen.getByText(/Orders/)).toBeTruthy());
+    fireEvent.press(screen.getByText(/Orders/));
+    expect(screen.getByTestId("cancel-7")).toBeTruthy();
   });
 
   it("offers a Place your first trade CTA when the connected local wallet has no positions", async () => {

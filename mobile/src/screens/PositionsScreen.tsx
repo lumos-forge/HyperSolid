@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useEnvStore } from "../state/envStore";
 import { useWalletStore } from "../state/walletStore";
+import { useTradeStore } from "../state/tradeStore";
+import { useMarketStore } from "../state/marketStore";
 import { PositionsService } from "../services/positionsData";
 import { FillsService } from "../services/fillsData";
 import { OrdersService } from "../services/ordersData";
@@ -10,7 +12,11 @@ import {
   createPositionsInfoClient,
   createFillsInfoClient,
   createOrdersInfoClient,
+  createExchangeClient,
 } from "../lib/hyperliquid/client";
+import { buildAssetIndex } from "../lib/hyperliquid/assetId";
+import { ExchangeService } from "../services/exchange";
+import type { LocalWalletService } from "../wallet/localWallet";
 import { useViewOnlyPortfolio, isValidAddress } from "../hooks/useViewOnlyPortfolio";
 import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
 import { PositionRow } from "../components/PositionRow";
@@ -46,6 +52,8 @@ export function PositionsScreen({
   const network = useEnvStore((s) => s.network);
   const walletAddress = useWalletStore((s) => s.address);
   const mode = useWalletStore((s) => s.mode);
+  const wallet = useWalletStore((s) => s.wallet);
+  const tickers = useMarketStore((s) => s.tickers);
 
   const services = useMemo<PositionsScreenDeps>(
     () =>
@@ -79,6 +87,50 @@ export function PositionsScreen({
   useEffect(() => {
     if (mode !== "none" && walletAddress && isValidAddress(walletAddress)) runQuery(walletAddress);
   }, [mode, walletAddress, runQuery]);
+
+  // Close/Reduce: hand the coin + reduce-only size to the Trade tab, which renders the full ticket
+  // (leverage, order type, review). The user picks the closing side there — no blind market orders.
+  const openTradeFor = useCallback(
+    (coin: string, size: string) => {
+      useTradeStore.getState().openTrade(coin, { size, reduceOnly: true });
+      navigation?.navigate("Trade");
+    },
+    [navigation],
+  );
+
+  // Cancel an open order. Builds a local exchange service (signing wallet + asset index from the
+  // market store) so it works even before the Trade tab has been visited; reloads orders on success.
+  const cancelOrder = useCallback(
+    async (order: OpenOrder) => {
+      const side = t(order.side === "buy" ? "common.buy" : "common.sell");
+      Alert.alert(
+        t("positions.cancelOrderTitle"),
+        t("positions.cancelOrderBody", { coin: order.coin, side, sz: order.sz, px: order.limitPx }),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("common.confirm"),
+            style: "destructive",
+            onPress: async () => {
+              const local = wallet as Partial<LocalWalletService> | null;
+              if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || tickers.length === 0) {
+                Alert.alert(t("positions.cancelFailed"));
+                return;
+              }
+              const index = buildAssetIndex({
+                universe: tickers.map((tk) => ({ name: tk.coin, szDecimals: tk.szDecimals, maxLeverage: tk.maxLeverage })),
+              });
+              const svc = new ExchangeService(createExchangeClient(network, local.getViemAccount()), index);
+              const res = await svc.cancelOrder(order.coin, order.oid);
+              if (res.ok) runQuery(walletAddress ?? "");
+              else Alert.alert(t("positions.cancelFailed"), res.error);
+            },
+          },
+        ],
+      );
+    },
+    [wallet, mode, tickers, network, runQuery, walletAddress, t],
+  );
 
   const tabs: Array<[Tab, TranslationKey, number]> = [
     ["positions", "tab.positions", portfolio?.positions.length ?? 0],
@@ -152,7 +204,9 @@ export function PositionsScreen({
                 ) : null}
               </View>
             ) : (
-              portfolio.positions.map((p) => <PositionRow key={p.coin} position={p} theme={theme} />)
+              portfolio.positions.map((p) => (
+                <PositionRow key={p.coin} position={p} theme={theme} onTrade={openTradeFor} />
+              ))
             )
           ) : null}
 
@@ -168,7 +222,7 @@ export function PositionsScreen({
             orders.length === 0 ? (
               <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyOrders")}</Text>
             ) : (
-              orders.map((o) => <OrderRow key={`${o.oid}`} order={o} theme={theme} />)
+              orders.map((o) => <OrderRow key={`${o.oid}`} order={o} theme={theme} onCancel={cancelOrder} />)
             )
           ) : null}
         </>
@@ -262,7 +316,7 @@ function FillRow({ fill, theme }: { fill: Fill; theme: ThemeTokens }) {
   );
 }
 
-function OrderRow({ order, theme }: { order: OpenOrder; theme: ThemeTokens }) {
+function OrderRow({ order, theme, onCancel }: { order: OpenOrder; theme: ThemeTokens; onCancel?: (o: OpenOrder) => void }) {
   const t = useT();
   const sideColor = order.side === "buy" ? theme.up : theme.down;
   return (
@@ -276,8 +330,20 @@ function OrderRow({ order, theme }: { order: OpenOrder; theme: ThemeTokens }) {
           {t("positions.filled", { filled: order.sz, total: order.origSz })}
         </Text>
       </View>
-      <View style={styles.right}>
-        <Text style={[styles.rowVal, { color: theme.text }]}>{order.limitPx}</Text>
+      <View style={styles.rowRight}>
+        <View style={styles.right}>
+          <Text style={[styles.rowVal, { color: theme.text }]}>{order.limitPx}</Text>
+        </View>
+        {onCancel ? (
+          <Pressable
+            accessibilityRole="button"
+            testID={`cancel-${order.oid}`}
+            onPress={() => onCancel(order)}
+            style={[styles.cancelBtn, { borderColor: theme.lineStrong }]}
+          >
+            <Text style={[styles.cancelText, { color: theme.down }]}>{t("positions.cancelOrder")}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -308,5 +374,8 @@ const styles = StyleSheet.create({
   rowCoin: { fontFamily: fonts.display.bold, fontSize: 14 },
   rowSub: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 3 },
   right: { alignItems: "flex-end" },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 7, borderWidth: 1 },
+  cancelText: { fontFamily: fonts.display.bold, fontSize: 11.5, letterSpacing: 0.3 },
   rowVal: { fontFamily: fonts.mono.medium, fontSize: 13 },
 });
