@@ -85,6 +85,11 @@ export const messages = {
     "positions.cancelOrderTitle": "Cancel order?",
     "positions.cancelOrderBody": "{coin} {side} {sz} @ {px}",
     "positions.cancelFailed": "Cancel failed",
+    "positions.closeTitle": "Market close {coin}?",
+    "positions.reduceTitle": "Reduce {coin} by {pct}%?",
+    "positions.closeBody": "{action} {sz} {coin} at market — reduce-only, ≤5% slippage",
+    "positions.closeFailed": "Close failed",
+    "positions.closeSubmitted": "Close order submitted",
 
     "trade.typeLimit": "Limit",
     "trade.typeMarket": "Market",
@@ -442,6 +447,11 @@ export const messages = {
     "positions.cancelOrderTitle": "撤销委托？",
     "positions.cancelOrderBody": "{coin} {side} {sz} @ {px}",
     "positions.cancelFailed": "撤单失败",
+    "positions.closeTitle": "市价平仓 {coin}？",
+    "positions.reduceTitle": "减仓 {coin} {pct}%？",
+    "positions.closeBody": "{action} {sz} {coin}（市价 · 只减仓 · 滑点≤5%）",
+    "positions.closeFailed": "平仓失败",
+    "positions.closeSubmitted": "平仓委托已提交",
 
     "trade.typeLimit": "限价",
     "trade.typeMarket": "市价",

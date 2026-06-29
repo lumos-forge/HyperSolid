@@ -46,6 +46,7 @@ import {
   clampSizeInput,
   TAKER_FEE_RATE,
   MAKER_FEE_RATE,
+  marketSlippagePrice,
   type TicketOrderType,
   type SizeUnit,
 } from "../lib/hyperliquid/orderForm";
@@ -75,9 +76,8 @@ function bboModeKey(mode: BboMode): TranslationKey {
  * Worst-case bound for a "market" order: it is sent as an IOC limit at mid ± this %, so it fills at
  * the best available price while capping slippage. The user never types a price for market orders.
  */
-const MARKET_SLIPPAGE_PCT = 0.05;
 function marketPrice(mid: number, side: OrderSide): number {
-  return side === "buy" ? mid * (1 + MARKET_SLIPPAGE_PCT) : mid * (1 - MARKET_SLIPPAGE_PCT);
+  return marketSlippagePrice(mid, side);
 }
 
 export function TradeScreen({ navigation }: { navigation?: { navigate: (name: string) => void } }) {

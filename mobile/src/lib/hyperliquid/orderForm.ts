@@ -65,6 +65,17 @@ export const TWAP_MAX_MINUTES = 1440;
 export const TAKER_FEE_RATE = 0.00045;
 export const MAKER_FEE_RATE = 0.00015;
 
+/** Default slippage cap for a market order's IOC limit price (5%). */
+export const MARKET_SLIPPAGE_PCT = 0.05;
+
+/**
+ * Worst-case bound for a "market" order: it is sent as an IOC limit at mid ± pct, so it fills at the
+ * best available price while capping slippage. Buy bounds above mid, sell below — no typed price.
+ */
+export function marketSlippagePrice(mid: number, side: "buy" | "sell", pct = MARKET_SLIPPAGE_PCT): number {
+  return side === "buy" ? mid * (1 + pct) : mid * (1 - pct);
+}
+
 export type SizeUnit = "base" | "quote";
 
 /**

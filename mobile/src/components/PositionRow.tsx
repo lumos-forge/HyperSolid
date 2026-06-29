@@ -9,21 +9,16 @@ import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
 import { useT } from "../i18n/useT";
 
-/** Trim float noise (e.g. 0.018550000001) to the position's own precision, then drop trailing zeros. */
-function fmtSize(size: number): string {
-  return Number(size.toFixed(6)).toString();
-}
-
 /** v8 position card: header (coin · PERP · Long/Short tag · ▲▼ PnL) + Size/Entry/Mark/ROE grid. */
 export function PositionRow({
   position,
   theme,
-  onTrade,
+  onClose,
 }: {
   position: Position;
   theme: ThemeTokens;
-  /** Open the Trade ticket pre-filled for closing/reducing this position (size, reduce-only). */
-  onTrade?: (coin: string, size: string, reduceOnly: boolean) => void;
+  /** One-tap market reduce-only close (fraction = 25/50/75/100% of size); confirmed by caller. */
+  onClose?: (position: Position, fraction: number) => void;
 }) {
   const t = useT();
   const up = position.unrealizedPnl >= 0;
@@ -66,14 +61,14 @@ export function PositionRow({
           <ChangeText theme={theme} value={roe} size={12} showArrow={false} />
         </View>
       </View>
-      {onTrade ? (
+      {onClose ? (
         <View style={[styles.actions, { borderTopColor: theme.line }]}>
           {[25, 50, 75].map((pct) => (
             <Pressable
               key={pct}
               accessibilityRole="button"
               testID={`reduce-${position.coin}-${pct}`}
-              onPress={() => onTrade(position.coin, fmtSize((position.size * pct) / 100), true)}
+              onPress={() => onClose(position, pct)}
               style={[styles.reduceBtn, { borderColor: theme.lineStrong }]}
             >
               <Text style={[styles.reduceText, { color: theme.text }]}>{pct}%</Text>
@@ -82,7 +77,7 @@ export function PositionRow({
           <Pressable
             accessibilityRole="button"
             testID={`close-${position.coin}`}
-            onPress={() => onTrade(position.coin, fmtSize(position.size), true)}
+            onPress={() => onClose(position, 100)}
             style={[styles.closeBtn, { backgroundColor: withAlpha(theme.brand, 0.16), borderColor: theme.brand }]}
           >
             <Text style={[styles.closeText, { color: theme.brand }]}>{t("positions.close")}</Text>

@@ -1,15 +1,38 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
 import { PositionsScreen } from "./PositionsScreen";
 import { useEnvStore } from "../state/envStore";
 import { useWalletStore } from "../state/walletStore";
-import { useTradeStore } from "../state/tradeStore";
+import { useMarketStore } from "../state/marketStore";
 import { useLedgerStore } from "../state/ledgerStore";
 import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { PositionsService } from "../services/positionsData";
 import type { FillsService } from "../services/fillsData";
 import type { OrdersService } from "../services/ordersData";
-import type { PortfolioSnapshot, Fill, OpenOrder } from "../lib/hyperliquid/types";
+import type { PortfolioSnapshot, Fill, OpenOrder, MarketTicker } from "../lib/hyperliquid/types";
+
+const mockPlaceOrder = jest.fn();
+const mockCancelOrder = jest.fn();
+jest.mock("../services/exchange", () => ({
+  ExchangeService: jest.fn().mockImplementation(() => ({ placeOrder: mockPlaceOrder, cancelOrder: mockCancelOrder })),
+}));
+jest.mock("../lib/hyperliquid/client", () => ({
+  createExchangeClient: jest.fn(() => ({})),
+  createPositionsInfoClient: jest.fn(() => ({})),
+  createFillsInfoClient: jest.fn(() => ({})),
+  createOrdersInfoClient: jest.fn(() => ({})),
+}));
+
+const localWallet = { getViemAccount: () => ({}), getAddress: () => ADDR };
+const ticker = (coin: string, midPx: number): MarketTicker =>
+  ({ coin, midPx, szDecimals: 4, maxLeverage: 20 } as MarketTicker);
+
+/** Tap a confirm dialog's second (Confirm) button. */
+function confirmAlert() {
+  const last = (Alert.alert as jest.Mock).mock.calls.at(-1);
+  return last?.[2]?.[1]?.onPress?.();
+}
 
 const ADDR = "0x" + "a".repeat(40);
 
@@ -36,7 +59,11 @@ describe("PositionsScreen", () => {
   beforeEach(() => {
     useEnvStore.setState({ network: "mainnet" });
     useWalletStore.setState({ mode: "local", wallet: null, address: null });
+    useMarketStore.setState({ tickers: [ticker("BTC", 60000), ticker("SOL", 200)], loading: false, error: null });
     useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
+    mockPlaceOrder.mockReset();
+    mockCancelOrder.mockReset();
+    jest.spyOn(Alert, "alert").mockClear();
     (fakeDeps.positions.loadPortfolio as jest.Mock).mockClear();
     (fakeDeps.fills.loadRecent as jest.Mock).mockClear();
     (fakeDeps.orders.loadOpenOrders as jest.Mock).mockClear();
@@ -94,33 +121,45 @@ describe("PositionsScreen", () => {
     expect(screen.getByText(/Filled 2\/2/)).toBeTruthy();
   });
 
-  it("Close hands a full reduce-only size to the Trade tab and navigates", async () => {
-    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
-    useTradeStore.setState({ selectedCoin: null, prefill: null });
-    const navigate = jest.fn();
-    render(<PositionsScreen deps={fakeDeps} navigation={{ navigate }} />);
+  it("Close places a full-size reduce-only market order opposite a long, after confirm", async () => {
+    mockPlaceOrder.mockResolvedValue({ ok: true, cloid: ("0x" + "d".repeat(32)) as `0x${string}` });
+    useWalletStore.setState({ mode: "local", wallet: localWallet as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
     await waitFor(() => expect(screen.getByTestId("close-BTC")).toBeTruthy());
     fireEvent.press(screen.getByTestId("close-BTC"));
-    expect(useTradeStore.getState().selectedCoin).toBe("BTC");
-    expect(useTradeStore.getState().prefill).toEqual({ size: "0.5", reduceOnly: true });
-    expect(navigate).toHaveBeenCalledWith("Trade");
+    await confirmAlert();
+    expect(mockPlaceOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ coin: "BTC", side: "sell", size: 0.5, reduceOnly: true, market: true, price: 57000 }),
+    );
   });
 
-  it("Reduce 50% prefills half the position size reduce-only", async () => {
-    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
-    useTradeStore.setState({ selectedCoin: null, prefill: null });
-    render(<PositionsScreen deps={fakeDeps} navigation={{ navigate: jest.fn() }} />);
+  it("Reduce 50% places a half-size reduce-only market order", async () => {
+    mockPlaceOrder.mockResolvedValue({ ok: true, cloid: ("0x" + "d".repeat(32)) as `0x${string}` });
+    useWalletStore.setState({ mode: "local", wallet: localWallet as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
     await waitFor(() => expect(screen.getByTestId("reduce-BTC-50")).toBeTruthy());
     fireEvent.press(screen.getByTestId("reduce-BTC-50"));
-    expect(useTradeStore.getState().prefill).toEqual({ size: "0.25", reduceOnly: true });
+    await confirmAlert();
+    expect(mockPlaceOrder).toHaveBeenCalledWith(expect.objectContaining({ side: "sell", size: 0.25, reduceOnly: true, market: true }));
   });
 
-  it("exposes a cancel control for each open order", async () => {
-    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+  it("does not place a market close until the user confirms", async () => {
+    useWalletStore.setState({ mode: "local", wallet: localWallet as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    await waitFor(() => expect(screen.getByTestId("close-BTC")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("close-BTC"));
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+  });
+
+  it("exposes a cancel control that cancels the order on confirm", async () => {
+    mockCancelOrder.mockResolvedValue({ ok: true, cloid: "0x" as `0x${string}` });
+    useWalletStore.setState({ mode: "local", wallet: localWallet as never, address: ADDR });
     render(<PositionsScreen deps={fakeDeps} />);
     await waitFor(() => expect(screen.getByText(/Orders/)).toBeTruthy());
     fireEvent.press(screen.getByText(/Orders/));
-    expect(screen.getByTestId("cancel-7")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("cancel-7"));
+    await confirmAlert();
+    expect(mockCancelOrder).toHaveBeenCalledWith("SOL", 7);
   });
 
   it("offers a Place your first trade CTA when the connected local wallet has no positions", async () => {

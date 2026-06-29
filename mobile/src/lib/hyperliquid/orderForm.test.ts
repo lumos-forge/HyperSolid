@@ -6,6 +6,7 @@ import {
   clampSizeInput,
   TAKER_FEE_RATE,
   MAKER_FEE_RATE,
+  marketSlippagePrice,
   type TicketOrderType,
 } from "./orderForm";
 
@@ -77,5 +78,17 @@ describe("fee rates", () => {
   it("match the HL base perp tier", () => {
     expect(TAKER_FEE_RATE).toBeCloseTo(0.00045);
     expect(MAKER_FEE_RATE).toBeCloseTo(0.00015);
+  });
+});
+
+describe("marketSlippagePrice", () => {
+  it("bounds a buy above mid by the slippage pct", () => {
+    expect(marketSlippagePrice(100, "buy", 0.05)).toBeCloseTo(105);
+  });
+  it("bounds a sell below mid by the slippage pct", () => {
+    expect(marketSlippagePrice(100, "sell", 0.05)).toBeCloseTo(95);
+  });
+  it("defaults to a 5% cap", () => {
+    expect(marketSlippagePrice(200, "buy")).toBeCloseTo(210);
   });
 });

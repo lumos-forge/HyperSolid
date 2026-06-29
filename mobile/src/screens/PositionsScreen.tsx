@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from "rea
 import { useTheme } from "../theme/useTheme";
 import { useEnvStore } from "../state/envStore";
 import { useWalletStore } from "../state/walletStore";
-import { useTradeStore } from "../state/tradeStore";
+import { useToastStore } from "../state/toastStore";
 import { useMarketStore } from "../state/marketStore";
 import { PositionsService } from "../services/positionsData";
 import { FillsService } from "../services/fillsData";
@@ -15,6 +15,7 @@ import {
   createExchangeClient,
 } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
+import { marketSlippagePrice } from "../lib/hyperliquid/orderForm";
 import { ExchangeService } from "../services/exchange";
 import type { LocalWalletService } from "../wallet/localWallet";
 import { useViewOnlyPortfolio, isValidAddress } from "../hooks/useViewOnlyPortfolio";
@@ -30,7 +31,7 @@ import { withAlpha } from "../theme/color";
 import { useT } from "../i18n/useT";
 import type { TranslationKey } from "../i18n/messages";
 import type { ThemeTokens } from "../theme/tokens";
-import type { Fill, OpenOrder, AccountSummary } from "../lib/hyperliquid/types";
+import type { Fill, OpenOrder, AccountSummary, Position } from "../lib/hyperliquid/types";
 
 export interface PositionsScreenDeps {
   positions: PositionsService;
@@ -88,18 +89,50 @@ export function PositionsScreen({
     if (mode !== "none" && walletAddress && isValidAddress(walletAddress)) runQuery(walletAddress);
   }, [mode, walletAddress, runQuery]);
 
-  // Close/Reduce: hand the coin + reduce-only size to the Trade tab, which renders the full ticket
-  // (leverage, order type, review). The user picks the closing side there — no blind market orders.
-  const openTradeFor = useCallback(
-    (coin: string, size: string) => {
-      useTradeStore.getState().openTrade(coin, { size, reduceOnly: true });
-      navigation?.navigate("Trade");
+  // Build a signing exchange service on demand (signing wallet + asset index from the market store)
+  // so close/cancel work even before the Trade tab is visited. Returns null if anything's missing.
+  const buildSvc = useCallback(() => {
+    const local = wallet as Partial<LocalWalletService> | null;
+    if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || tickers.length === 0) return null;
+    const index = buildAssetIndex({
+      universe: tickers.map((tk) => ({ name: tk.coin, szDecimals: tk.szDecimals, maxLeverage: tk.maxLeverage })),
+    });
+    return new ExchangeService(createExchangeClient(network, local.getViemAccount()), index);
+  }, [wallet, mode, tickers, network]);
+
+  // One-tap market close/reduce: reduce-only IOC at mid ± 5%, opposite the position side. Confirm
+  // first; for a limit close the user goes to the Trade tab. Reloads on success.
+  const marketClose = useCallback(
+    (p: Position, fraction: number) => {
+      const side = p.side === "long" ? "sell" : "buy";
+      const size = Number(((p.size * fraction) / 100).toFixed(6));
+      const action = t(side === "buy" ? "common.buy" : "common.sell");
+      const title = fraction >= 100 ? t("positions.closeTitle", { coin: p.coin }) : t("positions.reduceTitle", { coin: p.coin, pct: fraction });
+      Alert.alert(title, t("positions.closeBody", { action, sz: size, coin: p.coin }), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.confirm"),
+          style: "destructive",
+          onPress: async () => {
+            const svc = buildSvc();
+            const mid = tickers.find((tk) => tk.coin === p.coin)?.midPx ?? 0;
+            if (!svc || mid <= 0 || size <= 0) {
+              Alert.alert(t("positions.closeFailed"));
+              return;
+            }
+            const res = await svc.placeOrder({ coin: p.coin, side, size, price: marketSlippagePrice(mid, side), reduceOnly: true, market: true });
+            if (res.ok) {
+              useToastStore.getState().show(t("positions.closeSubmitted"), "success");
+              runQuery(walletAddress ?? "");
+            } else Alert.alert(t("positions.closeFailed"), res.error);
+          },
+        },
+      ]);
     },
-    [navigation],
+    [buildSvc, tickers, runQuery, walletAddress, t],
   );
 
-  // Cancel an open order. Builds a local exchange service (signing wallet + asset index from the
-  // market store) so it works even before the Trade tab has been visited; reloads orders on success.
+  // Cancel an open order via the same exchange service; reloads orders on success.
   const cancelOrder = useCallback(
     async (order: OpenOrder) => {
       const side = t(order.side === "buy" ? "common.buy" : "common.sell");
@@ -112,15 +145,11 @@ export function PositionsScreen({
             text: t("common.confirm"),
             style: "destructive",
             onPress: async () => {
-              const local = wallet as Partial<LocalWalletService> | null;
-              if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || tickers.length === 0) {
+              const svc = buildSvc();
+              if (!svc) {
                 Alert.alert(t("positions.cancelFailed"));
                 return;
               }
-              const index = buildAssetIndex({
-                universe: tickers.map((tk) => ({ name: tk.coin, szDecimals: tk.szDecimals, maxLeverage: tk.maxLeverage })),
-              });
-              const svc = new ExchangeService(createExchangeClient(network, local.getViemAccount()), index);
               const res = await svc.cancelOrder(order.coin, order.oid);
               if (res.ok) runQuery(walletAddress ?? "");
               else Alert.alert(t("positions.cancelFailed"), res.error);
@@ -129,7 +158,7 @@ export function PositionsScreen({
         ],
       );
     },
-    [wallet, mode, tickers, network, runQuery, walletAddress, t],
+    [buildSvc, runQuery, walletAddress, t],
   );
 
   const tabs: Array<[Tab, TranslationKey, number]> = [
@@ -205,7 +234,7 @@ export function PositionsScreen({
               </View>
             ) : (
               portfolio.positions.map((p) => (
-                <PositionRow key={p.coin} position={p} theme={theme} onTrade={openTradeFor} />
+                <PositionRow key={p.coin} position={p} theme={theme} onClose={marketClose} />
               ))
             )
           ) : null}
