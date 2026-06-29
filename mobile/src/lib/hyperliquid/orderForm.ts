@@ -67,6 +67,23 @@ export const MAKER_FEE_RATE = 0.00015;
 
 export type SizeUnit = "base" | "quote";
 
+/**
+ * Sanitize a typed size string: keep digits + a single dot and cap fractional digits to `maxDecimals`
+ * (base = the coin's szDecimals, quote/USDC = 2). Empty/partial input ("", ".") passes through so the
+ * user can keep typing; never produces NaN. Does not strip a trailing dot.
+ */
+export function clampSizeInput(text: string, maxDecimals: number): string {
+  let cleaned = text.replace(/[^0-9.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot !== -1) {
+    cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+  }
+  if (maxDecimals <= 0) return cleaned.split(".")[0];
+  const dot = cleaned.indexOf(".");
+  if (dot === -1) return cleaned;
+  return cleaned.slice(0, dot + 1 + maxDecimals);
+}
+
 /** Convert a size typed in base (coin) or quote (USDC) units to a base-coin size. */
 export function toBaseSize(unit: SizeUnit, value: number, price: number): number {
   if (!(value > 0)) return 0;

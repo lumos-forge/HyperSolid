@@ -124,9 +124,8 @@ describe("TradeScreen", () => {
     expect(mockPlaceOrder).not.toHaveBeenCalled();
   });
 
-  it("surfaces a precision (sub-lot) rejection as a normalized Chinese message", () => {
-    // LOWP has szDecimals 0 (integer lots): ordering 0.4 units rounds to 0 -> sizeRejected,
-    // even though notional ($12) passes the $10 gate, so validateOrder catches it in Chinese.
+  it("clamps a sub-lot size at input so a 0-decimal market can't be over-typed", () => {
+    // LOWP has szDecimals 0 (integer lots): typing 0.4 clamps to "0" → no valid order to submit.
     useMarketStore.setState({
       tickers: [btc, { ...btc, coin: "LOWP", midPx: 30, szDecimals: 0 }],
       loading: false,
@@ -137,9 +136,9 @@ describe("TradeScreen", () => {
     selectCoin("LOWP");
     fireEvent.changeText(screen.getByTestId("field-size"), "0.4");
     fireEvent.changeText(screen.getByTestId("field-price"), "30");
+    expect(screen.getByTestId("field-size").props.value).toBe("0");
     fireEvent.press(screen.getByTestId("submit-buy"));
     expect(mockPlaceOrder).not.toHaveBeenCalled();
-    expect(Alert.alert).toHaveBeenCalledWith("Invalid order", expect.stringContaining("size"));
   });
 
   it("shows a Chinese success alert with the cloid", async () => {
@@ -674,7 +673,7 @@ describe("TradeScreen", () => {
     expect(Alert.alert).toHaveBeenCalledWith("Invalid order", expect.stringContaining("wrong side"));
   });
 
-  it("lot-rounds the size to szDecimals on submit (BTC 5dp)", async () => {
+  it("clamps the typed size to szDecimals at input (BTC 5dp) before submit", async () => {
     mockPlaceOrder.mockResolvedValue({
       ok: true,
       cloid: ("0x" + "a".repeat(32)) as `0x${string}`,
@@ -684,8 +683,9 @@ describe("TradeScreen", () => {
     render(<TradeScreen />);
     fireEvent.changeText(screen.getByTestId("field-price"), "60000");
     fireEvent.changeText(screen.getByTestId("field-size"), "0.0123456");
+    expect(screen.getByTestId("field-size").props.value).toBe("0.01234");
     fireEvent.press(screen.getByTestId("submit-buy"));
     await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalled());
-    expect(mockPlaceOrder.mock.calls[0][0].size).toBeCloseTo(0.0123456, 7);
+    expect(mockPlaceOrder.mock.calls[0][0].size).toBeCloseTo(0.01234, 7);
   });
 });

@@ -3,10 +3,27 @@ import {
   toBaseSize,
   requiredMargin,
   buildScaleLevels,
+  clampSizeInput,
   TAKER_FEE_RATE,
   MAKER_FEE_RATE,
   type TicketOrderType,
 } from "./orderForm";
+
+describe("clampSizeInput", () => {
+  it("caps fractional digits to maxDecimals", () => {
+    expect(clampSizeInput("0.123456789", 5)).toBe("0.12345");
+    expect(clampSizeInput("12.349", 2)).toBe("12.34");
+  });
+  it("integer-only when maxDecimals is 0", () => {
+    expect(clampSizeInput("12.34", 0)).toBe("12");
+  });
+  it("strips non-numeric chars and extra dots, keeps a trailing dot", () => {
+    expect(clampSizeInput("1a2.b3", 4)).toBe("12.3");
+    expect(clampSizeInput("1.2.3", 4)).toBe("1.23");
+    expect(clampSizeInput("0.", 5)).toBe("0.");
+    expect(clampSizeInput("", 5)).toBe("");
+  });
+});
 
 describe("orderTypeShape", () => {
   const cases: Array<[TicketOrderType, boolean, boolean, boolean, "tp" | "sl"]> = [

@@ -42,6 +42,7 @@ import {
   orderTypeShape,
   toBaseSize,
   requiredMargin,
+  clampSizeInput,
   TAKER_FEE_RATE,
   MAKER_FEE_RATE,
   type TicketOrderType,
@@ -196,11 +197,13 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
   // active size unit) onto the size field, and the "Max" row shows the base ceiling.
   const maxBase = available && refPrice > 0 ? (available * leverage) / refPrice : 0;
   const maxInUnit = sizeUnit === "quote" ? (available ?? 0) * leverage : maxBase;
+  // Displayed size precision: base sizes use the asset's lot decimals; USDC notional uses 2.
+  const sizeDecimals = sizeUnit === "quote" ? 2 : szDec;
   const sizePct = maxInUnit > 0 ? Math.min(100, ((Number(size) || 0) / maxInUnit) * 100) : 0;
   function onSlide(pct: number) {
     if (maxInUnit <= 0) return;
     clearRetry();
-    setSize(((pct / 100) * maxInUnit).toString());
+    setSize(((pct / 100) * maxInUnit).toFixed(sizeDecimals));
   }
 
   // Editing the order means a new intent — drop any retry cloid / uncertain notice.
@@ -667,7 +670,7 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
       <FloatingField
         label={t("trade.sizeLabel")}
         value={size}
-        onChange={edit(setSize)}
+        onChange={edit((v: string) => setSize(clampSizeInput(v, sizeDecimals)))}
         theme={theme}
         testID="field-size"
         rightInside={
