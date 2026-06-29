@@ -75,6 +75,6 @@ const styles = StyleSheet.create({
   },
   main: { flex: 1, height: "100%", position: "relative", justifyContent: "center" },
   label: { position: "absolute", top: 0, left: 0, right: 0, textAlign: "center", fontFamily: fonts.body.regular },
-  input: { fontFamily: fonts.mono.bold, fontSize: 18, textAlign: "center", padding: 0, marginTop: 7 },
+  input: { fontFamily: fonts.mono.bold, fontSize: 16, textAlign: "center", padding: 0, marginTop: 7 },
   divider: { width: 1, height: 26, marginHorizontal: 10 },
 });

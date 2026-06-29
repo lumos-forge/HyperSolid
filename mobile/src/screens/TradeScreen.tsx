@@ -948,7 +948,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     marginBottom: 12,
   },
-  selectFieldText: { fontFamily: fonts.display.bold, fontSize: 18 },
+  selectFieldText: { fontFamily: fonts.display.bold, fontSize: 16 },
   selectChevron: { position: "absolute", right: 12 },
   unitTrigger: { flexDirection: "row", alignItems: "center", gap: 4 },
   unitTriggerText: { fontFamily: fonts.display.bold, fontSize: 12.5 },
