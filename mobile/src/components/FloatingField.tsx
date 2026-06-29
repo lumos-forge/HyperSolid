@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 50,
+    height: 46,
     marginBottom: 12,
   },
   main: { flex: 1, height: "100%", position: "relative", justifyContent: "center" },
