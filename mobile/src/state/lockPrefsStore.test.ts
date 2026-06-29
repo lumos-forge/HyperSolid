@@ -12,7 +12,7 @@ const setItem = SecureStore.setItemAsync as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useLockPrefsStore.setState({ biometricEnabled: false, hydrated: false });
+  useLockPrefsStore.setState({ biometricEnabled: false, autoLockMinutes: 5, hydrated: false });
 });
 
 describe("lockPrefsStore", () => {
@@ -41,5 +41,24 @@ describe("lockPrefsStore", () => {
     await useLockPrefsStore.getState().setBiometricEnabled(true);
     expect(useLockPrefsStore.getState().biometricEnabled).toBe(true);
     expect(setItem).toHaveBeenCalledWith("hypersolid.lock.biometricEnabled", "1", expect.anything());
+  });
+
+  it("hydrates the auto-lock timeout, defaulting to 5 minutes", async () => {
+    getItem.mockImplementation(async (k: string) => (k === "hypersolid.lock.autoLockMinutes" ? "1" : null));
+    await useLockPrefsStore.getState().hydrate();
+    expect(useLockPrefsStore.getState().autoLockMinutes).toBe(1);
+  });
+
+  it("keeps the default timeout when none persisted", async () => {
+    getItem.mockResolvedValue(null);
+    await useLockPrefsStore.getState().hydrate();
+    expect(useLockPrefsStore.getState().autoLockMinutes).toBe(5);
+  });
+
+  it("persists the auto-lock timeout", async () => {
+    setItem.mockResolvedValue(undefined);
+    await useLockPrefsStore.getState().setAutoLockMinutes(15);
+    expect(useLockPrefsStore.getState().autoLockMinutes).toBe(15);
+    expect(setItem).toHaveBeenCalledWith("hypersolid.lock.autoLockMinutes", "15", expect.anything());
   });
 });

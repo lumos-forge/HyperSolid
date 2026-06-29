@@ -56,4 +56,19 @@ describe("PinStore", () => {
     expect(await s.hasPin()).toBe(false);
     expect(await s.verify("123456")).toEqual({ ok: false, lockedOut: false, remaining: MAX_PIN_ATTEMPTS });
   });
+
+  it("change() swaps the PIN after verifying the old one", async () => {
+    const s = store();
+    await s.setPin("111111");
+    expect(await s.change("111111", "222222")).toEqual({ ok: true });
+    expect(await s.verify("222222")).toEqual({ ok: true });
+  });
+
+  it("change() rejects a wrong old PIN and keeps the original", async () => {
+    const s = store();
+    await s.setPin("111111");
+    const res = await s.change("000000", "222222");
+    expect(res.ok).toBe(false);
+    expect(await s.verify("111111")).toEqual({ ok: true });
+  });
 });

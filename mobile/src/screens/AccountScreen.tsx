@@ -5,7 +5,7 @@ import { useToastStore } from "../state/toastStore";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
 import { useAuthStore } from "../state/authStore";
-import { useLockPrefsStore } from "../state/lockPrefsStore";
+import { useLockPrefsStore, AUTO_LOCK_OPTIONS } from "../state/lockPrefsStore";
 import { useEnvStore } from "../state/envStore";
 import { useThemeStore } from "../state/themeStore";
 import { useLocaleStore } from "../state/localeStore";
@@ -97,6 +97,8 @@ export function AccountScreen({
   const gate = useMemo(() => deps?.gate ?? new BiometricGate(LocalAuthentication), [deps]);
   const biometricEnabled = useLockPrefsStore((s) => s.biometricEnabled);
   const setBiometricEnabled = useLockPrefsStore((s) => s.setBiometricEnabled);
+  const autoLockMinutes = useLockPrefsStore((s) => s.autoLockMinutes);
+  const setAutoLockMinutes = useLockPrefsStore((s) => s.setAutoLockMinutes);
 
   // After a fresh create (post backup-verify) or restore, re-evaluate auth so a wallet without an app
   // PIN routes to mandatory PIN setup (App renders PinSetupScreen on "needsPinSetup").
@@ -118,6 +120,58 @@ export function AccountScreen({
     await setBiometricEnabled(!biometricEnabled);
   }
 
+  function cycleAutoLock() {
+    const i = AUTO_LOCK_OPTIONS.indexOf(autoLockMinutes as (typeof AUTO_LOCK_OPTIONS)[number]);
+    const next = AUTO_LOCK_OPTIONS[(i + 1) % AUTO_LOCK_OPTIONS.length];
+    void setAutoLockMinutes(next);
+  }
+
+  function openChangePin() {
+    setOldPin("");
+    setNewPin("");
+    setConfirmPin("");
+    setSheet((s) => (s === "changepin" ? "none" : "changepin"));
+  }
+
+  async function onConfirmChangePin() {
+    if (newPin.length < 6 || newPin !== confirmPin) {
+      Alert.alert(t("account.changePinMismatch"));
+      return;
+    }
+    setPinBusy(true);
+    try {
+      const res = await pinStore.change(oldPin, newPin);
+      if (res.ok) {
+        useToastStore.getState().show(t("account.changePinDone"), "success");
+        setSheet("none");
+      } else {
+        Alert.alert(t("account.changePinWrong"));
+      }
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  async function onExportPrivateKey() {
+    try {
+      const key = await manager.exportPrivateKey();
+      if (!key) {
+        Alert.alert(t("account.exportFailed"), t("account.exportFailedBody"));
+        return;
+      }
+      setKeyCopied(false);
+      setRevealedKey(key);
+    } catch {
+      Alert.alert(t("account.exportFailed"), t("account.exportFailedBody"));
+    }
+  }
+
+  async function onCopyKey() {
+    if (!revealedKey) return;
+    await Clipboard.setStringAsync(revealedKey);
+    setKeyCopied(true);
+  }
+
   const services = useMemo<AccountScreenDeps>(
     () =>
       deps ?? {
@@ -137,7 +191,7 @@ export function AccountScreen({
   const [verifyPhrase, setVerifyPhrase] = useState(false);
   const [summary, setSummary] = useState<AccountSummary | null>(null);
   const [fundingTotal, setFundingTotal] = useState<number | null>(null);
-  const [sheet, setSheet] = useState<"none" | "deposit" | "withdraw">("none");
+  const [sheet, setSheet] = useState<"none" | "deposit" | "withdraw" | "changepin">("none");
   const [amountInput, setAmountInput] = useState("");
   const [destInput, setDestInput] = useState("");
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -147,6 +201,12 @@ export function AccountScreen({
   const [depositBusy, setDepositBusy] = useState(false);
   const [depositBalances, setDepositBalances] = useState<{ usdc: number; eth: number } | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [keyCopied, setKeyCopied] = useState(false);
 
   // Reusable balance/funding fetch so we can refresh after a deposit/withdraw and on demand
   // (the Arbitrum→HL bridge credits a deposit ~1 min later, so a manual refresh is what surfaces it).
@@ -570,6 +630,74 @@ export function AccountScreen({
           </SurfaceCard>
         ) : null}
 
+        {mode === "local" && sheet === "changepin" ? (
+          <SurfaceCard theme={theme} style={styles.card}>
+            <Text style={[styles.sheetTitle, { color: theme.text }]}>{t("account.changePinTitle")}</Text>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("account.changePinOld")}</Text>
+            <TextInput
+              value={oldPin}
+              onChangeText={setOldPin}
+              placeholder="••••••"
+              placeholderTextColor={theme.faint}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={12}
+              testID="changepin-old"
+              style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
+            />
+            <Text style={[styles.fieldLabel, { color: theme.muted, marginTop: 10 }]}>{t("account.changePinNew")}</Text>
+            <TextInput
+              value={newPin}
+              onChangeText={setNewPin}
+              placeholder="••••••"
+              placeholderTextColor={theme.faint}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={12}
+              testID="changepin-new"
+              style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
+            />
+            <Text style={[styles.fieldLabel, { color: theme.muted, marginTop: 10 }]}>{t("account.changePinConfirm")}</Text>
+            <TextInput
+              value={confirmPin}
+              onChangeText={setConfirmPin}
+              placeholder="••••••"
+              placeholderTextColor={theme.faint}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={12}
+              testID="changepin-confirm"
+              style={[styles.input, { color: theme.text, borderColor: theme.line, backgroundColor: theme.surface }]}
+            />
+            <View style={styles.sheetRow}>
+              <Pressable disabled={pinBusy} onPress={onConfirmChangePin} accessibilityRole="button" testID="changepin-confirm-btn" style={[styles.sheetBtn, { backgroundColor: theme.brand }]}>
+                <Text style={[styles.sheetBtnText, { color: theme.bg }]}>{t("account.changePinSave")}</Text>
+              </Pressable>
+              <Pressable onPress={() => setSheet("none")} accessibilityRole="button" style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}>
+                <Text style={[styles.sheetBtnText, { color: theme.text }]}>{t("account.close")}</Text>
+              </Pressable>
+            </View>
+          </SurfaceCard>
+        ) : null}
+
+        {revealedKey ? (
+          <SurfaceCard theme={theme} style={[styles.card, { borderColor: theme.warn }]}>
+            <View style={styles.warnRow}>
+              <Icon name="alert" color={theme.warn} size={16} />
+              <Text style={[styles.warn, { color: theme.warn }]}>{t("account.exportKeyWarn")}</Text>
+            </View>
+            <Text style={[styles.mnemonic, { color: theme.text }]} testID="revealed-key">{revealedKey}</Text>
+            <View style={styles.sheetRow}>
+              <Pressable onPress={onCopyKey} accessibilityRole="button" testID="copy-key" style={[styles.sheetBtn, styles.sheetBtnOutline, { borderColor: theme.lineStrong }]}>
+                <Text style={[styles.sheetBtnText, { color: theme.text }]}>{keyCopied ? t("account.copied") : t("account.copyAddress")}</Text>
+              </Pressable>
+              <Pressable onPress={() => setRevealedKey(null)} accessibilityRole="button" style={[styles.sheetBtn, { backgroundColor: theme.brand }]}>
+                <Text style={[styles.sheetBtnText, { color: theme.bg }]}>{t("account.backedUp")}</Text>
+              </Pressable>
+            </View>
+          </SurfaceCard>
+        ) : null}
+
         {summary ? (
           <SurfaceCard theme={theme} rule={false} style={styles.card}>
             <Text style={[styles.cardTitle, { color: theme.muted }]}>{t("account.accountSummary")}</Text>
@@ -648,6 +776,21 @@ export function AccountScreen({
             value={biometricEnabled ? t("account.faceIdOn") : t("account.faceIdOff")}
             onPress={onToggleBiometric}
           />
+        ) : null}
+        {mode === "local" ? (
+          <SettingRow
+            theme={theme}
+            icon="lock"
+            name={t("account.autoLock")}
+            value={autoLockMinutes === 0 ? t("account.autoLockImmediate") : t("account.autoLockMin", { min: autoLockMinutes })}
+            onPress={cycleAutoLock}
+          />
+        ) : null}
+        {mode === "local" ? (
+          <SettingRow theme={theme} icon="lock" name={t("account.changePin")} value="" onPress={openChangePin} />
+        ) : null}
+        {mode === "local" ? (
+          <SettingRow theme={theme} icon="key" name={t("account.exportKey")} value="" onPress={onExportPrivateKey} />
         ) : null}
 
         <Pressable onPress={onSignOut} accessibilityRole="button" style={[styles.signOut, { borderColor: theme.down }]}>

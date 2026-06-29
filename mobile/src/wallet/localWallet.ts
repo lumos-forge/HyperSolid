@@ -1,4 +1,5 @@
 import { english, generateMnemonic, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import { bytesToHex } from "viem";
 import type { LocalAccount } from "viem";
 import type { Hex, WalletService } from "./types";
 
@@ -10,6 +11,18 @@ export function generateWalletMnemonic(): string {
 /** True if the secret is a raw 32-byte hex private key (`0x` + 64 hex), vs a BIP-39 mnemonic. */
 export function isPrivateKey(secret: string): boolean {
   return /^0x[0-9a-fA-F]{64}$/.test(secret.trim());
+}
+
+/**
+ * Resolve a stored secret (mnemonic OR raw key) to the raw private key for export. Imported keys are
+ * returned lowercased; a mnemonic is reduced to its first-account key. Throws on a malformed secret.
+ */
+export function secretToPrivateKey(secret: string): Hex {
+  const s = secret.trim();
+  if (isPrivateKey(s)) return s.toLowerCase() as Hex;
+  const hd = mnemonicToAccount(s).getHdKey();
+  if (!hd.privateKey) throw new Error("Cannot derive private key from mnemonic");
+  return bytesToHex(hd.privateKey);
 }
 
 /**

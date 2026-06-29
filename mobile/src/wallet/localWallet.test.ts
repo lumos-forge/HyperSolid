@@ -1,4 +1,4 @@
-import { generateWalletMnemonic, isPrivateKey, LocalWalletService } from "./localWallet";
+import { generateWalletMnemonic, isPrivateKey, secretToPrivateKey, LocalWalletService } from "./localWallet";
 
 // Known test vector (BIP-39) — do NOT use for real funds.
 const TEST_MNEMONIC = "test test test test test test test test test test test junk";
@@ -52,5 +52,14 @@ describe("isPrivateKey", () => {
     expect(isPrivateKey("0x1234")).toBe(false);
     expect(isPrivateKey(`${TEST_PK}ff`)).toBe(false);
     expect(isPrivateKey("0xZZ0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")).toBe(false);
+  });
+});
+
+describe("secretToPrivateKey", () => {
+  it("returns an imported key normalized to lowercase", () => {
+    expect(secretToPrivateKey(`  ${TEST_PK.toUpperCase().replace("0X", "0x")}  `)).toBe(TEST_PK);
+  });
+  it("derives the same key the mnemonic's first account uses", () => {
+    expect(secretToPrivateKey(TEST_MNEMONIC)).toBe(TEST_PK);
   });
 });

@@ -1,4 +1,4 @@
-import { generateWalletMnemonic, isPrivateKey, LocalWalletService } from "./localWallet";
+import { generateWalletMnemonic, isPrivateKey, secretToPrivateKey, LocalWalletService } from "./localWallet";
 import type { KeyStore, WalletService } from "./types";
 
 /**
@@ -54,6 +54,16 @@ export class WalletManager {
    */
   async exportMnemonic(): Promise<string | null> {
     return this.store.loadMnemonic();
+  }
+
+  /**
+   * Reveal the raw private key for backup/migration. Mnemonic wallets derive their first-account key;
+   * imported keys return as-is. Same biometric-gated store read as {@link exportMnemonic}; returns
+   * null when no wallet exists. Note: a mnemonic-derived key only covers account #0.
+   */
+  async exportPrivateKey(): Promise<string | null> {
+    const secret = await this.store.loadMnemonic();
+    return secret ? secretToPrivateKey(secret) : null;
   }
 
   async signOut(): Promise<void> {

@@ -117,6 +117,36 @@ describe("AccountScreen", () => {
     expect(screen.queryByText("Export & backup")).toBeNull();
   });
 
+  it("reveals the private key via Export private key (biometric-gated read)", async () => {
+    const key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const manager = { exportPrivateKey: jest.fn(async () => key) } as unknown as WalletManager;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={{ ...fakeDeps, manager }} />);
+    expect(screen.queryByTestId("revealed-key")).toBeNull();
+    fireEvent.press(screen.getByText("Export private key"));
+    await waitFor(() => expect(screen.getByTestId("revealed-key")).toBeTruthy());
+    expect(manager.exportPrivateKey).toHaveBeenCalled();
+  });
+
+  it("changes the PIN through verify-old + set-new", async () => {
+    const change = jest.fn(async () => ({ ok: true }));
+    const pinStore = { hasPin: jest.fn(async () => true), change } as never;
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={{ ...fakeDeps, pinStore }} />);
+    fireEvent.press(screen.getByText("Change PIN"));
+    fireEvent.changeText(screen.getByTestId("changepin-old"), "111111");
+    fireEvent.changeText(screen.getByTestId("changepin-new"), "222222");
+    fireEvent.changeText(screen.getByTestId("changepin-confirm"), "222222");
+    fireEvent.press(screen.getByTestId("changepin-confirm-btn"));
+    await waitFor(() => expect(change).toHaveBeenCalledWith("111111", "222222"));
+  });
+
+  it("cycles the auto-lock timeout", () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    expect(screen.getByText("Auto-lock")).toBeTruthy();
+  });
+
   it("shows a copyable wallet address with funding guidance in the deposit sheet", async () => {
     (Clipboard.setStringAsync as jest.Mock).mockClear();
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });

@@ -54,4 +54,15 @@ describe("WalletManager (in-memory store)", () => {
     await mgr.signOut();
     expect(await mgr.exportMnemonic()).toBeNull();
   });
+
+  it("exports the private key (imported as-is, mnemonic derived), or null when absent", async () => {
+    const mgr = new WalletManager(new InMemoryKeyStore());
+    expect(await mgr.exportPrivateKey()).toBeNull();
+    const pk = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    await mgr.importPrivateKey(pk);
+    expect((await mgr.exportPrivateKey())?.toLowerCase()).toBe(pk);
+    await mgr.signOut();
+    await mgr.restoreWallet("test test test test test test test test test test test junk");
+    expect(await mgr.exportPrivateKey()).toBe(pk);
+  });
 });

@@ -50,6 +50,13 @@ export class PinStore {
       : { ok: false, lockedOut: false, remaining: MAX_PIN_ATTEMPTS - next };
   }
 
+  /** Change the PIN: verify the current one (counts against lockout) then store the new verifier. */
+  async change(oldPin: string, newPin: string): Promise<PinVerifyResult> {
+    const result = await this.verify(oldPin);
+    if (result.ok) await this.setPin(newPin);
+    return result;
+  }
+
   async clear(): Promise<void> {
     await SecureStore.deleteItemAsync(VERIFIER_KEY);
     await SecureStore.deleteItemAsync(ATTEMPTS_KEY);
