@@ -225,6 +225,24 @@ describe("buildBracketOrder — entry + TP/SL sibling pairing + grouping", () =>
     cloids.forEach((c) => expect(isValidCloid(c)).toBe(true));
   });
 
+  it("reproduces identical per-leg cloids on a retry with the same entry cloid (HL dedupes all legs)", () => {
+    const entryCloid = ("0x" + "ab".repeat(16)) as `0x${string}`;
+    const build = () =>
+      buildBracketOrder(
+        {
+          entry: { coin: "BTC", side: "buy", size: 0.01, price: 60000, cloid: entryCloid },
+          takeProfit: { triggerPx: 66000 },
+          stopLoss: { triggerPx: 54000 },
+        },
+        index,
+      );
+    const a = build();
+    const b = build();
+    if (!a.ok || !b.ok) throw new Error("expected ok");
+    expect(a.params.orders.map((o) => o.c)).toEqual(b.params.orders.map((o) => o.c));
+    expect(a.params.orders[0].c).toBe(entryCloid);
+  });
+
   it("supports positionTpsl grouping and TP-only brackets", () => {
     const r = buildBracketOrder(
       {
@@ -283,6 +301,18 @@ describe("buildScaleOrder", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.rejection).toBe("minTradeNtlRejected");
+  });
+
+  it("reproduces identical per-leg cloids on retry with the same primary cloid (no duplicate ladder)", () => {
+    const cloid = ("0x" + "cd".repeat(16)) as `0x${string}`;
+    const build = () => buildScaleOrder({ coin: "BTC", side: "buy", totalSize: 0.03, startPx: 60000, endPx: 61000, count: 3, cloid }, index);
+    const a = build();
+    const b = build();
+    if (!a.ok || !b.ok) throw new Error("expected ok");
+    const ca = a.params.orders.map((o) => o.c);
+    expect(ca).toEqual(b.params.orders.map((o) => o.c));
+    expect(new Set(ca).size).toBe(3);
+    expect(ca[0]).toBe(cloid);
   });
 });
 

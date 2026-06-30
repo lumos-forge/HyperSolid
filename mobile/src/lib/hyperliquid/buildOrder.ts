@@ -2,7 +2,7 @@ import type { AssetIndex } from "./assetId";
 import { marketKindForAssetId } from "./assetId";
 import { formatPrice, roundSize, validateOrder, type OrderRejection } from "./order";
 import { isBuilderFeeWithinCap } from "./builderFee";
-import { generateCloid } from "./cloid";
+import { generateCloid, deriveCloid } from "./cloid";
 import { buildScaleLevels, TWAP_MIN_MINUTES, TWAP_MAX_MINUTES } from "./orderForm";
 
 export type OrderSide = "buy" | "sell";
@@ -159,7 +159,8 @@ export function buildBracketOrder(req: BracketRequest, index: AssetIndex): Build
   if (req.takeProfit) legs.push({ ...req.takeProfit, tpsl: "tp" });
   if (req.stopLoss) legs.push({ ...req.stopLoss, tpsl: "sl" });
 
-  for (const leg of legs) {
+  for (let li = 0; li < legs.length; li++) {
+    const leg = legs[li];
     const legRejection = validateOrder({ price: leg.triggerPx, size, szDecimals });
     if (legRejection) return { ok: false, rejection: legRejection };
     orders.push(
@@ -174,7 +175,7 @@ export function buildBracketOrder(req: BracketRequest, index: AssetIndex): Build
         },
         asset,
         szDecimals,
-        generateCloid(),
+        deriveCloid(entryCloid, li + 1),
       ),
     );
   }
@@ -218,7 +219,7 @@ export function buildScaleOrder(req: ScaleRequest, index: AssetIndex): BuildResu
         { coin: req.coin, side: req.side, size: legSize, price: levels[i], reduceOnly: req.reduceOnly, tif: req.tif },
         asset,
         szDecimals,
-        i === 0 ? primaryCloid : generateCloid(),
+        i === 0 ? primaryCloid : deriveCloid(primaryCloid, i),
       ),
     );
   }
