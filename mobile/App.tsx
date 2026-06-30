@@ -88,6 +88,7 @@ export default function App() {
     void useLockPrefsStore.getState().hydrate();
     void useThemeStore.getState().hydrate();
     void useLocaleStore.getState().hydrate();
+    void useEnvStore.getState().hydrate();
     useAuthStore.getState().evaluate(
       () => manager.hasWallet(),
       () => pinStore.hasPin(),
