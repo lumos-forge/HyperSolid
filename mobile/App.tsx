@@ -19,6 +19,8 @@ import { useAuthStore } from "./src/state/authStore";
 import { useWalletStore } from "./src/state/walletStore";
 import { useOnboardingStore } from "./src/state/onboardingStore";
 import { useLockPrefsStore } from "./src/state/lockPrefsStore";
+import { useThemeStore } from "./src/state/themeStore";
+import { useLocaleStore } from "./src/state/localeStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
 import { reconcilePendingIntents } from "./src/services/ledgerRecovery";
 import { hydrateRuntimeConfig } from "./src/services/appConfig";
@@ -84,6 +86,8 @@ export default function App() {
 
   useEffect(() => {
     void useLockPrefsStore.getState().hydrate();
+    void useThemeStore.getState().hydrate();
+    void useLocaleStore.getState().hydrate();
     useAuthStore.getState().evaluate(
       () => manager.hasWallet(),
       () => pinStore.hasPin(),
