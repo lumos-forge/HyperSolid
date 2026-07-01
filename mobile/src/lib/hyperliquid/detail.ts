@@ -19,8 +19,9 @@ function cumulative(levels: RawL2Level[], depth: number): OrderbookLevel[] {
 }
 
 export function normalizeOrderbook(raw: RawL2Book, depth = 20): Orderbook {
-  const bids = cumulative(raw.levels[0] ?? [], depth);
-  const asks = cumulative(raw.levels[1] ?? [], depth);
+  const levels = Array.isArray(raw?.levels) ? raw.levels : [];
+  const bids = cumulative(Array.isArray(levels[0]) ? levels[0] : [], depth);
+  const asks = cumulative(Array.isArray(levels[1]) ? levels[1] : [], depth);
   const bestBid = bids[0]?.px ?? 0;
   const bestAsk = asks[0]?.px ?? 0;
   const spread = bestBid && bestAsk ? bestAsk - bestBid : 0;
@@ -28,9 +29,8 @@ export function normalizeOrderbook(raw: RawL2Book, depth = 20): Orderbook {
   const spreadPct = mid ? (spread / mid) * 100 : 0;
   return { bids, asks, spread, spreadPct };
 }
-
 export function normalizeTrades(raw: RawTrade[]): Trade[] {
-  return raw.map((t) => ({
+  return (Array.isArray(raw) ? raw : []).map((t) => ({
     px: Number(t.px),
     sz: Number(t.sz),
     side: t.side === "B" ? "buy" : "sell",
@@ -38,9 +38,8 @@ export function normalizeTrades(raw: RawTrade[]): Trade[] {
     tid: t.tid,
   }));
 }
-
 export function normalizeCandles(raw: RawCandle[]): Candle[] {
-  return raw.map((c) => ({
+  return (Array.isArray(raw) ? raw : []).map((c) => ({
     t: c.t,
     open: Number(c.o),
     close: Number(c.c),

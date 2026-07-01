@@ -6,9 +6,11 @@ function pctChange(mark: number, prev: number): number {
 }
 
 export function normalizeMarkets(data: MetaAndAssetCtxs): MarketTicker[] {
-  const [meta, ctxs] = data;
-  const tickers: MarketTicker[] = meta.universe.map((asset, i) => {
-    const ctx = ctxs[i];
+  const [meta, ctxs] = Array.isArray(data) ? data : [];
+  const universe = Array.isArray(meta?.universe) ? meta.universe : [];
+  const ctxList = Array.isArray(ctxs) ? ctxs : [];
+  const tickers: MarketTicker[] = universe.map((asset, i) => {
+    const ctx = ctxList[i];
     const midPx = Number(ctx?.midPx ?? 0);
     const prevDayPx = Number(ctx?.prevDayPx ?? 0);
     return {

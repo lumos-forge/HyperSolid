@@ -15,6 +15,13 @@ const sample: MetaAndAssetCtxs = [
 ];
 
 describe("normalizeMarkets", () => {
+  it("returns [] for a malformed/error response instead of throwing", () => {
+    expect(() => normalizeMarkets(undefined as never)).not.toThrow();
+    expect(normalizeMarkets(undefined as never)).toEqual([]);
+    expect(normalizeMarkets({} as never)).toEqual([]);
+    expect(normalizeMarkets([{}, []] as never)).toEqual([]);
+  });
+
   it("maps universe + ctxs into tickers", () => {
     const out = normalizeMarkets(sample);
     const btc = out.find((t) => t.coin === "BTC")!;

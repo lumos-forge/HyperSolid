@@ -40,9 +40,22 @@ describe("normalizeOrderbook", () => {
     expect(ob.spread).toBe(0);
     expect(ob.spreadPct).toBe(0);
   });
+
+  it("does not throw on a malformed frame (missing/!array levels)", () => {
+    expect(() => normalizeOrderbook({} as unknown as RawL2Book)).not.toThrow();
+    expect(() => normalizeOrderbook({ levels: undefined } as unknown as RawL2Book)).not.toThrow();
+    expect(() => normalizeOrderbook({ levels: [undefined] } as unknown as RawL2Book)).not.toThrow();
+    const ob = normalizeOrderbook({ levels: "nope" } as unknown as RawL2Book);
+    expect(ob.bids).toEqual([]);
+    expect(ob.asks).toEqual([]);
+  });
 });
 
 describe("normalizeTrades", () => {
+  it("returns [] for a non-array frame instead of throwing", () => {
+    expect(normalizeTrades(undefined as unknown as RawTrade[])).toEqual([]);
+    expect(normalizeTrades({} as unknown as RawTrade[])).toEqual([]);
+  });
   it("maps side B/A to buy/sell and numbers", () => {
     const raw: RawTrade[] = [
       { coin: "BTC", side: "B", px: "100", sz: "1", time: 5, tid: 1 },
@@ -55,6 +68,10 @@ describe("normalizeTrades", () => {
 });
 
 describe("normalizeCandles", () => {
+  it("returns [] for a non-array frame instead of throwing", () => {
+    expect(normalizeCandles(undefined as unknown as RawCandle[])).toEqual([]);
+  });
+
   it("maps OHLCV strings to numbers", () => {
     const raw: RawCandle[] = [
       { t: 1, T: 2, s: "BTC", o: "10", c: "12", h: "13", l: "9", v: "100", n: 5 },
