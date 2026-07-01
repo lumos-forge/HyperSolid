@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator, Pressable, TextInput } from 
 import { FlashList } from "@shopify/flash-list";
 import { useMarketStore } from "../state/marketStore";
 import { LoadError } from "../components/LoadError";
+import { useMarketStale } from "../hooks/useMarketStale";
+import { withAlpha } from "../theme/color";
 import { useWatchlistStore } from "../state/watchlistStore";
 import { MarketRow } from "../components/MarketRow";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -29,6 +31,7 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
   const theme = useTheme();
   const t = useT();
   const { tickers, loading, error } = useMarketStore();
+  const stale = useMarketStale();
   const favorites = useWatchlistStore((s) => s.coins);
   const toggleFavorite = useWatchlistStore((s) => s.toggle);
   const [filter, setFilter] = useState<"all" | "favorites">("all");
@@ -107,6 +110,13 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
         </View>
       </View>
 
+      {stale ? (
+        <View style={[styles.reconnectBar, { backgroundColor: withAlpha(theme.warn, 0.14) }]} testID="markets-reconnecting">
+          <ActivityIndicator color={theme.warn} size="small" />
+          <Text style={[styles.reconnectText, { color: theme.warn }]}>{t("common.reconnecting")}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.listArea}>
         {error ? (
           <LoadError theme={theme} code={error} onRetry={() => useMarketStore.getState().retry()} testID="markets-error" />
@@ -163,6 +173,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
   },
   listArea: { flex: 1 },
+  reconnectBar: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 6, marginHorizontal: 12, borderRadius: 8, marginBottom: 4 },
+  reconnectText: { fontFamily: fonts.body.semibold, fontSize: 11.5 },
   center: { alignItems: "center", justifyContent: "center", paddingTop: 40 },
   msg: { fontFamily: fonts.body.regular, fontSize: 14, marginTop: 8 },
 });
