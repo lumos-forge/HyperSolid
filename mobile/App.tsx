@@ -9,6 +9,8 @@ import { LockScreen } from "./src/screens/LockScreen";
 import { PinSetupScreen } from "./src/screens/PinSetupScreen";
 import { WelcomeScreen } from "./src/screens/WelcomeScreen";
 import { Toast } from "./src/components/Toast";
+import { OfflineBanner } from "./src/components/OfflineBanner";
+import { useNetworkStatus } from "./src/hooks/useNetworkStatus";
 import { fontMap } from "./src/theme/fontAssets";
 import { useLiveMarkets } from "./src/hooks/useLiveMarkets";
 import { MarketDataService } from "./src/services/marketData";
@@ -46,6 +48,7 @@ export default function App() {
   );
   useLiveMarkets(service);
   useAutoLock();
+  useNetworkStatus();
 
   // Server-delivered runtime config (RPC keys etc. — never embedded in the bundle). Best-effort at
   // startup; the backend base URL is not secret. Deposits block clearly until the RPC arrives.
@@ -121,6 +124,7 @@ export default function App() {
         </NavigationContainer>
       )}
       <Toast />
+      <OfflineBanner />
     </SafeAreaProvider>
   );
 }
