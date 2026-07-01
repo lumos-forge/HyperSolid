@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import type { MarketDataService } from "../services/marketData";
 import { useMarketStore } from "../state/marketStore";
+import { classifyFetchError } from "../lib/errorMessage";
 import type { Subscription } from "../lib/hyperliquid/types";
 
 export function useLiveMarkets(service: MarketDataService) {
+  const retryNonce = useMarketStore((s) => s.retryNonce);
   useEffect(() => {
     let sub: Subscription | null = null;
     let cancelled = false;
@@ -18,7 +20,8 @@ export function useLiveMarkets(service: MarketDataService) {
         });
       } catch (e) {
         if (!cancelled) {
-          useMarketStore.getState().setError(e instanceof Error ? e.message : String(e));
+          // Never surface the raw SDK string; store a stable code so the UI can offer Retry.
+          useMarketStore.getState().setError(classifyFetchError(e));
         }
       }
     })();
@@ -27,5 +30,5 @@ export function useLiveMarkets(service: MarketDataService) {
       cancelled = true;
       sub?.unsubscribe().catch(() => {});
     };
-  }, [service]);
+  }, [service, retryNonce]);
 }

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, TextInput } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useMarketStore } from "../state/marketStore";
+import { LoadError } from "../components/LoadError";
 import { useWatchlistStore } from "../state/watchlistStore";
 import { MarketRow } from "../components/MarketRow";
 import { ScreenScaffold } from "../components/ScreenScaffold";
@@ -108,7 +109,7 @@ export function MarketsScreen({ onSelectMarket }: { onSelectMarket?: (coin: stri
 
       <View style={styles.listArea}>
         {error ? (
-          <Text style={[styles.msg, { color: theme.down }]}>{error}</Text>
+          <LoadError theme={theme} code={error} onRetry={() => useMarketStore.getState().retry()} testID="markets-error" />
         ) : loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={theme.brand} />

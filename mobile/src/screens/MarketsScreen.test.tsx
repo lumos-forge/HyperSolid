@@ -40,10 +40,11 @@ describe("MarketsScreen", () => {
     expect(screen.getByText(/Chg\s*↑/)).toBeTruthy();
   });
 
-  it("shows an error message when set", () => {
-    useMarketStore.getState().setError("network down");
+  it("shows a friendly error with Retry when the load fails", () => {
+    useMarketStore.getState().setError("network");
     render(<MarketsScreen />);
-    expect(screen.getByText(/network down/i)).toBeTruthy();
+    expect(screen.getByText("Can't reach the venue")).toBeTruthy();
+    expect(screen.getByTestId("markets-error-retry")).toBeTruthy();
   });
 
   it("renders the v8 chrome: search and All/Watchlist tabs", () => {

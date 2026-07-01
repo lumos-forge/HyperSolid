@@ -39,11 +39,13 @@ describe("useLiveMarkets", () => {
   it("records an error when the snapshot fails", async () => {
     const svc = {
       loadSnapshot: jest.fn(async () => {
-        throw new Error("boom");
+        const e = new Error("Unknown HTTP request error: boom");
+        e.name = "HttpRequestError";
+        throw e;
       }),
       subscribeMids: jest.fn(),
     } as unknown as MarketDataService;
     renderHook(() => useLiveMarkets(svc));
-    await waitFor(() => expect(useMarketStore.getState().error).toMatch(/boom/));
+    await waitFor(() => expect(useMarketStore.getState().error).toBe("network"));
   });
 });

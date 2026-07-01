@@ -11,6 +11,7 @@ import { useLiveDetail } from "../hooks/useLiveDetail";
 import { DetailDataService } from "../services/detailData";
 import { createDetailInfoClient, createDetailSubsClient } from "../lib/hyperliquid/client";
 import { CandleChart } from "../components/CandleChart";
+import { LoadError } from "../components/LoadError";
 import { MultiPeriodReturns } from "../components/MultiPeriodReturns";
 import { RsiPanel } from "../components/RsiPanel";
 import { OscillatorPanel } from "../components/OscillatorPanel";
@@ -57,7 +58,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
     [network],
   );
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("15m");
-  const { candles, orderbook, trades } = useLiveDetail(service, coin, timeframe);
+  const { candles, orderbook, trades, error, retry } = useLiveDetail(service, coin, timeframe);
 
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("book");
   const [indicator, setIndicator] = useState<Indicator>("MA");
@@ -217,7 +218,11 @@ export function MarketDetailScreen({ route, navigation }: Props) {
         ))}
       </View>
 
-      <CandleChart candles={candles} theme={theme} currentPrice={price} overlays={overlays} />
+      {error && candles.length === 0 ? (
+        <LoadError theme={theme} code={error} onRetry={retry} testID="detail-error" />
+      ) : (
+        <CandleChart candles={candles} theme={theme} currentPrice={price} overlays={overlays} />
+      )}
 
       {timeAxis.length > 0 ? (
         <View style={styles.xAxis}>

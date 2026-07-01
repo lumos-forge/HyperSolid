@@ -20,12 +20,14 @@ import { marketSlippagePrice } from "../lib/hyperliquid/orderForm";
 import { ExchangeService } from "../services/exchange";
 import type { LocalWalletService } from "../wallet/localWallet";
 import { useViewOnlyPortfolio, isValidAddress } from "../hooks/useViewOnlyPortfolio";
+import { classifyFetchError, type FetchErrorCode } from "../lib/errorMessage";
 import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
 import { PositionRow } from "../components/PositionRow";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { NetworkWarning } from "../components/NetworkWarning";
 import { SurfaceCard } from "../components/SurfaceCard";
 import { UnconfirmedBanner } from "../components/UnconfirmedBanner";
+import { LoadError } from "../components/LoadError";
 import { PriceText, formatPrice } from "../components/PriceText";
 import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
@@ -72,13 +74,17 @@ export function PositionsScreen({
   const [tab, setTab] = useState<Tab>("positions");
   const [fills, setFills] = useState<Fill[]>([]);
   const [orders, setOrders] = useState<OpenOrder[]>([]);
+  const [fillsError, setFillsError] = useState<FetchErrorCode | null>(null);
+  const [ordersError, setOrdersError] = useState<FetchErrorCode | null>(null);
 
   const runQuery = useCallback(
     (addr: string) => {
       void load(addr);
       if (!isValidAddress(addr)) return;
-      void services.fills.loadRecent(addr).then(setFills).catch(() => setFills([]));
-      void services.orders.loadOpenOrders(addr).then(setOrders).catch(() => setOrders([]));
+      setFillsError(null);
+      setOrdersError(null);
+      void services.fills.loadRecent(addr).then(setFills).catch((e) => setFillsError(classifyFetchError(e)));
+      void services.orders.loadOpenOrders(addr).then(setOrders).catch((e) => setOrdersError(classifyFetchError(e)));
     },
     [load, services],
   );
@@ -208,24 +214,7 @@ export function PositionsScreen({
       <UnconfirmedBanner theme={theme} count={unconfirmedCount} />
 
       {error && !portfolio ? (
-        <View style={styles.errorBox} testID="positions-error">
-          <Text style={[styles.errorTitle, { color: theme.text }]}>
-            {error === "network" ? t("errors.networkTitle") : error === "invalidAddress" ? t("errors.addressTitle") : t("errors.unknownTitle")}
-          </Text>
-          <Text style={[styles.errorBody, { color: theme.muted }]}>
-            {error === "network" ? t("errors.networkBody") : error === "invalidAddress" ? t("errors.addressBody") : t("errors.unknownBody")}
-          </Text>
-          {error !== "invalidAddress" ? (
-            <Pressable
-              accessibilityRole="button"
-              testID="positions-retry"
-              onPress={() => runQuery(walletAddress ?? "")}
-              style={[styles.retryBtn, { borderColor: theme.brand }]}
-            >
-              <Text style={[styles.retryText, { color: theme.brand }]}>{t("common.retry")}</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <LoadError theme={theme} code={error} onRetry={() => runQuery(walletAddress ?? "")} testID="positions-error" />
       ) : null}
       {loading ? <ActivityIndicator color={theme.brand} style={{ marginTop: 16 }} /> : null}
 
@@ -278,7 +267,9 @@ export function PositionsScreen({
           ) : null}
 
           {tab === "fills" ? (
-            fills.length === 0 ? (
+            fillsError && fills.length === 0 ? (
+              <LoadError theme={theme} code={fillsError} compact onRetry={() => runQuery(walletAddress ?? "")} testID="fills-error" />
+            ) : fills.length === 0 ? (
               <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyFills")}</Text>
             ) : (
               fills.map((f) => <FillRow key={`${f.tid}`} fill={f} theme={theme} />)
@@ -286,7 +277,9 @@ export function PositionsScreen({
           ) : null}
 
           {tab === "orders" ? (
-            orders.length === 0 ? (
+            ordersError && orders.length === 0 ? (
+              <LoadError theme={theme} code={ordersError} compact onRetry={() => runQuery(walletAddress ?? "")} testID="orders-error" />
+            ) : orders.length === 0 ? (
               <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyOrders")}</Text>
             ) : (
               orders.map((o) => <OrderRow key={`${o.oid}`} order={o} theme={theme} onCancel={cancelOrder} />)
@@ -420,11 +413,6 @@ const styles = StyleSheet.create({
   btn: { paddingHorizontal: 18, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   btnText: { fontFamily: fonts.display.bold, fontSize: 14 },
   msg: { fontFamily: fonts.body.regular, fontSize: 13, marginTop: 14 },
-  errorBox: { marginTop: 24, alignItems: "center", paddingHorizontal: 12 },
-  errorTitle: { fontFamily: fonts.display.bold, fontSize: 15, marginBottom: 6 },
-  errorBody: { fontFamily: fonts.body.regular, fontSize: 12.5, lineHeight: 18, textAlign: "center", marginBottom: 14 },
-  retryBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
-  retryText: { fontFamily: fonts.display.bold, fontSize: 13, letterSpacing: 0.3 },
   firstTrade: { marginTop: 14, paddingVertical: 13, borderRadius: 12, alignItems: "center" },
   firstTradeText: { fontFamily: fonts.display.bold, fontSize: 15, letterSpacing: 0.3 },
   eqCard: { marginTop: 16, padding: 16 },

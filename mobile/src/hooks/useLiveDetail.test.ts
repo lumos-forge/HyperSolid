@@ -35,12 +35,14 @@ describe("useLiveDetail", () => {
   it("records an error when candle load fails", async () => {
     const svc = {
       loadCandles: jest.fn(async () => {
-        throw new Error("boom");
+        const e = new Error("Unknown HTTP request error: boom");
+        e.name = "HttpRequestError";
+        throw e;
       }),
       subscribeOrderbook: jest.fn(),
       subscribeTrades: jest.fn(),
     } as unknown as DetailDataService;
     const { result } = renderHook(() => useLiveDetail(svc, "BTC"));
-    await waitFor(() => expect(result.current.error).toMatch(/boom/));
+    await waitFor(() => expect(result.current.error).toBe("network"));
   });
 });

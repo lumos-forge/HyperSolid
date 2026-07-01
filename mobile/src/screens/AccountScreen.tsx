@@ -27,6 +27,8 @@ import { Icon } from "../components/Icon";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { NetworkWarning } from "../components/NetworkWarning";
 import { SurfaceCard } from "../components/SurfaceCard";
+import { LoadError } from "../components/LoadError";
+import { classifyFetchError, type FetchErrorCode } from "../lib/errorMessage";
 import { QrCode } from "../components/QrCode";
 import { UnconfirmedBanner } from "../components/UnconfirmedBanner";
 import { PriceText, formatPrice } from "../components/PriceText";
@@ -103,6 +105,7 @@ export function AccountScreen({
   const [needsVerify, setNeedsVerify] = useState(false);
   const [verifyPhrase, setVerifyPhrase] = useState(false);
   const [summary, setSummary] = useState<AccountSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<FetchErrorCode | null>(null);
   const [fundingTotal, setFundingTotal] = useState<number | null>(null);
   const [sheet, setSheet] = useState<"none" | "deposit" | "withdraw">("none");
   const [amountInput, setAmountInput] = useState("");
@@ -124,10 +127,11 @@ export function AccountScreen({
       return () => {};
     }
     let active = true;
+    setSummaryError(null);
     services.positions
       .loadPortfolio(address)
-      .then((p) => active && setSummary(p.summary))
-      .catch(() => active && setSummary(null));
+      .then((p) => active && (setSummary(p.summary), setSummaryError(null)))
+      .catch((e) => active && (setSummary(null), setSummaryError(classifyFetchError(e))));
     services.fundings
       .load(address, 0)
       .then((f) => active && setFundingTotal(totalFunding(f)))
@@ -351,6 +355,10 @@ export function AccountScreen({
             </View>
           </View>
         </SurfaceCard>
+
+        {summaryError && !summary ? (
+          <LoadError theme={theme} code={summaryError} compact onRetry={() => reloadSummary()} testID="account-error" />
+        ) : null}
 
         {mode === "local" ? (
           <View style={styles.actions}>

@@ -8,6 +8,8 @@ import { withAlpha } from "../theme/color";
 import { useT } from "../i18n/useT";
 import type { TranslationKey } from "../i18n/messages";
 import { PositionRow } from "./PositionRow";
+import { LoadError } from "./LoadError";
+import { classifyFetchError, type FetchErrorCode } from "../lib/errorMessage";
 import { PositionsService } from "../services/positionsData";
 import { OrdersService } from "../services/ordersData";
 import { FillsService } from "../services/fillsData";
@@ -51,6 +53,8 @@ export function TradeActivityPanel({
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [fills, setFills] = useState<Fill[]>([]);
   const [funding, setFunding] = useState<FundingEvent[]>([]);
+  const [error, setError] = useState<FetchErrorCode | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const svc = useMemo(
     () => ({
@@ -72,14 +76,20 @@ export function TradeActivityPanel({
       return;
     }
     let active = true;
-    svc.positions.loadPortfolio(address).then((p) => active && (setSummary(p.summary), setPositions(p.positions))).catch(() => {});
+    setError(null);
+    // The portfolio load drives positions + balance; its failure is the panel's error signal so we
+    // can show a compact retry instead of blank rows. Secondary feeds degrade to empty on failure.
+    svc.positions
+      .loadPortfolio(address)
+      .then((p) => active && (setSummary(p.summary), setPositions(p.positions)))
+      .catch((e) => active && setError(classifyFetchError(e)));
     svc.orders.loadOpenOrders(address).then((o) => active && setOrders(o)).catch(() => {});
     svc.fills.loadRecent(address).then((f) => active && setFills(f)).catch(() => {});
     svc.fundings.load(address, 0).then((f) => active && setFunding(f)).catch(() => {});
     return () => {
       active = false;
     };
-  }, [svc, address]);
+  }, [svc, address, retryNonce]);
 
   const counts: Record<Tab, number | null> = {
     positions: positions.length,
@@ -117,6 +127,9 @@ export function TradeActivityPanel({
       </ScrollView>
 
       <View style={styles.body}>
+        {error && summary === null ? (
+          <LoadError theme={theme} code={error} compact onRetry={() => setRetryNonce((n) => n + 1)} testID="activity-error" />
+        ) : null}
         {tab === "positions" ? (
           positions.length === 0 ? (
             <Empty theme={theme} label={t("positions.emptyPositions")} />

@@ -23,9 +23,18 @@ describe("marketStore", () => {
     expect(useMarketStore.getState().tickers[0].midPx).toBe(120);
   });
 
-  it("setError records the message and clears loading", () => {
-    useMarketStore.getState().setError("boom");
-    expect(useMarketStore.getState().error).toBe("boom");
+  it("setError records the code and clears loading", () => {
+    useMarketStore.getState().setError("network");
+    expect(useMarketStore.getState().error).toBe("network");
     expect(useMarketStore.getState().loading).toBe(false);
+  });
+
+  it("retry clears the error and bumps the nonce", () => {
+    useMarketStore.getState().setError("network");
+    const before = useMarketStore.getState().retryNonce;
+    useMarketStore.getState().retry();
+    expect(useMarketStore.getState().error).toBeNull();
+    expect(useMarketStore.getState().loading).toBe(true);
+    expect(useMarketStore.getState().retryNonce).toBe(before + 1);
   });
 });

@@ -37,6 +37,16 @@ describe("TradeActivityPanel", () => {
     expect(screen.getByText(/No open positions/)).toBeTruthy();
   });
 
+  it("shows a compact retry when the portfolio load fails, then recovers", async () => {
+    const httpErr = new Error("Unknown HTTP request error: down");
+    httpErr.name = "HttpRequestError";
+    mockLoadPortfolio.mockRejectedValueOnce(httpErr);
+    render(<TradeActivityPanel theme={t} address={ADDR} network="mainnet" />);
+    await waitFor(() => expect(screen.getByTestId("activity-error")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("activity-error-retry"));
+    await waitFor(() => expect(screen.queryByTestId("activity-error")).toBeNull());
+  });
+
   it("switches to the Balance tab and shows perp equity", async () => {
     render(<TradeActivityPanel theme={t} address={ADDR} network="mainnet" />);
     await waitFor(() => expect(mockLoadPortfolio).toHaveBeenCalled());

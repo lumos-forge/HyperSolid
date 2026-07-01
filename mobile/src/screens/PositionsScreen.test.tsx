@@ -86,7 +86,7 @@ describe("PositionsScreen", () => {
     await waitFor(() => expect(screen.getByTestId("positions-error")).toBeTruthy());
     expect(screen.getByText("Can't reach the venue")).toBeTruthy();
     expect(screen.queryByText(/Unknown HTTP request error/)).toBeNull();
-    fireEvent.press(screen.getByTestId("positions-retry"));
+    fireEvent.press(screen.getByTestId("positions-error-retry"));
     await waitFor(() => expect(screen.getByText(/BTC/)).toBeTruthy());
   });
 
