@@ -13,6 +13,9 @@ import { OrderbookView } from "./OrderbookView";
 import { BookImbalanceBar } from "./BookImbalanceBar";
 import { BookViewIcon, type BookView } from "./BookViewIcon";
 import { Dropdown } from "./Dropdown";
+import { LoadError } from "./LoadError";
+import { classifyFetchError, type FetchErrorCode } from "../lib/errorMessage";
+import { isMarketStale } from "../state/marketStore";
 
 /**
  * Right-column live order book for the Trade ticket: funding rate + settlement countdown, an
@@ -40,6 +43,9 @@ export function OrderBookPanel({
     [network],
   );
   const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
+  const [bookError, setBookError] = useState<FetchErrorCode | null>(null);
+  const [lastBookAt, setLastBookAt] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [sizeInQuote, setSizeInQuote] = useState(true);
   // Surface the live book to the parent (for BBO pricing) without re-subscribing when the callback
@@ -67,18 +73,25 @@ export function OrderBookPanel({
   useEffect(() => {
     let sub: Subscription | null = null;
     let cancelled = false;
+    setBookError(null);
     service
-      .subscribeOrderbook(coin, setOrderbook, nSigFigs)
+      .subscribeOrderbook(coin, (ob) => {
+        setOrderbook(ob);
+        setLastBookAt(Date.now());
+      }, nSigFigs)
       .then((s) => {
         if (cancelled) void s.unsubscribe();
         else sub = s;
       })
-      .catch(() => {});
+      .catch((e) => {
+        // Don't leave the panel spinning forever — record a code so the UI can offer Retry.
+        if (!cancelled) setBookError(classifyFetchError(e));
+      });
     return () => {
       cancelled = true;
       sub?.unsubscribe().catch(() => {});
     };
-  }, [service, coin, nSigFigs]);
+  }, [service, coin, nSigFigs, retryNonce]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -104,6 +117,8 @@ export function OrderBookPanel({
   }, [mid]);
 
   const midColor = ticker ? (ticker.changePct >= 0 ? theme.up : theme.down) : undefined;
+  // Book frozen (dropped/reconnecting socket) if no L2 update for a while; reuses the 1s `now` tick.
+  const bookStale = isMarketStale(lastBookAt, now);
 
   return (
     <View style={styles.wrap}>
@@ -126,8 +141,13 @@ export function OrderBookPanel({
           <Text style={[styles.unitText, { color: theme.muted }]}>{sizeInQuote ? "USDC" : coin}</Text>
         </Pressable>
       </View>
-      {orderbook ? (
+      {bookError && !orderbook ? (
+        <LoadError theme={theme} code={bookError} compact onRetry={() => setRetryNonce((n) => n + 1)} testID="book-error" />
+      ) : orderbook ? (
         <>
+          {bookStale ? (
+            <Text style={[styles.staleHint, { color: theme.warn }]} testID="book-stale">{t("common.reconnecting")}</Text>
+          ) : null}
           <OrderbookView
             book={orderbook}
             theme={theme}
@@ -182,4 +202,5 @@ const styles = StyleSheet.create({
   bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 10, zIndex: 30 },
   viewBtn: { width: 30, height: 30, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   loading: { marginTop: 30 },
+  staleHint: { fontFamily: fonts.body.semibold, fontSize: 10, textAlign: "center", paddingVertical: 3 },
 });

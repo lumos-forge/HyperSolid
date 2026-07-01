@@ -12,8 +12,15 @@ const mockCandles = Array.from({ length: 40 }, (_, i) => ({
   low: 99 + i,
   volume: 1000 + i * 10,
 }));
+const mockDetail: { candles: typeof mockCandles; orderbook: null; trades: never[]; error: string | null; retry: jest.Mock } = {
+  candles: mockCandles,
+  orderbook: null,
+  trades: [],
+  error: null,
+  retry: jest.fn(),
+};
 jest.mock("../hooks/useLiveDetail", () => ({
-  useLiveDetail: () => ({ candles: mockCandles, orderbook: null, trades: [] }),
+  useLiveDetail: () => mockDetail,
 }));
 jest.mock("../lib/hyperliquid/client", () => ({
   createDetailInfoClient: () => ({}),
@@ -49,7 +56,12 @@ function renderDetail(nav: { goBack: jest.Mock }) {
 }
 
 describe("MarketDetailScreen", () => {
-  beforeEach(() => useMarketStore.setState({ tickers: [btc], loading: false, error: null }));
+  beforeEach(() => {
+    useMarketStore.setState({ tickers: [btc], loading: false, error: null });
+    mockDetail.orderbook = null;
+    mockDetail.trades = [];
+    mockDetail.error = null;
+  });
 
   it("renders the back header, hero price and signed change", () => {
     renderDetail({ goBack: jest.fn() });
@@ -106,5 +118,13 @@ describe("MarketDetailScreen", () => {
     renderDetail({ goBack });
     fireEvent.press(screen.getByLabelText("back"));
     expect(goBack).toHaveBeenCalled();
+  });
+
+  it("shows a book error+retry (not loading forever) when the feed fails", () => {
+    mockDetail.error = "network";
+    renderDetail({ goBack: jest.fn() });
+    expect(screen.getByTestId("detail-book-error")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("detail-book-error-retry"));
+    expect(mockDetail.retry).toHaveBeenCalled();
   });
 });

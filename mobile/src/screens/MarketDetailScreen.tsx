@@ -282,11 +282,15 @@ export function MarketDetailScreen({ route, navigation }: Props) {
             <OrderbookView book={orderbook} theme={theme} coin={coin} />
             <BookImbalanceBar theme={theme} bidPct={imbalance.bidPct} askPct={imbalance.askPct} />
           </>
+        ) : error ? (
+          <LoadError theme={theme} code={error} compact onRetry={retry} testID="detail-book-error" />
         ) : (
           <Text style={[styles.muted, { color: theme.muted }]}>{t("detail.loadingBook")}</Text>
         )
       ) : trades.length > 0 ? (
         <TradesList trades={trades} theme={theme} />
+      ) : error ? (
+        <LoadError theme={theme} code={error} compact onRetry={retry} testID="detail-trades-error" />
       ) : (
         <Text style={[styles.muted, { color: theme.muted }]}>{t("detail.loadingTrades")}</Text>
       )}
