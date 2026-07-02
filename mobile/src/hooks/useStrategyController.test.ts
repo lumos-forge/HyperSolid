@@ -74,4 +74,13 @@ describe("useStrategyController", () => {
     });
     expect(api.createStrategy).toHaveBeenCalledWith("twap", { coin: "ETH", side: "buy", totalUsdc: 300, slices: 6, durationHours: 3 });
   });
+
+  it("createGrid creates a grid then refreshes", async () => {
+    const api = makeApi();
+    const { result } = renderHook(() => useStrategyController(api as never, approveAgent, "n"));
+    await act(async () => {
+      await result.current.createGrid({ coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    });
+    expect(api.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+  });
 });
