@@ -152,6 +152,8 @@ function StrategyPanel({
   const [twapTotal, setTwapTotal] = useState("");
   const [twapSlices, setTwapSlices] = useState("6");
   const [twapDuration, setTwapDuration] = useState("3");
+  const [tp, setTp] = useState("");
+  const [sl, setSl] = useState("");
 
   async function onApprove() {
     const res = await ctrl.approveAgentFlow();
@@ -175,6 +177,21 @@ function StrategyPanel({
     }
     await ctrl.createTwap({ coin: coin.toUpperCase(), side: twapSide, totalUsdc: total, slices, durationHours: dur });
     setTwapTotal("");
+  }
+  async function onCreateTpsl() {
+    const tpN = tp ? Number(tp) : undefined;
+    const slN = sl ? Number(sl) : undefined;
+    const bad =
+      (tpN === undefined && slN === undefined) ||
+      (tpN !== undefined && !(tpN > 0)) ||
+      (slN !== undefined && !(slN > 0));
+    if (bad) { Alert.alert(t("agent.invalidParams"), t("agent.tpslNeedsOne")); return; }
+    await ctrl.createTpsl({
+      coin: coin.toUpperCase(),
+      ...(tpN !== undefined ? { takeProfitPrice: tpN } : {}),
+      ...(slN !== undefined ? { stopLossPrice: slN } : {}),
+    });
+    setTp(""); setSl("");
   }
 
   return (
@@ -281,6 +298,18 @@ function StrategyPanel({
           </Pressable>
         </SurfaceCard>
       ) : null}
+
+      {template === "tpsl" && (
+        <SurfaceCard theme={theme} rule={false} testID="new-tpsl" style={styles.card}>
+          <Text style={[styles.title, { color: theme.text }]}>{t("agent.newTpsl")}</Text>
+          <Field theme={theme} label={t("agent.coin")} value={coin} onChangeText={setCoin} autoCap testID="tpsl-coin" />
+          <Field theme={theme} label={t("agent.takeProfit")} value={tp} onChangeText={setTp} keyboard testID="tpsl-tp" />
+          <Field theme={theme} label={t("agent.stopLoss")} value={sl} onChangeText={setSl} keyboard testID="tpsl-sl" />
+          <Pressable onPress={onCreateTpsl} accessibilityRole="button" testID="tpsl-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
+            <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createTpsl")}</Text>
+          </Pressable>
+        </SurfaceCard>
+      )}
 
       <Pressable onPress={() => void ctrl.killAll()} accessibilityRole="button" testID="kill-switch" style={[styles.ctaOutline, { borderColor: theme.down }]}>
         <Text style={[styles.ctaText, { color: theme.down }]}>{t("agent.pauseAll")}</Text>

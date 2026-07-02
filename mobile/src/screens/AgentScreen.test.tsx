@@ -125,4 +125,17 @@ describe("AgentScreen", () => {
       expect(mockApiFake.createStrategy).toHaveBeenCalledWith("twap", { coin: "ETH", side: "buy", totalUsdc: 300, slices: 6, durationHours: 3 }),
     );
   });
+
+  it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-tpsl")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-tpsl"));
+    fireEvent.changeText(screen.getByTestId("tpsl-coin"), "BTC");
+    fireEvent.changeText(screen.getByTestId("tpsl-tp"), "110");
+    fireEvent.press(screen.getByTestId("tpsl-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("tpsl", { coin: "BTC", takeProfitPrice: 110 }),
+    );
+  });
 });
