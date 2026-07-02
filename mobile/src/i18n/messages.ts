@@ -289,6 +289,8 @@ export const messages = {
     "agent.strategyTpsl": "{coin} TP/SL",
     "agent.twapProgress": "{done}/{total} slices · ${filled}",
     "agent.statusCompleted": "Completed",
+    "agent.recentActivity": "Recent activity",
+    "agent.noActivity": "No activity yet — fills and triggers will show here.",
 
     "trade.invalidOrder": "Invalid order",
     "trade.leverageFailed": "Couldn't set leverage",
@@ -714,6 +716,8 @@ export const messages = {
     "agent.strategyTpsl": "{coin} 止盈/止损",
     "agent.twapProgress": "{done}/{total} 份 · ${filled}",
     "agent.statusCompleted": "已完成",
+    "agent.recentActivity": "最近活动",
+    "agent.noActivity": "暂无活动——成交与触发会显示在这里。",
 
     "trade.invalidOrder": "订单无效",
     "trade.leverageFailed": "设置杠杆失败",

@@ -11,7 +11,8 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type Activity } from "../services/strategyApi";
+import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
 import { createExchangeClient } from "../lib/hyperliquid/client";
@@ -241,6 +242,13 @@ function StrategyPanel({
         ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} onToggle={() => void ctrl.toggle(s)} />)
       )}
 
+      <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.recentActivity")}</Text>
+      {ctrl.activity.length === 0 ? (
+        <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.noActivity")}</Text>
+      ) : (
+        ctrl.activity.map((a) => <ActivityRow key={a.id} theme={theme} activity={a} />)
+      )}
+
       <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.template")}</Text>
       <View style={styles.segment} testID="template-picker">
         {(["dca", "twap", "tpsl"] as Template[]).map((k) => (
@@ -315,6 +323,23 @@ function StrategyPanel({
         <Text style={[styles.ctaText, { color: theme.down }]}>{t("agent.pauseAll")}</Text>
       </Pressable>
     </>
+  );
+}
+
+function ActivityRow({ theme, activity }: { theme: ThemeTokens; activity: Activity }) {
+  const t = useT();
+  const buy = activity.side === "buy";
+  return (
+    <SurfaceCard theme={theme} rule={false} testID={`activity-${activity.id}`} style={styles.row}>
+      <View style={styles.rowMain}>
+        <Text style={[styles.rowTitle, { color: theme.text }]}>
+          {activity.coin} · <Text style={{ color: buy ? theme.up : theme.down }}>{buy ? t("agent.buy") : t("agent.sell")}</Text>
+        </Text>
+        <Text style={[styles.hint, { color: theme.muted }]}>
+          {`${activity.sz} @ ${activity.px} · ${formatTimeHMS(activity.time)}`}
+        </Text>
+      </View>
+    </SurfaceCard>
   );
 }
 

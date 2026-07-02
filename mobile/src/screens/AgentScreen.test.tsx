@@ -18,6 +18,7 @@ const mockApiFake = {
   createStrategy: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "running" })),
   setStrategyStatus: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "paused" })),
   killSwitch: jest.fn(async () => undefined),
+  getRecentActivity: jest.fn(async () => [] as unknown[]),
 };
 const mockApproveAgent = jest.fn(async () => ({ ok: true as const }));
 const mockOpenSession = jest.fn(async () => "tok");
@@ -38,6 +39,7 @@ describe("AgentScreen", () => {
     mockOpenSession.mockClear();
     mockApiFake.agentStatus.mockResolvedValue({ approved: false });
     mockApiFake.listStrategies.mockResolvedValue([]);
+    mockApiFake.getRecentActivity.mockResolvedValue([]);
     useEnvStore.setState({ network: "testnet" });
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: AGENT });
     useRuntimeConfigStore.setState({
@@ -137,5 +139,14 @@ describe("AgentScreen", () => {
     await waitFor(() =>
       expect(mockApiFake.createStrategy).toHaveBeenCalledWith("tpsl", { coin: "BTC", takeProfitPrice: 110 }),
     );
+  });
+
+  it("shows recent activity rows once connected", async () => {
+    mockApiFake.getRecentActivity.mockResolvedValue([
+      { id: "a1", time: 1710000000000, coin: "BTC", side: "buy", sz: 0.01, px: 50000 },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("activity-a1")).toBeTruthy());
   });
 });
