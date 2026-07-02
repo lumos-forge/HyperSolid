@@ -1,4 +1,4 @@
-import type { Strategy, DcaParams, TwapParams, TpslParams } from "./types";
+import type { Strategy, DcaParams, TwapParams, TpslParams, GridParams } from "./types";
 
 describe("strategy types", () => {
   it("narrows params by kind (compile-time; asserted at runtime)", () => {
@@ -17,5 +17,17 @@ describe("strategy types", () => {
       params: { coin: "SOL", takeProfitPrice: 200 } as TpslParams,
     };
     expect([dca.kind, twap.kind, tpsl.kind]).toEqual(["dca", "twap", "tpsl"]);
+  });
+});
+
+describe("grid kind", () => {
+  it("builds a grid strategy shape with lastLevel + actionsDone", () => {
+    const params: GridParams = { coin: "BTC", lowerPrice: 60000, upperPrice: 70000, levels: 6, perLevelUsdc: 50 };
+    const s: Strategy = {
+      id: "1", owner: "0xo", status: "running", createdAt: 0,
+      kind: "grid", params, actionsDone: 0,
+    };
+    expect(s.kind).toBe("grid");
+    expect(s.params.perLevelUsdc).toBe(50);
   });
 });

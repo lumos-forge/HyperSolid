@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams } from "./types";
+import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams } from "./types";
 
 /** Persistence boundary for strategies. */
 export interface StrategyStore {
@@ -17,6 +17,7 @@ function build(owner: string, kind: StrategyKind, params: StrategyParams, now: n
   const base = { id: randomUUID(), owner, status: "running" as const, createdAt: now };
   if (kind === "dca") return { ...base, kind, params: params as DcaParams, nextRunAt: now, filledTotalUsdc: 0 };
   if (kind === "twap") return { ...base, kind, params: params as TwapParams, nextRunAt: now, filledTotalUsdc: 0, slicesDone: 0 };
+  if (kind === "grid") return { ...base, kind, params: params as GridParams, filledTotalUsdc: 0, actionsDone: 0 };
   return { ...base, kind, params: params as TpslParams };
 }
 
