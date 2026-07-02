@@ -1,12 +1,13 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import type { StrategyStore } from "./store";
-import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, TwapParams } from "./types";
+import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, TwapParams, GridParams } from "./types";
 
 interface Row {
   id: string; owner: string; status: string; params: string;
   kind: string; next_run_at: number; filled_total_usdc: number;
   slices_done: number; triggered_at: number | null; created_at: number;
+  last_level: number | null; actions_done: number;
 }
 
 function toStrategy(row: Row): Strategy {
@@ -14,6 +15,7 @@ function toStrategy(row: Row): Strategy {
   const params = JSON.parse(row.params);
   if (row.kind === "twap") return { ...base, kind: "twap", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc, slicesDone: row.slices_done };
   if (row.kind === "tpsl") return { ...base, kind: "tpsl", params, triggeredAt: row.triggered_at ?? undefined };
+  if (row.kind === "grid") return { ...base, kind: "grid", params, filledTotalUsdc: row.filled_total_usdc, actionsDone: row.actions_done, lastLevel: row.last_level ?? undefined };
   return { ...base, kind: "dca", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc };
 }
 
@@ -30,6 +32,8 @@ function migrate(db: Database.Database): void {
   if (!cols.has("slices_done")) db.exec("ALTER TABLE strategies ADD COLUMN slices_done INTEGER NOT NULL DEFAULT 0");
   if (!cols.has("triggered_at")) db.exec("ALTER TABLE strategies ADD COLUMN triggered_at INTEGER");
   if (!cols.has("created_at")) db.exec("ALTER TABLE strategies ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
+  if (!cols.has("last_level")) db.exec("ALTER TABLE strategies ADD COLUMN last_level INTEGER");
+  if (!cols.has("actions_done")) db.exec("ALTER TABLE strategies ADD COLUMN actions_done INTEGER NOT NULL DEFAULT 0");
 }
 
 /** Durable `StrategyStore` over SQLite. Owner matching is case-insensitive. */
@@ -51,12 +55,12 @@ export class SqliteStrategyStore implements StrategyStore {
   create(owner: string, kind: StrategyKind, params: StrategyParams): Strategy {
     const now = this.now();
     const id = randomUUID();
-    const scheduled = kind === "tpsl" ? 0 : now;
+    const scheduled = kind === "tpsl" || kind === "grid" ? 0 : now;
     this.db
       .prepare(
-        "INSERT INTO strategies (id, owner, status, params, kind, next_run_at, filled_total_usdc, slices_done, triggered_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO strategies (id, owner, status, params, kind, next_run_at, filled_total_usdc, slices_done, triggered_at, created_at, last_level, actions_done) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       )
-      .run(id, owner.toLowerCase(), "running", JSON.stringify(params), kind, scheduled, 0, 0, null, now);
+      .run(id, owner.toLowerCase(), "running", JSON.stringify(params), kind, scheduled, 0, 0, null, now, null, 0);
     return this.get(id)!;
   }
   get(id: string): Strategy | undefined {
@@ -85,11 +89,14 @@ export class SqliteStrategyStore implements StrategyStore {
   recordTrigger(id: string, now: number): void {
     this.db.prepare("UPDATE strategies SET triggered_at = ?, status = 'completed' WHERE id = ?").run(now, id);
   }
-  seedGridLevel(_id: string, _level: number): void {
-    throw new Error("Grid strategies not yet supported in SqliteStrategyStore");
+  seedGridLevel(id: string, level: number): void {
+    this.db.prepare("UPDATE strategies SET last_level = ? WHERE id = ?").run(level, id);
   }
-  recordGridAction(_id: string, _newLevel: number, _boughtUsdc: number): void {
-    throw new Error("Grid strategies not yet supported in SqliteStrategyStore");
+
+  recordGridAction(id: string, newLevel: number, boughtUsdc: number): void {
+    this.db
+      .prepare("UPDATE strategies SET last_level = ?, actions_done = actions_done + 1, filled_total_usdc = filled_total_usdc + ? WHERE id = ?")
+      .run(newLevel, boughtUsdc, id);
   }
   remove(id: string): void { this.db.prepare("DELETE FROM strategies WHERE id = ?").run(id); }
   close(): void { this.db.close(); }

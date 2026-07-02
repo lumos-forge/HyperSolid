@@ -83,3 +83,22 @@ describe("SqliteStrategyStore", () => {
     }
   });
 });
+
+describe("sqlite grid state", () => {
+  const params = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+
+  it("round-trips a grid with seed + record", () => {
+    const store = SqliteStrategyStore.open(":memory:", () => 0);
+    const s = store.create("0xO", "grid", params);
+    expect(store.get(s.id)).toMatchObject({ kind: "grid", actionsDone: 0, filledTotalUsdc: 0 });
+    expect(store.get(s.id)!.lastLevel).toBeUndefined();
+
+    store.seedGridLevel(s.id, 3);
+    expect(store.get(s.id)).toMatchObject({ lastLevel: 3, actionsDone: 0 });
+
+    store.recordGridAction(s.id, 2, 100);
+    store.recordGridAction(s.id, 4, 0);
+    expect(store.get(s.id)).toMatchObject({ lastLevel: 4, actionsDone: 2, filledTotalUsdc: 100 });
+    store.close();
+  });
+});
