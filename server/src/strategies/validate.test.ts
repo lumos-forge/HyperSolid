@@ -33,3 +33,24 @@ describe("validateParams", () => {
     expect(validateParams("nope" as never, {}).ok).toBe(false);
   });
 });
+
+describe("validateParams grid", () => {
+  const ok = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+
+  it("accepts a valid grid", () => {
+    const r = validateParams("grid", ok);
+    expect(r).toEqual({ ok: true, params: ok });
+  });
+  it("rejects upper <= lower", () => {
+    expect(validateParams("grid", { ...ok, upperPrice: 100 }).ok).toBe(false);
+  });
+  it("rejects levels < 2", () => {
+    expect(validateParams("grid", { ...ok, levels: 1 }).ok).toBe(false);
+  });
+  it("rejects a non-integer levels", () => {
+    expect(validateParams("grid", { ...ok, levels: 3.5 }).ok).toBe(false);
+  });
+  it("rejects perLevelUsdc <= 0", () => {
+    expect(validateParams("grid", { ...ok, perLevelUsdc: 0 }).ok).toBe(false);
+  });
+});

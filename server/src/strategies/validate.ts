@@ -1,4 +1,4 @@
-import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams } from "./types";
+import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams, GridParams } from "./types";
 
 type Result = { ok: true; params: StrategyParams } | { ok: false; error: string };
 
@@ -39,6 +39,14 @@ export function validateParams(kind: StrategyKind, params: unknown): Result {
     if (hasTp && !positiveNumber(x.takeProfitPrice)) return { ok: false, error: "takeProfitPrice must be > 0" };
     if (hasSl && !positiveNumber(x.stopLossPrice)) return { ok: false, error: "stopLossPrice must be > 0" };
     return { ok: true, params: { coin, ...(hasTp ? { takeProfitPrice: x.takeProfitPrice } : {}), ...(hasSl ? { stopLossPrice: x.stopLossPrice } : {}) } };
+  }
+  if (kind === "grid") {
+    const g = p as unknown as GridParams;
+    if (!positiveNumber(g.lowerPrice)) return { ok: false, error: "lowerPrice must be > 0" };
+    if (!positiveNumber(g.upperPrice) || g.upperPrice <= g.lowerPrice) return { ok: false, error: "upperPrice must be > lowerPrice" };
+    if (!positiveInteger(g.levels) || g.levels < 2) return { ok: false, error: "levels must be an integer >= 2" };
+    if (!positiveNumber(g.perLevelUsdc)) return { ok: false, error: "perLevelUsdc must be > 0" };
+    return { ok: true, params: { coin, lowerPrice: g.lowerPrice, upperPrice: g.upperPrice, levels: g.levels, perLevelUsdc: g.perLevelUsdc } };
   }
   return { ok: false, error: "unknown strategy kind" };
 }
