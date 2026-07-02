@@ -3,7 +3,8 @@ import type { StrategyStore } from "../strategies/store";
 import { dueDca, dcaNextRunAt } from "../strategies/dca";
 import { dueTwap, twapSliceUsdc, twapIntervalMs } from "../strategies/twap";
 import { withinCaps, type RiskLimits } from "../risk/guards";
-import type { DcaParams, TwapParams } from "../strategies/types";
+import { tpslTriggered, closeSide } from "../strategies/tpsl";
+import type { DcaParams, TwapParams, TpslParams } from "../strategies/types";
 
 export interface PlaceRequest {
   owner: string;
@@ -114,6 +115,27 @@ export async function tick(
     }
   }
 
-  // --- TP/SL: filled in Phase 2 (Task 2.3) ---
-  void tpsl;
+  // --- TP/SL: reduce-only close on mark crossing configured price ---
+  if (tpsl) {
+    for (const s of all) {
+      if (s.kind !== "tpsl" || s.status !== "running") continue;
+      if (killSwitch) continue;
+      const p = s.params as TpslParams;
+      const szi = await tpsl.resolvePosition(s.owner, p.coin);
+      if (szi === undefined || szi === 0) continue;
+      const mark = await tpsl.resolveMark(p.coin);
+      if (!Number.isFinite(mark) || mark <= 0) continue;
+      if (!tpslTriggered(p, szi, mark)) continue;
+      const cloid = cloidFor(s.id, now);
+      const side = closeSide(szi);
+      const res = await placer.place({ owner: s.owner, coin: p.coin, sizeCoin: Math.abs(szi), cloid, side, reduceOnly: true });
+      if (res.ok) {
+        if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+          activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side, sz: res.filledSz, px: res.avgPx });
+        }
+        const covered = res.filledSz === undefined || res.filledSz + 1e-9 >= Math.abs(szi);
+        if (covered) store.recordTrigger(s.id, now);
+      }
+    }
+  }
 }

@@ -121,4 +121,82 @@ describe("scheduler tick", () => {
     await tick(store, placer as any, { maxNotionalUsdc: 1000 }, true, 0);
     expect(placer.place).not.toHaveBeenCalled();
   });
+
+  it("closes a long position (reduce-only sell) when take-profit triggers", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "tpsl", { coin: "BTC", takeProfitPrice: 110 });
+    const placed: any[] = [];
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.5, avgPx: 110 }; } };
+    const tpsl = { resolveMark: async () => 111, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, tpsl);
+    expect(placed[0]).toMatchObject({ coin: "BTC", side: "sell", reduceOnly: true, sizeCoin: 0.5 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed", triggeredAt: 0 });
+  });
+
+  it("does not trigger when mark has not crossed", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "tpsl", { coin: "BTC", takeProfitPrice: 110, stopLossPrice: 90 });
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    const tpsl = { resolveMark: async () => 100, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, tpsl);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+
+  it("skips when there is no position", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "tpsl", { coin: "BTC", stopLossPrice: 90 });
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    const tpsl = { resolveMark: async () => 80, resolvePosition: async () => undefined };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, tpsl);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+
+  it("kill-switch blocks the tpsl close", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "tpsl", { coin: "BTC", takeProfitPrice: 110 });
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    const tpsl = { resolveMark: async () => 120, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, tpsl);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+
+  it("uses cloidFor(s.id, now) for TP/SL close and partial fill leaves strategy running", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "tpsl", { coin: "BTC", takeProfitPrice: 110 });
+    const placed: any[] = [];
+    // partial fill: filledSz < abs(szi)
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.1, avgPx: 111 }; } };
+    const tpsl = { resolveMark: async () => 111, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 42, undefined, tpsl);
+    expect(placed[0].cloid).toBe(cloidFor(s.id, 42));
+    // partial fill — strategy must still be running, no triggeredAt
+    expect(store.get(s.id)).toMatchObject({ status: "running" });
+    expect(store.get(s.id)!.triggeredAt).toBeUndefined();
+  });
+
+  it("records exactly one activity row when TP triggers a reduce-only close with filledSz and avgPx", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "tpsl", { coin: "BTC", takeProfitPrice: 110 });
+    const activity = new MemoryActivityStore();
+    const placer = { place: async (_r: any) => ({ ok: true, filledSz: 0.5, avgPx: 112 }) };
+    const tpsl = { resolveMark: async () => 112, resolvePosition: async () => 0.5 };
+
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 5000, activity, tpsl);
+
+    const rows = activity.list("0xo", s.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      strategyId: s.id,
+      owner: "0xo",
+      time: 5000,
+      coin: "BTC",
+      side: "sell",   // close side for a long position (szi > 0)
+      sz: 0.5,
+      px: 112,
+    });
+
+    // a second tick must not record another row (strategy is now completed)
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 6000, activity, tpsl);
+    expect(activity.list("0xo", s.id)).toHaveLength(1);
+  });
 });
