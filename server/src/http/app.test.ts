@@ -126,6 +126,36 @@ describe("HTTP app", () => {
     await app.close();
   });
 
+  it("GET /activity requires auth", async () => {
+    const app = build();
+    const res = await app.inject({ method: "GET", url: "/activity" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("GET /activity returns owner-wide newest-first DTOs honoring limit", async () => {
+    const auth0 = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+    const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+    const store = new MemoryStrategyStore(() => 1000);
+    const activity = new MemoryActivityStore();
+    const app = buildApp({ auth: auth0, agents, store, activity, now: () => 1000 });
+    const token = await tokenFor(app);
+    const headers = { authorization: `Bearer ${token}` };
+
+    activity.record({ strategyId: "s1", owner: account.address, time: 100, coin: "BTC", side: "buy", sz: 0.1, px: 50000 });
+    activity.record({ strategyId: "s2", owner: account.address, time: 300, coin: "ETH", side: "sell", sz: 1, px: 1600 });
+    activity.record({ strategyId: "s1", owner: account.address, time: 200, coin: "BTC", side: "buy", sz: 0.2, px: 51000 });
+
+    const all = (await app.inject({ method: "GET", url: "/activity", headers })).json();
+    expect(all.map((a: { time: number }) => a.time)).toEqual([300, 200, 100]);
+    expect(all[0]).toEqual({ id: expect.any(String), time: 300, coin: "ETH", side: "sell", sz: 1, px: 1600 });
+
+    const limited = (await app.inject({ method: "GET", url: "/activity?limit=1", headers })).json();
+    expect(limited).toHaveLength(1);
+    expect(limited[0].time).toBe(300);
+    await app.close();
+  });
+
   it("serves a public /health with version and no auth required", async () => {
     const app = build();
     const res = await app.inject({ method: "GET", url: "/health" });

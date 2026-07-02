@@ -200,6 +200,17 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }));
   });
 
+  // --- owner-wide recent activity feed ---
+  app.get("/activity", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    const raw = Number((req.query as { limit?: string }).limit);
+    const limit = Number.isFinite(raw) ? Math.min(200, Math.max(1, Math.floor(raw))) : 50;
+    return (deps.activity?.listRecent(owner, limit) ?? []).map((a) => ({
+      id: a.id, time: a.time, coin: a.coin, side: a.side, sz: a.sz, px: a.px,
+    }));
+  });
+
   // --- kill switch: hard-stop the owner's automation by pausing every running strategy ---
   app.post("/kill-switch", async (req, reply) => {
     const owner = ownerOf(req, reply);
