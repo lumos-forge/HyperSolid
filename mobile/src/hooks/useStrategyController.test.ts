@@ -54,7 +54,16 @@ describe("useStrategyController", () => {
     await act(async () => {
       await result.current.createDca({ coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
     });
-    expect(api.createStrategy).toHaveBeenCalledWith({ coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
+    expect(api.createStrategy).toHaveBeenCalledWith("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
     expect(api.listStrategies.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("createTwap creates a twap then refreshes", async () => {
+    const api = makeApi();
+    const { result } = renderHook(() => useStrategyController(api as never, approveAgent, "n"));
+    await act(async () => {
+      await result.current.createTwap({ coin: "ETH", side: "buy", totalUsdc: 300, slices: 6, durationHours: 3 });
+    });
+    expect(api.createStrategy).toHaveBeenCalledWith("twap", { coin: "ETH", side: "buy", totalUsdc: 300, slices: 6, durationHours: 3 });
   });
 });

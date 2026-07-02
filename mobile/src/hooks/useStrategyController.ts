@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { StrategyApi, Strategy, DcaParams, AgentStatus } from "../services/strategyApi";
+import type { StrategyApi, Strategy, DcaParams, TwapParams, TpslParams, AgentStatus } from "../services/strategyApi";
 import type { ApproveAgentResult } from "../services/exchange";
 
 type ApproveAgentFn = (req: { agentAddress: string; agentName?: string }) => Promise<ApproveAgentResult>;
@@ -43,13 +43,20 @@ export function useStrategyController(api: StrategyApi, approveAgent: ApproveAge
     await refresh();
   }, [api, refresh]);
 
-  const createDca = useCallback(
-    async (params: DcaParams) => {
-      await api.createStrategy(params);
-      await refresh();
-    },
-    [api, refresh],
-  );
+  const createDca = useCallback(async (params: DcaParams) => {
+    await api.createStrategy("dca", params);
+    await refresh();
+  }, [api, refresh]);
+
+  const createTwap = useCallback(async (params: TwapParams) => {
+    await api.createStrategy("twap", params);
+    await refresh();
+  }, [api, refresh]);
+
+  const createTpsl = useCallback(async (params: TpslParams) => {
+    await api.createStrategy("tpsl", params);
+    await refresh();
+  }, [api, refresh]);
 
   const toggle = useCallback(
     async (s: Strategy) => {
@@ -64,5 +71,5 @@ export function useStrategyController(api: StrategyApi, approveAgent: ApproveAge
     await refresh();
   }, [api, refresh]);
 
-  return { approved: status.approved, status, strategies, busy, approveAgentFlow, revoke, createDca, toggle, killAll, refresh };
+  return { approved: status.approved, status, strategies, busy, approveAgentFlow, revoke, createDca, createTwap, createTpsl, toggle, killAll, refresh };
 }

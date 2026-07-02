@@ -1,20 +1,27 @@
 import { fetchWithTimeout } from "../lib/fetchWithTimeout";
 
+export type StrategyType = "dca" | "twap" | "tpsl";
+
 export interface DcaParams {
-  coin: string;
-  side: "buy";
-  quoteAmountUsdc: number;
-  intervalHours: number;
-  maxTotalUsdc?: number;
+  coin: string; side: "buy"; quoteAmountUsdc: number; intervalHours: number; maxTotalUsdc?: number;
 }
+export interface TwapParams {
+  coin: string; side: "buy" | "sell"; totalUsdc: number; slices: number; durationHours: number;
+}
+export interface TpslParams {
+  coin: string; takeProfitPrice?: number; stopLossPrice?: number;
+}
+export type StrategyParams = DcaParams | TwapParams | TpslParams;
 
 export interface Strategy {
   id: string;
-  type: "dca";
-  params: DcaParams;
-  status: "running" | "paused";
+  type: StrategyType;
+  params: StrategyParams;
+  status: "running" | "paused" | "completed";
   filledTotalUsdc?: number;
   nextRunAt?: number;
+  slicesDone?: number;
+  triggeredAt?: number;
 }
 
 export interface Activity {
@@ -83,8 +90,8 @@ export class StrategyApi {
   listStrategies() {
     return this.request<Strategy[]>("/strategies", "GET");
   }
-  createStrategy(params: DcaParams) {
-    return this.request<Strategy>("/strategies", "POST", { type: "dca", params });
+  createStrategy(type: StrategyType, params: StrategyParams) {
+    return this.request<Strategy>("/strategies", "POST", { type, params });
   }
   setStrategyStatus(id: string, status: "running" | "paused") {
     return this.request<Strategy>(`/strategies/${id}`, "PATCH", { status });

@@ -25,15 +25,20 @@ describe("StrategyApi", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 
-  it("creates a DCA strategy with the params in the body", async () => {
+  it("creates a DCA strategy with type + params in the body", async () => {
     const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({ id: "s2", type: "dca", params: {}, status: "running" }));
     const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
-    await api.createStrategy({ coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
+    await api.createStrategy("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
     const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
-    expect(JSON.parse(init.body as string)).toEqual({
-      type: "dca",
-      params: { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 },
-    });
+    expect(JSON.parse(init.body as string)).toEqual({ type: "dca", params: { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 } });
+  });
+
+  it("creates a TWAP strategy", async () => {
+    const fetchMock = jest.fn(async (_u: string, _i?: RequestInit) => res({ id: "s3", type: "twap", params: {}, status: "running" }));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    await api.createStrategy("twap", { coin: "ETH", side: "sell", totalUsdc: 300, slices: 6, durationHours: 3 });
+    const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
+    expect(JSON.parse(init.body as string).type).toBe("twap");
   });
 
   it("throws on a non-ok response", async () => {
