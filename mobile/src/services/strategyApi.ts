@@ -102,6 +102,10 @@ export class StrategyApi {
   getActivity(id: string) {
     return this.request<Activity[]>(`/strategies/${id}/activity`, "GET");
   }
+  getRecentActivity(limit?: number) {
+    const q = limit ? `?limit=${limit}` : "";
+    return this.request<Activity[]>(`/activity${q}`, "GET");
+  }
   killSwitch() {
     return this.request<void>("/kill-switch", "POST");
   }

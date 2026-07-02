@@ -41,6 +41,14 @@ describe("StrategyApi", () => {
     expect(JSON.parse(init.body as string).type).toBe("twap");
   });
 
+  it("fetches recent activity with a limit", async () => {
+    const fetchMock = jest.fn(async (_u: string, _i?: RequestInit) => res([{ id: "a1", time: 1, coin: "BTC", side: "buy", sz: 0.1, px: 50000 }]));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    const list = await api.getRecentActivity(25);
+    expect(list).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith("https://api/activity?limit=25", expect.objectContaining({ method: "GET" }));
+  });
+
   it("throws on a non-ok response", async () => {
     const fetchImpl = jest.fn(async () => res({}, false, 401)) as unknown as typeof fetch;
     const api = new StrategyApi("https://api", "tok", fetchImpl);
