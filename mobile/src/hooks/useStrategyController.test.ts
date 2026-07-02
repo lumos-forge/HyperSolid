@@ -13,6 +13,7 @@ function makeApi() {
     createStrategy: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "running" })),
     setStrategyStatus: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "paused" })),
     killSwitch: jest.fn(async () => undefined),
+    getRecentActivity: jest.fn(async () => [] as unknown[]),
   };
 }
 const approveAgent = jest.fn(async () => ({ ok: true as const }));
@@ -56,6 +57,13 @@ describe("useStrategyController", () => {
     });
     expect(api.createStrategy).toHaveBeenCalledWith("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
     expect(api.listStrategies.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("refresh loads recent activity into the hook", async () => {
+    const api = makeApi();
+    api.getRecentActivity = jest.fn(async () => [{ id: "a1", time: 1, coin: "BTC", side: "buy", sz: 0.1, px: 50000 }]);
+    const { result } = renderHook(() => useStrategyController(api as never, approveAgent, "n"));
+    await waitFor(() => expect(result.current.activity.length).toBe(1));
   });
 
   it("createTwap creates a twap then refreshes", async () => {

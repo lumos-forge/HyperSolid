@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { StrategyApi, Strategy, DcaParams, TwapParams, TpslParams, AgentStatus } from "../services/strategyApi";
+import type { StrategyApi, Strategy, DcaParams, TwapParams, TpslParams, AgentStatus, Activity } from "../services/strategyApi";
 import type { ApproveAgentResult } from "../services/exchange";
 
 type ApproveAgentFn = (req: { agentAddress: string; agentName?: string }) => Promise<ApproveAgentResult>;
@@ -12,12 +12,14 @@ type ApproveAgentFn = (req: { agentAddress: string; agentName?: string }) => Pro
 export function useStrategyController(api: StrategyApi, approveAgent: ApproveAgentFn, agentName: string) {
   const [status, setStatus] = useState<AgentStatus>({ approved: false });
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [s, list] = await Promise.all([api.agentStatus(), api.listStrategies()]);
+    const [s, list, acts] = await Promise.all([api.agentStatus(), api.listStrategies(), api.getRecentActivity()]);
     setStatus(s);
     setStrategies(list);
+    setActivity(acts);
   }, [api]);
 
   useEffect(() => {
@@ -71,5 +73,5 @@ export function useStrategyController(api: StrategyApi, approveAgent: ApproveAge
     await refresh();
   }, [api, refresh]);
 
-  return { approved: status.approved, status, strategies, busy, approveAgentFlow, revoke, createDca, createTwap, createTpsl, toggle, killAll, refresh };
+  return { approved: status.approved, status, strategies, activity, busy, approveAgentFlow, revoke, createDca, createTwap, createTpsl, toggle, killAll, refresh };
 }
