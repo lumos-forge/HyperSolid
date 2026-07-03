@@ -32,4 +32,16 @@ describe("loadAppConfig", () => {
     const fetchImpl = jest.fn(async () => jsonResponse({}, false, 503)) as unknown as typeof fetch;
     await expect(loadAppConfig("https://api.example.com", fetchImpl)).rejects.toThrow(/503/);
   });
+
+  it("parses server-delivered geo when present", async () => {
+    const fetchImpl = jest.fn(async () => jsonResponse({ geo: { country: "US" } })) as unknown as typeof fetch;
+    const cfg = await loadAppConfig("https://api.example.com", fetchImpl);
+    expect(cfg.geo).toEqual({ country: "US" });
+  });
+
+  it("defaults geo to null when absent", async () => {
+    const fetchImpl = jest.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const cfg = await loadAppConfig("https://api.example.com", fetchImpl);
+    expect(cfg.geo).toBeNull();
+  });
 });

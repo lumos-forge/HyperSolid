@@ -5,6 +5,7 @@ interface RawAppConfig {
   arbitrumRpc?: { mainnet?: string | null; testnet?: string | null };
   withdrawFeeUsdc?: { mainnet?: number | null; testnet?: number | null };
   strategyApiBaseUrl?: string | null;
+  geo?: { country?: string; region?: string };
 }
 
 /**
@@ -29,6 +30,7 @@ export async function loadAppConfig(
       testnet: raw.withdrawFeeUsdc?.testnet ?? null,
     },
     strategyApiBaseUrl: raw.strategyApiBaseUrl ?? null,
+    geo: raw.geo ?? null,
   };
 }
 

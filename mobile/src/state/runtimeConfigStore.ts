@@ -8,6 +8,8 @@ export interface AppRuntimeConfig {
   withdrawFeeUsdc: { mainnet: number | null; testnet: number | null };
   /** Strategy backend base URL (server-delivered); null until delivered → strategy automation gated. */
   strategyApiBaseUrl: string | null;
+  /** Server-delivered caller geo (from the request IP); null when unknown → gate fails open. */
+  geo: { country?: string; region?: string } | null;
 }
 
 interface RuntimeConfigState extends AppRuntimeConfig {
@@ -25,11 +27,13 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>((set) => ({
   arbitrumRpc: { mainnet: null, testnet: null },
   withdrawFeeUsdc: { mainnet: null, testnet: null },
   strategyApiBaseUrl: null,
+  geo: null,
   setConfig: (cfg) =>
     set({
       arbitrumRpc: cfg.arbitrumRpc,
       withdrawFeeUsdc: cfg.withdrawFeeUsdc,
       strategyApiBaseUrl: cfg.strategyApiBaseUrl,
+      geo: cfg.geo,
     }),
 }));
 
