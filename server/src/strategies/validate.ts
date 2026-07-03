@@ -46,7 +46,9 @@ export function validateParams(kind: StrategyKind, params: unknown): Result {
     if (!positiveNumber(g.upperPrice) || g.upperPrice <= g.lowerPrice) return { ok: false, error: "upperPrice must be > lowerPrice" };
     if (!positiveInteger(g.levels) || g.levels < 2) return { ok: false, error: "levels must be an integer >= 2" };
     if (!positiveNumber(g.perLevelUsdc)) return { ok: false, error: "perLevelUsdc must be > 0" };
-    return { ok: true, params: { coin, lowerPrice: g.lowerPrice, upperPrice: g.upperPrice, levels: g.levels, perLevelUsdc: g.perLevelUsdc } };
+    const mode = g.mode ?? "longOnly";
+    if (mode !== "longOnly" && mode !== "symmetric") return { ok: false, error: "mode must be longOnly or symmetric" };
+    return { ok: true, params: { coin, lowerPrice: g.lowerPrice, upperPrice: g.upperPrice, levels: g.levels, perLevelUsdc: g.perLevelUsdc, mode } };
   }
   return { ok: false, error: "unknown strategy kind" };
 }

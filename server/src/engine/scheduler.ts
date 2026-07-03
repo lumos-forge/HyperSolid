@@ -5,7 +5,7 @@ import { dueTwap, twapSliceUsdc, twapIntervalMs } from "../strategies/twap";
 import { withinCaps, type RiskLimits } from "../risk/guards";
 import { tpslTriggered, closeSide } from "../strategies/tpsl";
 import type { DcaParams, TwapParams, TpslParams, GridParams } from "../strategies/types";
-import { gridStep, bandIndex, gridAction } from "../strategies/grid";
+import { gridStep, bandIndex, gridAction, targetNetUsdc } from "../strategies/grid";
 
 export interface PlaceRequest {
   owner: string;
@@ -58,6 +58,9 @@ export interface MarkDeps {
   /** Signed position size (szi): >0 long, <0 short, undefined/0 = flat. */
   resolvePosition(owner: string, coin: string): Promise<number | undefined>;
 }
+
+/** HL perp min order notional; symmetric seed deltas below this are treated as already on-target. */
+const MIN_GRID_NOTIONAL = 10;
 
 export async function tick(
   store: StrategyStore,
@@ -140,17 +143,54 @@ export async function tick(
     }
   }
 
-  // --- Grid: mark-crossing, inventory-bounded long grid ---
+  // --- Grid: mark-crossing grid (longOnly | symmetric) ---
   if (marks) {
+    const gridCapsOk = (notionalUsdc: number, owner: string, coin: string): boolean => {
+      if (!withinCaps({ notionalUsdc, killSwitch, coin }, limits).ok) return false;
+      if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
+        const spentToday = activity.notionalSince(owner, dayStartUtcMs(now));
+        if (spentToday + notionalUsdc > limits.dailyMaxNotionalUsdc) return false;
+      }
+      return true;
+    };
     for (const s of all) {
       if (s.kind !== "grid" || s.status !== "running") continue;
       if (killSwitch) continue;
       const p = s.params as GridParams;
+      const mode = p.mode ?? "longOnly";
       const mark = await marks.resolveMark(p.coin);
       if (!Number.isFinite(mark) || mark <= 0) continue;
       const step = gridStep(p);
       const curBand = bandIndex(mark, p.lowerPrice, step, p.levels);
 
+      // Symmetric: reconcile the net position to the geometric-center target for the current
+      // band. Seed and every crossing size their order from the ACTUAL position, so partial or
+      // rounded fills self-correct instead of drifting the net off-center or past the bounds.
+      // Net is targeted in USDC notional (szi * mark), so exposure stays bounded as price moves.
+      if (mode === "symmetric") {
+        if (s.lastLevel === curBand) continue; // already tracking this band
+        const target = targetNetUsdc(curBand, p.levels, p.perLevelUsdc);
+        const szi = (await marks.resolvePosition(s.owner, p.coin)) ?? 0;
+        const deltaUsdc = target - szi * mark;
+        const sizeUsdc = Math.abs(deltaUsdc);
+        if (sizeUsdc < MIN_GRID_NOTIONAL) {
+          store.seedGridLevel(s.id, curBand); // close enough to target; just track the band
+          continue;
+        }
+        const side: "buy" | "sell" = deltaUsdc >= 0 ? "buy" : "sell";
+        if (!gridCapsOk(sizeUsdc, s.owner, p.coin)) continue; // retry next tick, do not advance
+        const cloid = cloidFor(s.id, s.actionsDone ?? 0);
+        const res = await placer.place({ owner: s.owner, coin: p.coin, sizeUsdc, cloid, side, reduceOnly: false });
+        if (res.ok) {
+          store.recordGridAction(s.id, curBand, side === "buy" ? res.filledUsdc ?? sizeUsdc : 0);
+          if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+            activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side, sz: res.filledSz, px: res.avgPx });
+          }
+        }
+        continue;
+      }
+
+      // longOnly: inventory-bounded long grid.
       if (s.lastLevel === undefined) {
         store.seedGridLevel(s.id, curBand);
         continue;
@@ -160,11 +200,7 @@ export async function tick(
       if (!act || act.usdc <= 0) continue;
 
       if (act.side === "buy") {
-        if (!withinCaps({ notionalUsdc: act.usdc, killSwitch, coin: p.coin }, limits).ok) continue;
-        if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
-          const spentToday = activity.notionalSince(s.owner, dayStartUtcMs(now));
-          if (spentToday + act.usdc > limits.dailyMaxNotionalUsdc) continue;
-        }
+        if (!gridCapsOk(act.usdc, s.owner, p.coin)) continue;
       }
 
       if (act.side === "sell") {

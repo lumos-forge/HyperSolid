@@ -159,6 +159,7 @@ function StrategyPanel({
   const [gridUpper, setGridUpper] = useState("");
   const [gridLevels, setGridLevels] = useState("6");
   const [gridPerLevel, setGridPerLevel] = useState("");
+  const [gridMode, setGridMode] = useState<"longOnly" | "symmetric">("longOnly");
 
   async function onApprove() {
     const res = await ctrl.approveAgentFlow();
@@ -204,7 +205,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidGrid"));
       return;
     }
-    await ctrl.createGrid({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel });
+    await ctrl.createGrid({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: gridMode });
     setGridLower(""); setGridUpper(""); setGridPerLevel("");
   }
 
@@ -345,6 +346,24 @@ function StrategyPanel({
           <Field theme={theme} label={t("agent.gridUpper")} value={gridUpper} onChangeText={setGridUpper} keyboard testID="grid-upper" />
           <Field theme={theme} label={t("agent.gridLevels")} value={gridLevels} onChangeText={setGridLevels} keyboard testID="grid-levels" />
           <Field theme={theme} label={t("agent.gridPerLevel")} value={gridPerLevel} onChangeText={setGridPerLevel} keyboard testID="grid-per-level" />
+          <View style={styles.sideRow}>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.gridMode")}</Text>
+            <View style={styles.sideBtns}>
+              {(["longOnly", "symmetric"] as const).map((m) => (
+                <Pressable
+                  key={m}
+                  testID={`grid-mode-${m}`}
+                  accessibilityRole="button"
+                  onPress={() => setGridMode(m)}
+                  style={[styles.sideBtn, { borderColor: theme.line }, gridMode === m && { backgroundColor: theme.surface }]}
+                >
+                  <Text style={[styles.segmentText, { color: gridMode === m ? theme.text : theme.muted }]}>
+                    {t(m === "longOnly" ? "agent.gridModeLongOnly" : "agent.gridModeSymmetric")}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           <Pressable onPress={onCreateGrid} accessibilityRole="button" testID="grid-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
             <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createGrid")}</Text>
           </Pressable>

@@ -79,8 +79,8 @@ describe("useStrategyController", () => {
     const api = makeApi();
     const { result } = renderHook(() => useStrategyController(api as never, approveAgent, "n"));
     await act(async () => {
-      await result.current.createGrid({ coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+      await result.current.createGrid({ coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" });
     });
-    expect(api.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    expect(api.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" });
   });
 });

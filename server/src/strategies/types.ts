@@ -28,6 +28,8 @@ export interface GridParams {
   levels: number;
   /** Notional (USDC) bought/sold per crossed grid line. */
   perLevelUsdc: number;
+  /** longOnly (default): inventory-bounded long grid. symmetric: two-sided long/short grid. */
+  mode?: "longOnly" | "symmetric";
 }
 export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams;
 

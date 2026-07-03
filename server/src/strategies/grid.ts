@@ -28,3 +28,13 @@ export function gridAction(lastLevel: number, curBand: number, perLevelUsdc: num
   if (curBand > lastLevel) return { side: "sell", usdc: (curBand - lastLevel) * perLevelUsdc, targetLevel: curBand };
   return null;
 }
+
+/**
+ * Symmetric-grid target net position (USDC notional) at a given band:
+ * centerBand = (levels-1)/2; target = (centerBand - band) * perLevelUsdc.
+ * Positive = net long (max at the bottom band), negative = net short (max at the top band).
+ */
+export function targetNetUsdc(band: number, levels: number, perLevelUsdc: number): number {
+  const centerBand = (levels - 1) / 2;
+  return (centerBand - band) * perLevelUsdc;
+}

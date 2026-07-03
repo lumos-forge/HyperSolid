@@ -1,4 +1,4 @@
-import { gridStep, bandIndex, gridAction } from "./grid";
+import { gridStep, bandIndex, gridAction, targetNetUsdc } from "./grid";
 import type { GridParams } from "./types";
 
 const P: GridParams = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
@@ -34,5 +34,21 @@ describe("gridAction", () => {
   });
   it("returns null when the band is unchanged", () => {
     expect(gridAction(3, 3, P.perLevelUsdc)).toBeNull();
+  });
+});
+
+describe("targetNetUsdc", () => {
+  it("is perLevel*(centerBand-band); max long at the bottom, max short at the top (even levels)", () => {
+    // levels=6 -> centerBand=2.5
+    expect(targetNetUsdc(0, 6, 50)).toBe(125);
+    expect(targetNetUsdc(5, 6, 50)).toBe(-125);
+    expect(targetNetUsdc(2, 6, 50)).toBe(25);
+    expect(targetNetUsdc(3, 6, 50)).toBe(-25);
+  });
+  it("is 0 at the exact center for odd levels", () => {
+    // levels=5 -> centerBand=2
+    expect(targetNetUsdc(2, 5, 50)).toBe(0);
+    expect(targetNetUsdc(0, 5, 50)).toBe(100);
+    expect(targetNetUsdc(4, 5, 50)).toBe(-100);
   });
 });

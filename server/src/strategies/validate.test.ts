@@ -37,9 +37,16 @@ describe("validateParams", () => {
 describe("validateParams grid", () => {
   const ok = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
 
-  it("accepts a valid grid", () => {
+  it("accepts a valid grid and defaults mode to longOnly", () => {
     const r = validateParams("grid", ok);
-    expect(r).toEqual({ ok: true, params: ok });
+    expect(r).toEqual({ ok: true, params: { ...ok, mode: "longOnly" } });
+  });
+  it("accepts an explicit symmetric mode", () => {
+    const r = validateParams("grid", { ...ok, mode: "symmetric" });
+    expect(r).toEqual({ ok: true, params: { ...ok, mode: "symmetric" } });
+  });
+  it("rejects an invalid mode", () => {
+    expect(validateParams("grid", { ...ok, mode: "wat" })).toEqual({ ok: false, error: "mode must be longOnly or symmetric" });
   });
   it("rejects upper <= lower", () => {
     expect(validateParams("grid", { ...ok, upperPrice: 100 }).ok).toBe(false);
