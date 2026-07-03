@@ -69,3 +69,42 @@ func TestMoreDigestGolden(t *testing.T) {
 		})
 	}
 }
+
+func moreSign(t *testing.T, s *Signer, v moreVector) (Sig, error) {
+	t.Helper()
+	switch v.Action {
+	case "withdraw3":
+		return s.SignWithdraw3(Withdraw3Input{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Amount, v.Time})
+	case "usdSend":
+		return s.SignUsdSend(UsdSendInput{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Amount, v.Time})
+	case "approveBuilderFee":
+		return s.SignApproveBuilderFee(ApproveBuilderFeeInput{v.SignatureChainID, v.HyperliquidChain, v.MaxFeeRate, v.Builder, v.Nonce})
+	}
+	t.Fatalf("unknown action %q", v.Action)
+	return Sig{}, nil
+}
+
+func TestMoreSignGolden(t *testing.T) {
+	for _, v := range loadMoreGolden(t) {
+		t.Run(v.Name, func(t *testing.T) {
+			key, err := hex.DecodeString(v.PrivKey[2:])
+			if err != nil {
+				t.Fatalf("decode key: %v", err)
+			}
+			s, err := NewSigner(key)
+			if err != nil {
+				t.Fatalf("NewSigner: %v", err)
+			}
+			defer s.Close()
+			sig, err := moreSign(t, s, v)
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			gotR := "0x" + hex.EncodeToString(sig.R[:])
+			gotS := "0x" + hex.EncodeToString(sig.S[:])
+			if gotR != v.Sig.R || gotS != v.Sig.S || int(sig.V) != v.Sig.V {
+				t.Fatalf("sig = {r:%s s:%s v:%d}, want {r:%s s:%s v:%d}", gotR, gotS, sig.V, v.Sig.R, v.Sig.S, v.Sig.V)
+			}
+		})
+	}
+}
