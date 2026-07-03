@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -93,4 +94,44 @@ func UserSignedDigest(primaryType string, fields []Field, chainID uint64, messag
 	domainSeparator := keccak(domainTypeHash[:], nameHash[:], versionHash[:], chainWord, verifyingContract)
 
 	return keccak([]byte{0x19, 0x01}, domainSeparator[:], structHash[:]), nil
+}
+
+// ApproveAgentInput is the semantic input for an approveAgent user-signed action.
+type ApproveAgentInput struct {
+	SignatureChainID string // hex, e.g. "0xa4b1" (drives the domain chainId)
+	HyperliquidChain string // "Mainnet" | "Testnet" (signed replay-protection field)
+	AgentAddress     string // 0x… 20-byte
+	AgentName        string // "" when none
+	Nonce            uint64
+}
+
+// approveAgentFields is the ordered EIP-712 type table for HyperliquidTransaction:ApproveAgent.
+var approveAgentFields = []Field{
+	{"hyperliquidChain", "string"},
+	{"agentAddress", "address"},
+	{"agentName", "string"},
+	{"nonce", "uint64"},
+}
+
+// ApproveAgentDigest builds the EIP-712 digest for an approveAgent action.
+func ApproveAgentDigest(in ApproveAgentInput) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	message := map[string]any{
+		"hyperliquidChain": in.HyperliquidChain,
+		"agentAddress":     in.AgentAddress,
+		"agentName":        in.AgentName,
+		"nonce":            in.Nonce,
+	}
+	return UserSignedDigest("HyperliquidTransaction:ApproveAgent", approveAgentFields, chainID, message)
+}
+
+func parseHexChainID(s string) (uint64, error) {
+	h := strings.TrimPrefix(strings.ToLower(s), "0x")
+	if h == "" {
+		return 0, fmt.Errorf("empty signatureChainId")
+	}
+	return strconv.ParseUint(h, 16, 64)
 }
