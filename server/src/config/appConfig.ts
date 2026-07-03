@@ -8,6 +8,8 @@ export interface AppConfigPayload {
   arbitrumRpc: { mainnet: string | null; testnet: string | null };
   withdrawFeeUsdc: { mainnet: number | null; testnet: number | null };
   strategyApiBaseUrl: string | null;
+  /** Caller geo derived per-request from a proxy header (added by the /app-config handler). */
+  geo?: { country?: string; region?: string };
 }
 
 function num(v: string | undefined): number | null {
@@ -28,5 +30,15 @@ export function appConfigFromEnv(env: NodeJS.ProcessEnv): AppConfigPayload {
       testnet: num(env.WITHDRAW_FEE_USDC_TESTNET),
     },
     strategyApiBaseUrl: env.STRATEGY_API_BASE_URL ?? null,
+  };
+}
+
+import type { GeoHeaderConfig } from "../http/geo";
+
+/** Header names the /app-config handler reads the caller's country/region from (Cloudflare defaults). */
+export function geoHeadersFromEnv(env: NodeJS.ProcessEnv): GeoHeaderConfig {
+  return {
+    countryHeader: env.GEO_COUNTRY_HEADER ?? "cf-ipcountry",
+    regionHeader: env.GEO_REGION_HEADER ?? "cf-region",
   };
 }

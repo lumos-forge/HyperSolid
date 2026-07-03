@@ -1,4 +1,4 @@
-import { appConfigFromEnv } from "./appConfig";
+import { appConfigFromEnv, geoHeadersFromEnv } from "./appConfig";
 
 describe("appConfigFromEnv", () => {
   it("maps env vars into the app-config payload the mobile app expects", () => {
@@ -23,5 +23,15 @@ describe("appConfigFromEnv", () => {
       withdrawFeeUsdc: { mainnet: null, testnet: null },
       strategyApiBaseUrl: null,
     });
+  });
+});
+
+describe("geoHeadersFromEnv", () => {
+  it("defaults to the Cloudflare headers", () => {
+    expect(geoHeadersFromEnv({})).toEqual({ countryHeader: "cf-ipcountry", regionHeader: "cf-region" });
+  });
+  it("honors overrides", () => {
+    expect(geoHeadersFromEnv({ GEO_COUNTRY_HEADER: "x-country", GEO_REGION_HEADER: "x-region" }))
+      .toEqual({ countryHeader: "x-country", regionHeader: "x-region" });
   });
 });

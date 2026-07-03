@@ -184,6 +184,27 @@ describe("HTTP app", () => {
     await app.close();
   });
 
+  it("adds geo to /app-config from the request country header", async () => {
+    const auth0 = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+    const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+    const store = new MemoryStrategyStore(() => 1000);
+    const app = buildApp({ auth: auth0, agents, store, geoHeaders: { countryHeader: "cf-ipcountry", regionHeader: "cf-region" } });
+    const res = await app.inject({ method: "GET", url: "/app-config", headers: { "cf-ipcountry": "US" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().geo).toEqual({ country: "US" });
+    await app.close();
+  });
+
+  it("omits geo from /app-config when no country header is present", async () => {
+    const auth0 = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+    const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+    const store = new MemoryStrategyStore(() => 1000);
+    const app = buildApp({ auth: auth0, agents, store });
+    const res = await app.inject({ method: "GET", url: "/app-config" });
+    expect(res.json().geo).toBeUndefined();
+    await app.close();
+  });
+
   it("accepts bodyless POSTs that still set Content-Type: application/json (as the app's client does)", async () => {
     // The mobile StrategyApi sends Content-Type: application/json even with no body for
     // provision/revoke/kill-switch; the server must not reject those with FST_ERR_CTP_EMPTY_JSON_BODY.

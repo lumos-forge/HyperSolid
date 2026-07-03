@@ -6,6 +6,7 @@ import type { Strategy, StrategyKind } from "../strategies/types";
 import { validateParams } from "../strategies/validate";
 import type { ActivityStore } from "../strategies/activityStore";
 import type { AppConfigPayload } from "../config/appConfig";
+import { resolveGeo, type GeoHeaderConfig } from "./geo";
 
 export interface AppDeps {
   auth: Auth;
@@ -21,6 +22,8 @@ export interface AppDeps {
   logger?: boolean;
   /** Served by GET /app-config (server-delivered runtime config for the app). */
   appConfig?: AppConfigPayload;
+  /** Header names to read the caller's country/region from on GET /app-config. */
+  geoHeaders?: GeoHeaderConfig;
 }
 
 interface StrategyDto {
@@ -80,7 +83,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   // --- runtime config the app fetches at startup (public; values are non-secret keyed endpoints) ---
   const appConfig: AppConfigPayload =
     deps.appConfig ?? { arbitrumRpc: { mainnet: null, testnet: null }, withdrawFeeUsdc: { mainnet: null, testnet: null }, strategyApiBaseUrl: null };
-  app.get("/app-config", async () => appConfig);
+  const geoHeaders: GeoHeaderConfig = deps.geoHeaders ?? { countryHeader: "cf-ipcountry", regionHeader: "cf-region" };
+  app.get("/app-config", async (req) => {
+    const geo = resolveGeo(req.headers, geoHeaders);
+    return geo ? { ...appConfig, geo } : appConfig;
+  });
 
   const ownerOf = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const header = req.headers.authorization;
