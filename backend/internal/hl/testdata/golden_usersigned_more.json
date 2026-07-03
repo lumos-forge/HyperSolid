@@ -1,0 +1,50 @@
+[
+  {
+    "name": "withdraw3-mainnet",
+    "action": "withdraw3",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "destination": "0x000000000000000000000000000000000000dEaD",
+    "amount": "100.5",
+    "time": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0x9e71e8cdcce1892858786d237d3b4492429ae6de9d681a7c8255f266a58a8149",
+    "sig": {
+      "r": "0x22eed217c4ce1a97bb206e5749efe7909ee55611ae0ed97235e532e05b47eeca",
+      "s": "0x098036196999a0a0305340bb4100e2fbfee5182af2a87aca1591d00e1990c1b3",
+      "v": 28
+    }
+  },
+  {
+    "name": "usdSend-testnet",
+    "action": "usdSend",
+    "signatureChainId": "0x66eee",
+    "hyperliquidChain": "Testnet",
+    "destination": "0x00000000000000000000000000000000cafe0001",
+    "amount": "25",
+    "time": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0x76a459ca99520b78a3b961fb040972656725ddb3b1e9df006a1fda2fbc69eb81",
+    "sig": {
+      "r": "0x4062c4b290fc4a7a943790034c4c9be2ace762f67116bb43e677a380cadaf038",
+      "s": "0x6572ab2a592d67ffaa9006c3ef06ebe0f2d356bc0f34cf8f282b584ddb05ac67",
+      "v": 28
+    }
+  },
+  {
+    "name": "approveBuilderFee-mainnet",
+    "action": "approveBuilderFee",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "maxFeeRate": "0.001%",
+    "builder": "0x1111111111111111111111111111111111111111",
+    "nonce": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0x880336b5297013ccb2c6693100cf49134b49e4e98c4d2848ba6f5825ddf54fc7",
+    "sig": {
+      "r": "0xcf3d9850ea31227a02edff023bebca1d2d4465dbb587e2399b767aa5c8c129eb",
+      "s": "0x0443dfb3477cbe028db9d933e7a68f9d243a956315c65cd7e4bf850763fbdce8",
+      "v": 27
+    }
+  }
+]

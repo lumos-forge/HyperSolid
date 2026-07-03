@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createL1ActionHash, signL1Action, signUserSignedAction } from "@nktkas/hyperliquid/signing";
-import { ApproveAgentTypes } from "@nktkas/hyperliquid/api/exchange";
+import { ApproveAgentTypes, Withdraw3Types, UsdSendTypes, ApproveBuilderFeeTypes } from "@nktkas/hyperliquid/api/exchange";
 import { hashTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -86,3 +86,31 @@ for (const c of userCases) {
 const userDest = resolve(dirname(fileURLToPath(import.meta.url)), "../../backend/internal/hl/testdata/golden_usersigned.json");
 writeFileSync(userDest, JSON.stringify(userOut, null, 2) + "\n");
 console.log(`wrote ${userOut.length} user-signed vectors to ${userDest}`);
+
+// --- More user-signed actions: withdraw3 / usdSend / approveBuilderFee ---
+const moreCases = [
+  { name: "withdraw3-mainnet", action: "withdraw3", types: Withdraw3Types, primaryType: "HyperliquidTransaction:Withdraw", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { destination: "0x000000000000000000000000000000000000dEaD", amount: "100.5", time: NONCE } },
+  { name: "usdSend-testnet", action: "usdSend", types: UsdSendTypes, primaryType: "HyperliquidTransaction:UsdSend", signatureChainId: "0x66eee", hyperliquidChain: "Testnet", fields: { destination: "0x00000000000000000000000000000000cafe0001", amount: "25", time: NONCE } },
+  { name: "approveBuilderFee-mainnet", action: "approveBuilderFee", types: ApproveBuilderFeeTypes, primaryType: "HyperliquidTransaction:ApproveBuilderFee", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { maxFeeRate: "0.001%", builder: "0x1111111111111111111111111111111111111111", nonce: NONCE } },
+];
+
+const moreOut = [];
+for (const c of moreCases) {
+  const chainId = parseInt(c.signatureChainId);
+  const message = { hyperliquidChain: c.hyperliquidChain };
+  for (const [k, v] of Object.entries(c.fields)) {
+    message[k] = (k === "time" || k === "nonce") ? BigInt(v) : v;
+  }
+  const digest = hashTypedData({
+    domain: { name: "HyperliquidSignTransaction", version: "1", chainId, verifyingContract: ZERO },
+    types: c.types,
+    primaryType: c.primaryType,
+    message,
+  });
+  const action = { type: c.action, signatureChainId: c.signatureChainId, hyperliquidChain: c.hyperliquidChain, ...c.fields };
+  const sig = normSig(await signUserSignedAction({ wallet: account, action, types: c.types }));
+  moreOut.push({ name: c.name, action: c.action, signatureChainId: c.signatureChainId, hyperliquidChain: c.hyperliquidChain, ...c.fields, privKey: PK, digest, sig });
+}
+const moreDest = resolve(dirname(fileURLToPath(import.meta.url)), "../../backend/internal/hl/testdata/golden_usersigned_more.json");
+writeFileSync(moreDest, JSON.stringify(moreOut, null, 2) + "\n");
+console.log(`wrote ${moreOut.length} more user-signed vectors to ${moreDest}`);

@@ -50,18 +50,38 @@ func (s *Signer) SignL1Action(action Map, nonce uint64, isTestnet bool) (Sig, er
 	return signDigest(s.key, digest)
 }
 
-// SignApproveAgent signs an approveAgent user-signed action (HyperliquidSignTransaction domain).
-func (s *Signer) SignApproveAgent(in ApproveAgentInput) (Sig, error) {
+// signGuarded runs digestFn under the read lock + closed/nil guard, then signs the digest.
+func (s *Signer) signGuarded(digestFn func() ([32]byte, error)) (Sig, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed || s.key == nil {
 		return Sig{}, errors.New("signer: closed")
 	}
-	digest, err := ApproveAgentDigest(in)
+	digest, err := digestFn()
 	if err != nil {
 		return Sig{}, err
 	}
 	return signDigest(s.key, digest)
+}
+
+// SignApproveAgent signs an approveAgent user-signed action (HyperliquidSignTransaction domain).
+func (s *Signer) SignApproveAgent(in ApproveAgentInput) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return ApproveAgentDigest(in) })
+}
+
+// SignWithdraw3 signs a withdraw3 user-signed action.
+func (s *Signer) SignWithdraw3(in Withdraw3Input) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return Withdraw3Digest(in) })
+}
+
+// SignUsdSend signs a usdSend user-signed action.
+func (s *Signer) SignUsdSend(in UsdSendInput) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return UsdSendDigest(in) })
+}
+
+// SignApproveBuilderFee signs an approveBuilderFee user-signed action.
+func (s *Signer) SignApproveBuilderFee(in ApproveBuilderFeeInput) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return ApproveBuilderFeeDigest(in) })
 }
 
 // Close best-effort zeroizes the key material (the library scalar + the scratch buffer).

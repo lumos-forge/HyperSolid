@@ -82,3 +82,24 @@ func TestApproveAgentDigestFailsClosed(t *testing.T) {
 		}
 	}
 }
+
+func TestMoreUserSignedFieldTables(t *testing.T) {
+	if got := userSignedTypeString("HyperliquidTransaction:Withdraw", usdTransferFields); got != "HyperliquidTransaction:Withdraw(string hyperliquidChain,string destination,string amount,uint64 time)" {
+		t.Fatalf("withdraw type string = %q", got)
+	}
+	if got := userSignedTypeString("HyperliquidTransaction:ApproveBuilderFee", approveBuilderFeeFields); got != "HyperliquidTransaction:ApproveBuilderFee(string hyperliquidChain,string maxFeeRate,address builder,uint64 nonce)" {
+		t.Fatalf("builderFee type string = %q", got)
+	}
+}
+
+func TestMoreDigestsFailClosed(t *testing.T) {
+	if _, err := Withdraw3Digest(Withdraw3Input{SignatureChainID: "0xzz", HyperliquidChain: "Mainnet", Destination: "0xdead", Amount: "1", Time: 1}); err == nil {
+		t.Fatal("withdraw3: expected chainId error")
+	}
+	if _, err := UsdSendDigest(UsdSendInput{SignatureChainID: "", HyperliquidChain: "Mainnet", Destination: "0xdead", Amount: "1", Time: 1}); err == nil {
+		t.Fatal("usdSend: expected empty-chainId error")
+	}
+	if _, err := ApproveBuilderFeeDigest(ApproveBuilderFeeInput{SignatureChainID: "0xa4b1", HyperliquidChain: "Mainnet", MaxFeeRate: "0.1%", Builder: "0x1234", Nonce: 1}); err == nil {
+		t.Fatal("approveBuilderFee: expected bad-builder-address error")
+	}
+}

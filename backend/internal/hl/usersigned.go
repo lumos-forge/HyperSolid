@@ -135,3 +135,76 @@ func parseHexChainID(s string) (uint64, error) {
 	}
 	return strconv.ParseUint(h, 16, 64)
 }
+
+// --- withdraw3 / usdSend (identical field table, different primaryType) ---
+
+// usdTransferFields is the shared EIP-712 field table for withdraw3 and usdSend.
+var usdTransferFields = []Field{
+	{"hyperliquidChain", "string"},
+	{"destination", "string"},
+	{"amount", "string"},
+	{"time", "uint64"},
+}
+
+type Withdraw3Input struct {
+	SignatureChainID string
+	HyperliquidChain string
+	Destination      string
+	Amount           string
+	Time             uint64
+}
+
+func Withdraw3Digest(in Withdraw3Input) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return UserSignedDigest("HyperliquidTransaction:Withdraw", usdTransferFields, chainID, map[string]any{
+		"hyperliquidChain": in.HyperliquidChain, "destination": in.Destination, "amount": in.Amount, "time": in.Time,
+	})
+}
+
+type UsdSendInput struct {
+	SignatureChainID string
+	HyperliquidChain string
+	Destination      string
+	Amount           string
+	Time             uint64
+}
+
+func UsdSendDigest(in UsdSendInput) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return UserSignedDigest("HyperliquidTransaction:UsdSend", usdTransferFields, chainID, map[string]any{
+		"hyperliquidChain": in.HyperliquidChain, "destination": in.Destination, "amount": in.Amount, "time": in.Time,
+	})
+}
+
+// --- approveBuilderFee ---
+
+var approveBuilderFeeFields = []Field{
+	{"hyperliquidChain", "string"},
+	{"maxFeeRate", "string"},
+	{"builder", "address"},
+	{"nonce", "uint64"},
+}
+
+type ApproveBuilderFeeInput struct {
+	SignatureChainID string
+	HyperliquidChain string
+	MaxFeeRate       string
+	Builder          string
+	Nonce            uint64
+}
+
+func ApproveBuilderFeeDigest(in ApproveBuilderFeeInput) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return UserSignedDigest("HyperliquidTransaction:ApproveBuilderFee", approveBuilderFeeFields, chainID, map[string]any{
+		"hyperliquidChain": in.HyperliquidChain, "maxFeeRate": in.MaxFeeRate, "builder": in.Builder, "nonce": in.Nonce,
+	})
+}
