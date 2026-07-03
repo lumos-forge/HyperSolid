@@ -150,7 +150,7 @@ describe("AgentScreen", () => {
     await waitFor(() => expect(screen.getByTestId("activity-a1")).toBeTruthy());
   });
 
-  it("switches to the Grid template and creates a grid", async () => {
+  it("switches to the Grid template and creates a longOnly grid by default", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));
     await waitFor(() => expect(screen.getByTestId("template-grid")).toBeTruthy());
@@ -162,7 +162,24 @@ describe("AgentScreen", () => {
     fireEvent.changeText(screen.getByTestId("grid-per-level"), "50");
     fireEvent.press(screen.getByTestId("grid-create"));
     await waitFor(() =>
-      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }),
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "longOnly" }),
+    );
+  });
+
+  it("creates a symmetric grid when the symmetric mode is selected", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-grid")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-grid"));
+    fireEvent.changeText(screen.getByTestId("grid-coin"), "BTC");
+    fireEvent.changeText(screen.getByTestId("grid-lower"), "100");
+    fireEvent.changeText(screen.getByTestId("grid-upper"), "200");
+    fireEvent.changeText(screen.getByTestId("grid-levels"), "6");
+    fireEvent.changeText(screen.getByTestId("grid-per-level"), "50");
+    fireEvent.press(screen.getByTestId("grid-mode-symmetric"));
+    fireEvent.press(screen.getByTestId("grid-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" }),
     );
   });
 
