@@ -9,6 +9,7 @@ import type { Network } from "../../state/envStore";
 import { resolveIsTestnet } from "./network";
 import type { DetailInfoLike, DetailSubsLike, InfoLike, PositionsInfoLike, SubsLike, FillsInfoLike, OrdersInfoLike, FundingsInfoLike, OrderStatusInfoLike, RawOrderStatus } from "./types";
 import type { ExchangeLike } from "../../services/exchange";
+import type { TwapInfoLike } from "./twap";
 
 export function createInfoClient(network: Network): InfoLike {
   const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
@@ -84,6 +85,17 @@ export function createOrdersInfoClient(network: Network): OrdersInfoLike {
   };
   return {
     openOrders: (address) => info.openOrders({ user: address }) as never,
+  };
+}
+
+export function createTwapInfoClient(network: Network): TwapInfoLike {
+  const info = new InfoClient({
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+  }) as unknown as {
+    twapHistory(args: { user: string }): Promise<unknown>;
+  };
+  return {
+    twapHistory: (address) => info.twapHistory({ user: address }) as never,
   };
 }
 
