@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, act } from "@testing-library/react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { RootNavigator } from "./RootNavigator";
 import { useMarketStore } from "../state/marketStore";
@@ -76,5 +76,20 @@ describe("RootNavigator", () => {
     );
     expect(screen.queryByTestId("geo-block")).toBeNull();
     expect(screen.getAllByText("Markets").length).toBeGreaterThan(0);
+  });
+
+  it("switches to the geo block when geo loads to a restricted country after mount (no hook-order crash)", () => {
+    useRuntimeConfigStore.setState({ geo: null });
+    render(
+      <NavigationContainer>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    expect(screen.getAllByText("Markets").length).toBeGreaterThan(0);
+    // geo resolves asynchronously from /app-config; a null->restricted transition must not crash.
+    act(() => {
+      useRuntimeConfigStore.setState({ geo: { country: "US" } });
+    });
+    expect(screen.getByTestId("geo-block")).toBeTruthy();
   });
 });

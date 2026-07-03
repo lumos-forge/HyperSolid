@@ -30,9 +30,9 @@ export const TABS: {
 
 export function RootNavigator({ initialTab }: { initialTab?: string } = {}) {
   const geo = useRuntimeConfigStore((s) => s.geo);
-  if (geo && isRestricted(geo)) return <GeoBlockScreen />;
   const theme = useTheme();
   const t = useT();
+  if (geo && isRestricted(geo)) return <GeoBlockScreen />;
   return (
     <Tab.Navigator
       initialRouteName={initialTab}
