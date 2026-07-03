@@ -304,39 +304,69 @@ describe("grid tick", () => {
 
   const symParams = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" as const };
 
-  it("symmetric: opens a short on an up-cross while flat (non-reduce)", async () => {
+  it("symmetric: crossing above center opens a short toward target (non-reduce)", async () => {
     const store = new MemoryStrategyStore(() => 0);
     const s = store.create("0xo", "grid", symParams);
-    store.seedGridLevel(s.id, 1); // mark was at 120
+    store.seedGridLevel(s.id, 2); // tracking the center band
     const placed: any[] = [];
-    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.5, avgPx: 160 }; } };
-    const marks = { resolveMark: async () => 160, resolvePosition: async () => 0 }; // band 3, flat
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.5, avgPx: 180 }; } };
+    const marks = { resolveMark: async () => 180, resolvePosition: async () => 0 }; // band 4, flat -> target -75
     await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
-    expect(placed[0]).toMatchObject({ side: "sell", reduceOnly: false, sizeUsdc: 100 });
-    expect(store.get(s.id)).toMatchObject({ lastLevel: 3, actionsDone: 1 });
+    expect(placed[0]).toMatchObject({ side: "sell", reduceOnly: false, sizeUsdc: 75 });
+    expect(store.get(s.id)).toMatchObject({ lastLevel: 4, actionsDone: 1 });
   });
 
-  it("symmetric: buys non-reduce on a down-cross while short (covers)", async () => {
+  it("symmetric: crossing below center buys to reconcile against a short (non-reduce)", async () => {
     const store = new MemoryStrategyStore(() => 0);
     const s = store.create("0xo", "grid", symParams);
-    store.seedGridLevel(s.id, 4); // mark was at 180
+    store.seedGridLevel(s.id, 4); // tracking a high band
     const placed: any[] = [];
-    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledUsdc: 100, filledSz: 0.5, avgPx: 140 }; } };
-    const marks = { resolveMark: async () => 140, resolvePosition: async () => -1 }; // band 2, short
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledUsdc: 165, filledSz: 1.1, avgPx: 140 }; } };
+    // band 2 -> target +25; actual = -1 * 140 = -140; delta = 25 - (-140) = 165
+    const marks = { resolveMark: async () => 140, resolvePosition: async () => -1 };
     await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
-    expect(placed[0]).toMatchObject({ side: "buy", reduceOnly: false, sizeUsdc: 100 });
+    expect(placed[0]).toMatchObject({ side: "buy", reduceOnly: false, sizeUsdc: 165 });
     expect(store.get(s.id)).toMatchObject({ lastLevel: 2, actionsDone: 1 });
   });
 
-  it("symmetric: gates the SELL side through the per-order cap", async () => {
+  it("symmetric: gates the reconciling order through the per-order cap", async () => {
     const store = new MemoryStrategyStore(() => 0);
     const s = store.create("0xo", "grid", symParams);
-    store.seedGridLevel(s.id, 1); // mark was at 120
+    store.seedGridLevel(s.id, 2); // center band
     const placer = { place: jest.fn(async () => ({ ok: true })) };
-    const marks = { resolveMark: async () => 160, resolvePosition: async () => 0 }; // up-cross -> sell 100
+    const marks = { resolveMark: async () => 200, resolvePosition: async () => 0 }; // band 5, target -125, size 125 > cap
     await tick(store, placer as any, { maxNotionalUsdc: 10 }, false, 0, undefined, marks);
     expect(placer.place).not.toHaveBeenCalled();
-    expect(store.get(s.id)).toMatchObject({ lastLevel: 1 });
+    expect(store.get(s.id)).toMatchObject({ lastLevel: 2 });
+  });
+
+  it("symmetric: keeps net tracking target as price oscillates across center", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "grid", symParams);
+    let pos = 0;
+    let mk = 140;
+    const placer = {
+      place: async (r: any) => {
+        pos += (r.side === "buy" ? 1 : -1) * (r.sizeUsdc / mk); // simulate a full fill at mark
+        return { ok: true, filledUsdc: r.sizeUsdc, filledSz: r.sizeUsdc / mk, avgPx: mk };
+      },
+    };
+    const marks = { resolveMark: async () => mk, resolvePosition: async () => pos };
+
+    mk = 140; // band 2 -> target +25 (open long from flat)
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(pos).toBeGreaterThan(0);
+    expect(pos * mk).toBeCloseTo(25, 6);
+
+    mk = 200; // band 5 -> target -125 (flip long -> short)
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(pos).toBeLessThan(0);
+    expect(pos * mk).toBeCloseTo(-125, 6);
+
+    mk = 120; // band 1 -> target +75 (flip short -> long)
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(pos).toBeGreaterThan(0);
+    expect(pos * mk).toBeCloseTo(75, 6);
   });
 
   it("symmetric seed: builds a long toward target below center", async () => {

@@ -163,28 +163,35 @@ export async function tick(
       const step = gridStep(p);
       const curBand = bandIndex(mark, p.lowerPrice, step, p.levels);
 
-      if (s.lastLevel === undefined) {
-        if (mode === "symmetric") {
-          const target = targetNetUsdc(curBand, p.levels, p.perLevelUsdc);
-          const szi = (await marks.resolvePosition(s.owner, p.coin)) ?? 0;
-          const deltaUsdc = target - szi * mark;
-          const sizeUsdc = Math.abs(deltaUsdc);
-          if (sizeUsdc < MIN_GRID_NOTIONAL) {
-            store.seedGridLevel(s.id, curBand);
-            continue;
-          }
-          const side: "buy" | "sell" = deltaUsdc >= 0 ? "buy" : "sell";
-          if (!gridCapsOk(sizeUsdc, s.owner, p.coin)) continue; // retry next tick
-          const cloid = cloidFor(s.id, s.actionsDone ?? 0);
-          const res = await placer.place({ owner: s.owner, coin: p.coin, sizeUsdc, cloid, side, reduceOnly: false });
-          if (res.ok) {
-            store.recordGridAction(s.id, curBand, side === "buy" ? res.filledUsdc ?? sizeUsdc : 0);
-            if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
-              activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side, sz: res.filledSz, px: res.avgPx });
-            }
-          }
+      // Symmetric: reconcile the net position to the geometric-center target for the current
+      // band. Seed and every crossing size their order from the ACTUAL position, so partial or
+      // rounded fills self-correct instead of drifting the net off-center or past the bounds.
+      // Net is targeted in USDC notional (szi * mark), so exposure stays bounded as price moves.
+      if (mode === "symmetric") {
+        if (s.lastLevel === curBand) continue; // already tracking this band
+        const target = targetNetUsdc(curBand, p.levels, p.perLevelUsdc);
+        const szi = (await marks.resolvePosition(s.owner, p.coin)) ?? 0;
+        const deltaUsdc = target - szi * mark;
+        const sizeUsdc = Math.abs(deltaUsdc);
+        if (sizeUsdc < MIN_GRID_NOTIONAL) {
+          store.seedGridLevel(s.id, curBand); // close enough to target; just track the band
           continue;
         }
+        const side: "buy" | "sell" = deltaUsdc >= 0 ? "buy" : "sell";
+        if (!gridCapsOk(sizeUsdc, s.owner, p.coin)) continue; // retry next tick, do not advance
+        const cloid = cloidFor(s.id, s.actionsDone ?? 0);
+        const res = await placer.place({ owner: s.owner, coin: p.coin, sizeUsdc, cloid, side, reduceOnly: false });
+        if (res.ok) {
+          store.recordGridAction(s.id, curBand, side === "buy" ? res.filledUsdc ?? sizeUsdc : 0);
+          if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+            activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side, sz: res.filledSz, px: res.avgPx });
+          }
+        }
+        continue;
+      }
+
+      // longOnly: inventory-bounded long grid.
+      if (s.lastLevel === undefined) {
         store.seedGridLevel(s.id, curBand);
         continue;
       }
@@ -192,13 +199,11 @@ export async function tick(
       const act = gridAction(s.lastLevel, curBand, p.perLevelUsdc);
       if (!act || act.usdc <= 0) continue;
 
-      // Both sides open exposure in symmetric mode; longOnly only gates buys.
-      if (act.side === "buy" || mode === "symmetric") {
+      if (act.side === "buy") {
         if (!gridCapsOk(act.usdc, s.owner, p.coin)) continue;
       }
 
-      // longOnly sells are reduce-only and need long inventory; symmetric sells may open shorts.
-      if (act.side === "sell" && mode === "longOnly") {
+      if (act.side === "sell") {
         const szi = await marks.resolvePosition(s.owner, p.coin);
         if (szi === undefined || szi <= 0) {
           // Flat: no long inventory to reduce. Track the price up without placing a doomed order.
@@ -214,7 +219,7 @@ export async function tick(
         sizeUsdc: act.usdc,
         cloid,
         side: act.side,
-        reduceOnly: mode === "longOnly" && act.side === "sell",
+        reduceOnly: act.side === "sell",
       });
       if (res.ok) {
         const bought = act.side === "buy" ? res.filledUsdc ?? act.usdc : 0;

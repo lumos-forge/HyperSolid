@@ -55,26 +55,26 @@ export interface GridParams {
   - band=levels-1（顶部）→ 最大空 `= -(levels-1-centerBand) * perLevelUsdc`
   - **净暴露由几何天然有界且中心对称**，故无需额外 maxExposure 参数。
 
-### 4.1 Seed（首次 `lastLevel === undefined`）
+### 4.1 symmetric —— 统一"向 target 对账"（seed 与穿越同一逻辑）
 
-- **longOnly**：维持现状——`seedGridLevel(curBand)` 后 `continue`（无下单）。
-- **symmetric**：**seed-to-target 建初始仓**
-  1. `mark = resolveMark(coin)`，`curBand = bandIndex(...)`。
-  2. 读现仓 `actualSzi = resolvePosition(owner, coin)`（缺省 0）；`actualNetUsdc ≈ actualSzi * mark`。
-  3. `seedUsdc = targetNetUsdc(curBand) - actualNetUsdc`；`side = seedUsdc >= 0 ? "buy" : "sell"`，`sizeUsdc = |seedUsdc|`。
-  4. 若 `sizeUsdc` 约等于 0（低于最小名义阈值，如 < $1）→ 直接 `seedGridLevel(curBand)`，不下单。
-  5. 否则先过 caps（`withinCaps` + 日额度闸门），通过则以 `cloid = cloidFor(id, actionsDone)`、**非 reduce-only** 下单；`res.ok` 后 `recordGridAction(curBand, ...)`（推进 lastLevel＝seed 完成）。
-  6. 若被 caps 跳过或下单失败 → **不** seed，本 tick `continue`，下 tick 重试（cloid 幂等，避免重复建仓）。
+symmetric 模式下 seed 与穿越是**同一条规则**：每当 `curBand !== lastLevel`（含首次 `lastLevel === undefined`）时，把净仓**向当前档的 target 对账**——按**真实持仓**定尺寸，从而部分成交/lot 取整会自愈，不会累积漂移或越界。
 
-### 4.2 穿越（`lastLevel` 已定）
+1. `mark = resolveMark(coin)`，`curBand = bandIndex(...)`；若 `lastLevel === curBand` → `continue`（本档已在跟踪）。
+2. `target = targetNetUsdc(curBand)`；读现仓 `szi = resolvePosition(owner, coin) ?? 0`；`actualNetUsdc = szi * mark`。
+3. `deltaUsdc = target - actualNetUsdc`；`side = deltaUsdc >= 0 ? "buy" : "sell"`，`sizeUsdc = |deltaUsdc|`。
+4. 若 `sizeUsdc < MIN_GRID_NOTIONAL`（=10，HL 永续最小名义）→ `seedGridLevel(curBand)`（仅推进档位，不下单）。
+5. 否则过 caps（`withinCaps` + 日额度闸门，两侧都开敞口故都要过），通过则以 `cloid = cloidFor(id, actionsDone)`、**非 reduce-only** 下单；`res.ok` 后 `recordGridAction(curBand, ...)`。
+6. 若被 caps 跳过或下单失败 → **不**推进 `lastLevel`，下 tick 重试（cloid 幂等）。
 
-- 增量 delta **不变**：`gridAction(lastLevel, curBand, perLevelUsdc)`——下穿买、上穿卖，量＝距离×perLevelUsdc。
-- **symmetric**：
-  - 卖单**非 reduce-only**（flat 或已空时开/加空头；已多时靠交易所 netting 自动减多）。
-  - 买单**非 reduce-only**（已空时减空、flat/已多时加多）。
-  - **移除 flat-sell 守卫**（flat 时卖出＝开空，符合对称语义）。
-  - **caps 双侧闸门**：买、卖都过 `withinCaps` + 日额度（两侧都可能开敞口）。
-- **longOnly**：保持现状——卖为 reduce-only、flat-sell 守卫（推进档位不下单）、仅买侧过 caps 闸门。
+- 净仓以 **USDC 名义**（`szi * mark`）为 target，故价格移动时 USDC 敞口保持有界、中心对称。
+- 相比经典"每穿越一线固定 clip"的增量法，对账法在部分成交/多档跳变时**自愈**、不越界，是本方案的核心健壮性来源。
+
+### 4.2 longOnly —— 维持现状（零行为变更）
+
+symmetric 分支提前 `continue`，故 longOnly 路径与合并前**逐字节等价**：
+
+- Seed（`lastLevel === undefined`）：`seedGridLevel(curBand)` 后 `continue`（无下单）。
+- 穿越：`gridAction(lastLevel, curBand, perLevelUsdc)` 增量——下穿买（过 caps 闸门、非 reduce）、上穿 **reduce-only 卖**（有多头库存才卖，flat 则 `seedGridLevel(targetLevel)` 推进档位不下单）。
 
 ### 4.3 reduce-only 判定汇总
 
