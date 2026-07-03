@@ -15,6 +15,7 @@ import {
 import {
   buildCancel,
   buildCancelByCloid,
+  buildTwapCancel,
   buildModify,
   type ModifyTarget,
 } from "../lib/hyperliquid/cancel";
@@ -29,6 +30,7 @@ import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 export interface ExchangeLike {
   order(params: unknown): Promise<unknown>;
   twapOrder(params: TwapParams): Promise<unknown>;
+  twapCancel(params: { a: number; t: number }): Promise<unknown>;
   cancel(params: { cancels: { a: number; o: number }[] }): Promise<unknown>;
   cancelByCloid(params: { cancels: { asset: number; cloid: `0x${string}` }[] }): Promise<unknown>;
   modify(params: { oid: number | `0x${string}`; order: unknown }): Promise<unknown>;
@@ -190,6 +192,21 @@ export class ExchangeService {
       return { ok: true, cloid, response };
     } catch (e) {
       return { ok: false, error: errorMessage(e), cloid };
+    }
+  }
+
+  /** Cancel a running TWAP by its id. No cloid (TWAP carries none); an uncertain receipt is never
+   * treated as a successful cancel. */
+  async cancelTwap(coin: string, twapId: number): Promise<SubmitResult> {
+    const built = buildTwapCancel(coin, twapId, this.index);
+    if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
+    try {
+      const response = await this.client.twapCancel(built.params);
+      const err = responseError(response);
+      if (err) return { ok: false, error: rejectionMessage(err) };
+      return { ok: true, cloid: NO_CLOID, response };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e), uncertain: true };
     }
   }
 

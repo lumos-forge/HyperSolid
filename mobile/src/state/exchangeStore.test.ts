@@ -15,6 +15,7 @@ function fakeClient(): { client: ExchangeLike; order: jest.Mock } {
   const client: ExchangeLike = {
     order,
     twapOrder: jest.fn(),
+    twapCancel: jest.fn(),
     cancel: jest.fn(),
     cancelByCloid: jest.fn(),
     modify: jest.fn(),
