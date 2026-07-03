@@ -1,4 +1,4 @@
-import { buildCancel, buildCancelByCloid, buildModify } from "./cancel";
+import { buildCancel, buildCancelByCloid, buildModify, buildTwapCancel } from "./cancel";
 import { buildAssetIndex } from "./assetId";
 import type { RawMeta } from "./types";
 
@@ -74,5 +74,15 @@ describe("buildModify", () => {
     expect(sub.ok).toBe(false);
     if (sub.ok) return;
     expect(sub.rejection).toBe("minTradeNtlRejected");
+  });
+});
+
+describe("buildTwapCancel", () => {
+  it("builds a twapCancel action with the asset id + twap id", () => {
+    const res = buildTwapCancel("BTC", 42, index);
+    expect(res).toEqual({ ok: true, params: { a: 0, t: 42 } });
+  });
+  it("rejects an unknown asset", () => {
+    expect(buildTwapCancel("NOPE", 42, index)).toEqual({ ok: false, rejection: "unknownAsset" });
   });
 });

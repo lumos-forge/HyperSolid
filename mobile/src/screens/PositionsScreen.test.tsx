@@ -10,18 +10,22 @@ import { IntentLedger } from "../lib/hyperliquid/intentLedger";
 import type { PositionsService } from "../services/positionsData";
 import type { FillsService } from "../services/fillsData";
 import type { OrdersService } from "../services/ordersData";
+import type { TwapService } from "../services/twapData";
 import type { PortfolioSnapshot, Fill, OpenOrder, MarketTicker } from "../lib/hyperliquid/types";
+import type { ActiveTwap } from "../lib/hyperliquid/twap";
 
 const mockPlaceOrder = jest.fn();
 const mockCancelOrder = jest.fn();
+const mockCancelTwap = jest.fn();
 jest.mock("../services/exchange", () => ({
-  ExchangeService: jest.fn().mockImplementation(() => ({ placeOrder: mockPlaceOrder, cancelOrder: mockCancelOrder })),
+  ExchangeService: jest.fn().mockImplementation(() => ({ placeOrder: mockPlaceOrder, cancelOrder: mockCancelOrder, cancelTwap: mockCancelTwap })),
 }));
 jest.mock("../lib/hyperliquid/client", () => ({
   createExchangeClient: jest.fn(() => ({})),
   createPositionsInfoClient: jest.fn(() => ({})),
   createFillsInfoClient: jest.fn(() => ({})),
   createOrdersInfoClient: jest.fn(() => ({})),
+  createTwapInfoClient: jest.fn(() => ({})),
 }));
 
 const localWallet = { getViemAccount: () => ({}), getAddress: () => ADDR };
@@ -48,11 +52,15 @@ const fills: Fill[] = [
 const orders: OpenOrder[] = [
   { coin: "SOL", side: "sell", limitPx: 200, sz: 2, origSz: 2, oid: 7, timestamp: 1000, cloid: null, reduceOnly: false },
 ];
+const activeTwaps: ActiveTwap[] = [
+  { twapId: 7, coin: "BTC", side: "buy", sz: 1, executedSz: 0.4, executedNtl: 24000, minutes: 30, reduceOnly: false, startedAt: 1000 },
+];
 
 const fakeDeps = {
   positions: { loadPortfolio: jest.fn(async () => portfolio) } as unknown as PositionsService,
   fills: { loadRecent: jest.fn(async () => fills) } as unknown as FillsService,
   orders: { loadOpenOrders: jest.fn(async () => orders) } as unknown as OrdersService,
+  twap: { loadActive: jest.fn(async () => activeTwaps) } as unknown as TwapService,
 };
 
 describe("PositionsScreen", () => {
@@ -63,10 +71,12 @@ describe("PositionsScreen", () => {
     useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
     mockPlaceOrder.mockReset();
     mockCancelOrder.mockReset();
+    mockCancelTwap.mockReset();
     jest.spyOn(Alert, "alert").mockClear();
     (fakeDeps.positions.loadPortfolio as jest.Mock).mockClear();
     (fakeDeps.fills.loadRecent as jest.Mock).mockClear();
     (fakeDeps.orders.loadOpenOrders as jest.Mock).mockClear();
+    (fakeDeps.twap.loadActive as jest.Mock).mockClear();
   });
 
   it("shows a friendly network error with a Retry (no raw SDK string) and retries on tap", async () => {
@@ -80,6 +90,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio } as unknown as PositionsService,
       fills: { loadRecent: jest.fn(async () => []) } as unknown as FillsService,
       orders: { loadOpenOrders: jest.fn(async () => []) } as unknown as OrdersService,
+      twap: { loadActive: jest.fn(async () => []) } as unknown as TwapService,
     };
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<PositionsScreen deps={deps} />);
@@ -212,6 +223,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
+      twap: { loadActive: jest.fn(async () => []) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     const navigate = jest.fn();
@@ -227,10 +239,30 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
+      twap: { loadActive: jest.fn(async () => []) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "viewOnly", wallet: null, address: ADDR });
     render(<PositionsScreen deps={deps} />);
     await waitFor(() => expect(screen.getByText(/No open positions/)).toBeTruthy());
     expect(screen.queryByTestId("first-trade-cta")).toBeNull();
+  });
+
+  it("shows active TWAPs on the TWAP tab", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    await waitFor(() => expect(screen.getByText("TWAP")).toBeTruthy());
+    fireEvent.press(screen.getByText("TWAP"));
+    expect(await screen.findByTestId("twap-7")).toBeTruthy();
+  });
+
+  it("cancels a TWAP after confirmation", async () => {
+    mockCancelTwap.mockResolvedValueOnce({ ok: true });
+    useWalletStore.setState({ mode: "local", wallet: localWallet as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    await waitFor(() => expect(screen.getByText("TWAP")).toBeTruthy());
+    fireEvent.press(screen.getByText("TWAP"));
+    fireEvent.press(await screen.findByTestId("twap-cancel-7"));
+    await confirmAlert();
+    await waitFor(() => expect(mockCancelTwap).toHaveBeenCalledWith("BTC", 7));
   });
 });

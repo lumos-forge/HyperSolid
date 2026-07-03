@@ -23,6 +23,7 @@ function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
       return orderImpl ? orderImpl() : { status: "ok", response: { data: { statuses: [{ resting: { oid: 1 } }] } } };
     }),
     twapOrder: jest.fn(async () => ({ status: "ok", response: { data: { status: { running: { twapId: 1 } } } } })),
+    twapCancel: jest.fn(async () => ({ status: "ok", response: { data: { status: "success" } } })),
     cancel: jest.fn(async (p: unknown) => {
       self.cancelArg = p;
       return { status: "ok" };
@@ -448,5 +449,29 @@ describe("placeTwap", () => {
     const r = await svc.placeTwap({ coin: "DOGE", side: "buy", size: 1, minutes: 30 });
     expect(r.ok).toBe(false);
     expect(client.twapOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelTwap", () => {
+  it("cancels by asset id + twap id", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const r = await svc.cancelTwap("BTC", 42);
+    expect(r.ok).toBe(true);
+    expect(client.twapCancel).toHaveBeenCalledWith({ a: 0, t: 42 });
+  });
+  it("fails safe on an unknown coin without signing", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const r = await svc.cancelTwap("NOPE", 42);
+    expect(r.ok).toBe(false);
+    expect(client.twapCancel).not.toHaveBeenCalled();
+  });
+  it("reports an uncertain receipt when twapCancel throws", async () => {
+    const client = fakeClient();
+    (client.twapCancel as jest.Mock).mockRejectedValueOnce(new Error("网络超时"));
+    const svc = new ExchangeService(client, index);
+    const r = await svc.cancelTwap("BTC", 42);
+    expect(r).toMatchObject({ ok: false, uncertain: true });
   });
 });

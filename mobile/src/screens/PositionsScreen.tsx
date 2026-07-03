@@ -9,11 +9,13 @@ import { useMarketStore } from "../state/marketStore";
 import { PositionsService } from "../services/positionsData";
 import { FillsService } from "../services/fillsData";
 import { OrdersService } from "../services/ordersData";
+import { TwapService } from "../services/twapData";
 import {
   createPositionsInfoClient,
   createFillsInfoClient,
   createOrdersInfoClient,
   createExchangeClient,
+  createTwapInfoClient,
 } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { marketSlippagePrice } from "../lib/hyperliquid/orderForm";
@@ -35,14 +37,16 @@ import { useT } from "../i18n/useT";
 import type { TranslationKey } from "../i18n/messages";
 import type { ThemeTokens } from "../theme/tokens";
 import type { Fill, OpenOrder, AccountSummary, Position } from "../lib/hyperliquid/types";
+import { twapProgressPct, type ActiveTwap } from "../lib/hyperliquid/twap";
 
 export interface PositionsScreenDeps {
   positions: PositionsService;
   fills: FillsService;
   orders: OrdersService;
+  twap: TwapService;
 }
 
-type Tab = "positions" | "fills" | "orders";
+type Tab = "positions" | "fills" | "orders" | "twap";
 
 export function PositionsScreen({
   deps,
@@ -65,6 +69,7 @@ export function PositionsScreen({
         positions: new PositionsService(createPositionsInfoClient(network)),
         fills: new FillsService(createFillsInfoClient(network)),
         orders: new OrdersService(createOrdersInfoClient(network)),
+        twap: new TwapService(createTwapInfoClient(network)),
       },
     [deps, network],
   );
@@ -76,6 +81,8 @@ export function PositionsScreen({
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [fillsError, setFillsError] = useState<FetchErrorCode | null>(null);
   const [ordersError, setOrdersError] = useState<FetchErrorCode | null>(null);
+  const [activeTwaps, setActiveTwaps] = useState<ActiveTwap[]>([]);
+  const [twapError, setTwapError] = useState<FetchErrorCode | null>(null);
 
   const runQuery = useCallback(
     (addr: string) => {
@@ -83,8 +90,10 @@ export function PositionsScreen({
       if (!isValidAddress(addr)) return;
       setFillsError(null);
       setOrdersError(null);
+      setTwapError(null);
       void services.fills.loadRecent(addr).then(setFills).catch((e) => setFillsError(classifyFetchError(e)));
       void services.orders.loadOpenOrders(addr).then(setOrders).catch((e) => setOrdersError(classifyFetchError(e)));
+      void services.twap.loadActive(addr).then(setActiveTwaps).catch((e) => setTwapError(classifyFetchError(e)));
     },
     [load, services],
   );
@@ -187,9 +196,50 @@ export function PositionsScreen({
     [buildSvc, runQuery, walletAddress, t],
   );
 
+  // Cancel a TWAP via the exchange service; reloads TWAPs on success.
+  const cancelTwap = useCallback(
+    async (twp: ActiveTwap) => {
+      const side = t(twp.side === "buy" ? "common.buy" : "common.sell");
+      Alert.alert(
+        t("positions.twapCancelTitle"),
+        t("positions.twapCancelBody", { coin: twp.coin, side, done: twp.executedSz, total: twp.sz }),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("common.confirm"),
+            style: "destructive",
+            onPress: async () => {
+              try {
+                const svc = buildSvc();
+                if (!svc) {
+                  Alert.alert(t("positions.twapCancelFailed"));
+                  return;
+                }
+                const res = await svc.cancelTwap(twp.coin, twp.twapId);
+                if (res.ok) {
+                  useToastStore.getState().show(t("positions.twapCancelled"), "success");
+                  runQuery(walletAddress ?? "");
+                } else if (res.uncertain) {
+                  Alert.alert(t("common.uncertainReceipt"), res.error);
+                  runQuery(walletAddress ?? "");
+                } else {
+                  Alert.alert(t("positions.twapCancelFailed"), res.error);
+                }
+              } catch (e) {
+                Alert.alert(t("positions.twapCancelFailed"), e instanceof Error ? e.message : String(e));
+              }
+            },
+          },
+        ],
+      );
+    },
+    [buildSvc, runQuery, walletAddress, t],
+  );
+
   const tabs: Array<[Tab, TranslationKey, number]> = [
     ["positions", "tab.positions", portfolio?.positions.length ?? 0],
     ["orders", "positions.tabOrders", orders.length],
+    ["twap", "positions.tabTwap", activeTwaps.length],
     ["fills", "positions.tabHistory", fills.length],
   ];
 
@@ -283,6 +333,16 @@ export function PositionsScreen({
               <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyOrders")}</Text>
             ) : (
               orders.map((o) => <OrderRow key={`${o.oid}`} order={o} theme={theme} onCancel={cancelOrder} />)
+            )
+          ) : null}
+
+          {tab === "twap" ? (
+            twapError && activeTwaps.length === 0 ? (
+              <LoadError theme={theme} code={twapError} compact onRetry={() => runQuery(walletAddress ?? "")} testID="twap-error" />
+            ) : activeTwaps.length === 0 ? (
+              <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyTwaps")}</Text>
+            ) : (
+              activeTwaps.map((tw) => <TwapRow key={tw.twapId} twap={tw} theme={theme} onCancel={cancelTwap} />)
             )
           ) : null}
         </>
@@ -399,6 +459,37 @@ function OrderRow({ order, theme, onCancel }: { order: OpenOrder; theme: ThemeTo
             accessibilityRole="button"
             testID={`cancel-${order.oid}`}
             onPress={() => onCancel(order)}
+            style={[styles.cancelBtn, { borderColor: theme.lineStrong }]}
+          >
+            <Text style={[styles.cancelText, { color: theme.down }]}>{t("positions.cancelOrder")}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function TwapRow({ twap, theme, onCancel }: { twap: ActiveTwap; theme: ThemeTokens; onCancel?: (t: ActiveTwap) => void }) {
+  const t = useT();
+  const sideColor = twap.side === "buy" ? theme.up : theme.down;
+  const pct = Math.round(twapProgressPct(twap));
+  return (
+    <View style={[styles.row, { borderBottomColor: theme.line }]} testID={`twap-${twap.twapId}`}>
+      <View>
+        <Text style={[styles.rowCoin, { color: theme.text }]}>
+          {twap.coin} <Text style={{ color: sideColor }}>{t(twap.side === "buy" ? "common.buy" : "common.sell")}</Text>
+          {twap.reduceOnly ? <Text style={{ color: theme.muted }}> {t("positions.reduceOnly")}</Text> : null}
+        </Text>
+        <Text style={[styles.rowSub, { color: theme.muted }]}>
+          {t("positions.twapProgress", { done: twap.executedSz, total: twap.sz, pct, ntl: Math.round(twap.executedNtl), minutes: twap.minutes })}
+        </Text>
+      </View>
+      <View style={styles.rowRight}>
+        {onCancel ? (
+          <Pressable
+            accessibilityRole="button"
+            testID={`twap-cancel-${twap.twapId}`}
+            onPress={() => onCancel(twap)}
             style={[styles.cancelBtn, { borderColor: theme.lineStrong }]}
           >
             <Text style={[styles.cancelText, { color: theme.down }]}>{t("positions.cancelOrder")}</Text>

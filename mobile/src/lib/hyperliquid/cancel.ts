@@ -26,6 +26,12 @@ export interface HlModifyParams {
   order: HlOrderTuple;
 }
 
+/** twapCancel action: { a, t } — asset id + twap id. */
+export interface HlTwapCancelParams {
+  a: number;
+  t: number;
+}
+
 export type CancelResult =
   | { ok: true; params: HlCancelParams }
   | { ok: false; rejection: "unknownAsset" };
@@ -37,6 +43,10 @@ export type CancelByCloidResult =
 export type ModifyResult =
   | { ok: true; params: HlModifyParams; cloid: `0x${string}` }
   | { ok: false; rejection: Extract<BuildResult, { ok: false }>["rejection"] };
+
+export type TwapCancelResult =
+  | { ok: true; params: HlTwapCancelParams }
+  | { ok: false; rejection: "unknownAsset" };
 
 /** Build a cancel-by-oid action with the resolved asset id. */
 export function buildCancel(coin: string, oid: number, index: AssetIndex): CancelResult {
@@ -68,4 +78,11 @@ export function buildModify(
   const built = buildOrder(req, index);
   if (!built.ok) return built;
   return { ok: true, params: { oid: target, order: built.params.orders[0] }, cloid: built.cloid };
+}
+
+/** Build a twapCancel action with the resolved asset id and twap id. */
+export function buildTwapCancel(coin: string, twapId: number, index: AssetIndex): TwapCancelResult {
+  const asset = index.id(coin);
+  if (asset === null) return { ok: false, rejection: "unknownAsset" };
+  return { ok: true, params: { a: asset, t: twapId } };
 }
