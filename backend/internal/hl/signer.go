@@ -50,6 +50,20 @@ func (s *Signer) SignL1Action(action Map, nonce uint64, isTestnet bool) (Sig, er
 	return signDigest(s.key, digest)
 }
 
+// SignApproveAgent signs an approveAgent user-signed action (HyperliquidSignTransaction domain).
+func (s *Signer) SignApproveAgent(in ApproveAgentInput) (Sig, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed || s.key == nil {
+		return Sig{}, errors.New("signer: closed")
+	}
+	digest, err := ApproveAgentDigest(in)
+	if err != nil {
+		return Sig{}, err
+	}
+	return signDigest(s.key, digest)
+}
+
 // Close best-effort zeroizes the key material (the library scalar + the scratch buffer).
 func (s *Signer) Close() {
 	s.mu.Lock()

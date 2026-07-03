@@ -58,3 +58,28 @@ func TestApproveAgentDigestGolden(t *testing.T) {
 		})
 	}
 }
+
+func TestSignApproveAgentGolden(t *testing.T) {
+	for _, v := range loadUserGolden(t) {
+		t.Run(v.Name, func(t *testing.T) {
+			key, err := hex.DecodeString(v.PrivKey[2:])
+			if err != nil {
+				t.Fatalf("decode key: %v", err)
+			}
+			s, err := NewSigner(key)
+			if err != nil {
+				t.Fatalf("NewSigner: %v", err)
+			}
+			defer s.Close()
+			sig, err := s.SignApproveAgent(inputOf(v))
+			if err != nil {
+				t.Fatalf("SignApproveAgent: %v", err)
+			}
+			gotR := "0x" + hex.EncodeToString(sig.R[:])
+			gotS := "0x" + hex.EncodeToString(sig.S[:])
+			if gotR != v.Sig.R || gotS != v.Sig.S || int(sig.V) != v.Sig.V {
+				t.Fatalf("sig = {r:%s s:%s v:%d}, want {r:%s s:%s v:%d}", gotR, gotS, sig.V, v.Sig.R, v.Sig.S, v.Sig.V)
+			}
+		})
+	}
+}
