@@ -1,0 +1,134 @@
+[
+  {
+    "name": "order-limit-gtc-mainnet",
+    "kind": "order",
+    "params": {
+      "asset": 0,
+      "isBuy": true,
+      "px": "50000",
+      "sz": "0.01",
+      "reduceOnly": false,
+      "tif": "Gtc",
+      "grouping": "na"
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x43b2c4012d15b632da3982d9af83348e3d5b03904f6cecc770dcfd99f7de8308",
+    "agentDigest": "0x508b6b5e83819324df2dc5b7afbf1d2efd1347ae1ea7a96402d5a5da14f91a8f",
+    "sig": {
+      "r": "0x295e6710dec6feeb191fffe276701eb484e86387188dcfad65e0d33aef4a6212",
+      "s": "0x15571dd6c2acf3e40a00ff5038725aa1b31045434b5ca78345a70f32a23a8b7f",
+      "v": 27
+    }
+  },
+  {
+    "name": "order-limit-ioc-testnet",
+    "kind": "order",
+    "params": {
+      "asset": 1,
+      "isBuy": false,
+      "px": "3000",
+      "sz": "0.5",
+      "reduceOnly": true,
+      "tif": "Ioc",
+      "grouping": "na"
+    },
+    "nonce": 1700000000000,
+    "isTestnet": true,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x1c59275277a5c98781e5cb9ae3dcd3c559dc57933b4ff1975936ea283773bd65",
+    "agentDigest": "0xfa7de7fa02c9d4558a6a4e974163b2a4505f7d06d1d39361381f6251781ea20b",
+    "sig": {
+      "r": "0xce0d960c558ff0bbe846f43262e808b159183b5303182fc2ed638e5feae22f99",
+      "s": "0x28550a4aa512562ea3b9ac0c9ad416377859c2ffe26f19ae9d4b4b1db3c0853f",
+      "v": 27
+    }
+  },
+  {
+    "name": "order-limit-cloid-mainnet",
+    "kind": "order",
+    "params": {
+      "asset": 0,
+      "isBuy": true,
+      "px": "50000",
+      "sz": "0.01",
+      "reduceOnly": false,
+      "tif": "Gtc",
+      "grouping": "na",
+      "cloid": "0x00000000000000000000000000000001"
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x7b607665c3914a1c0879d6bc67f557f745c55e06d3aaef0d9cb5cd913758e936",
+    "agentDigest": "0xf12775214986738c340575ac299ba078bde4173b3fe4c1d9d45bcba31ac24508",
+    "sig": {
+      "r": "0xf107d8ac2940c02bac440509478742ff39cb3047e0aea8337e70f811a5a80023",
+      "s": "0x6c60bf9a051d90a4ec84c0d6fe0f02a64c5bcce3131dc49183bcfc133c2e006f",
+      "v": 27
+    }
+  },
+  {
+    "name": "cancel-mainnet",
+    "kind": "cancel",
+    "params": {
+      "cancels": [
+        {
+          "asset": 0,
+          "oid": 123
+        }
+      ]
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0xe98dd18456c80d6b913946acb297d411a59a675716721df2abb7a8b85f0044e9",
+    "agentDigest": "0xf90176e0e223f98d123c7d06bfbbd3ead7a3f3e6b5c429af4136e71daba3cb3e",
+    "sig": {
+      "r": "0xafb0e054b7a3c31a1e2d006a96ba5fcea17e9110a16a0ed01f9fb5381040e14a",
+      "s": "0x28c05ea11cf655ca79e873b712460cf826b23f8db15204eac768cd24c8f344b6",
+      "v": 27
+    }
+  },
+  {
+    "name": "twapOrder-mainnet",
+    "kind": "twapOrder",
+    "params": {
+      "asset": 0,
+      "isBuy": true,
+      "sz": "0.02",
+      "reduceOnly": false,
+      "minutes": 30,
+      "randomize": true
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x81922876b923cdc2b67080422c6a274ca9183248255bc5e1749106ea3b1db7c6",
+    "agentDigest": "0xb65d3dc273ee3fafde6a11bdf49f929557b0e1a302774460be97e6b307f933b3",
+    "sig": {
+      "r": "0x15ffd68ecdc6282e46ebe7c826b4442b67d43c8dea4b3e5e7a3f61f374c0e7e6",
+      "s": "0x4eb10908fb18d54f19a57999012cab8a677dcb98c609a316869c8df997964648",
+      "v": 28
+    }
+  },
+  {
+    "name": "twapCancel-testnet",
+    "kind": "twapCancel",
+    "params": {
+      "asset": 0,
+      "twapId": 7
+    },
+    "nonce": 1700000000000,
+    "isTestnet": true,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0xa557217a5ab85da073ff6ad52232f23c279f12e7c53b8dbfd778afcab3fbb824",
+    "agentDigest": "0x89dcb35bf29e0f43e04f4f5fe603ec35ed7ab7cb8c783434847b96aadd52a176",
+    "sig": {
+      "r": "0xbdb817becc7bb56395f032e2fe58464a5befa3462452dc25cda26da6f4ae8be4",
+      "s": "0x0daa37d8471b5a9eacd93c79576d6acccafcd94373b234d62af9b7e65eb88c61",
+      "v": 28
+    }
+  }
+]
