@@ -1,0 +1,47 @@
+[
+  {
+    "name": "approve-mainnet-named",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "agentAddress": "0x000000000000000000000000000000000000dEaD",
+    "agentName": "myAgent",
+    "nonce": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0xa53159e4b3e6f33cd40df8ee2832965b408919eadd40b8e74af12cf8d1c46736",
+    "sig": {
+      "r": "0x782cca18355ed07a2e25ce92760d2df4a3220c9694a2d1f47de67b31dc7b54a9",
+      "s": "0x7154ec125b0781c21ec19719d1cb9fabca34e4fd4ec94e7346cb1ca65fc48fb5",
+      "v": 27
+    }
+  },
+  {
+    "name": "approve-testnet-empty",
+    "signatureChainId": "0x66eee",
+    "hyperliquidChain": "Testnet",
+    "agentAddress": "0x00000000000000000000000000000000cafe0001",
+    "agentName": "",
+    "nonce": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0x7dac1e0164a67e2d26a1609e957d0aa6b965e055bec6a51cdf064d8cff0eaf88",
+    "sig": {
+      "r": "0x868281ff3228a41ccbb013eec056dd1d6d96550b3e3fc8411b22fdddc1d263c2",
+      "s": "0x1d653785a52b0c099df9fbb4e262e51fb82cbe9cdf7ab7074eeadf9d383d51d7",
+      "v": 27
+    }
+  },
+  {
+    "name": "approve-mainnet-named-2",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "agentAddress": "0x1111111111111111111111111111111111111111",
+    "agentName": "second",
+    "nonce": 1700000000001,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0xf39f5e0c54f9a7dac2220ec68c6599eb2d112a5b6678f49a42486b15c8372013",
+    "sig": {
+      "r": "0x1f7f049ab65307cbc3f39a1322fee5112bd96e7bb451c112a0718b5a03487154",
+      "s": "0x7db99df4c906249eb0f396a3e08ee666ff8e7837ddcb083f6635e662e596e7f2",
+      "v": 27
+    }
+  }
+]

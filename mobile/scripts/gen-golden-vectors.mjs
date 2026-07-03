@@ -4,7 +4,8 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { createL1ActionHash, signL1Action } from "@nktkas/hyperliquid/signing";
+import { createL1ActionHash, signL1Action, signUserSignedAction } from "@nktkas/hyperliquid/signing";
+import { ApproveAgentTypes } from "@nktkas/hyperliquid/api/exchange";
 import { hashTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -61,3 +62,27 @@ const dest = resolve(dirname(fileURLToPath(import.meta.url)), "../../backend/int
 mkdirSync(dirname(dest), { recursive: true });
 writeFileSync(dest, JSON.stringify(out, null, 2) + "\n");
 console.log(`wrote ${out.length} vectors to ${dest}`);
+
+// --- User-signed (approveAgent) vectors: HyperliquidSignTransaction domain ---
+const userCases = [
+  { name: "approve-mainnet-named", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", agentAddress: "0x000000000000000000000000000000000000dEaD", agentName: "myAgent", nonce: NONCE },
+  { name: "approve-testnet-empty", signatureChainId: "0x66eee", hyperliquidChain: "Testnet", agentAddress: "0x00000000000000000000000000000000cafe0001", agentName: "", nonce: NONCE },
+  { name: "approve-mainnet-named-2", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", agentAddress: "0x1111111111111111111111111111111111111111", agentName: "second", nonce: NONCE + 1 },
+];
+
+const userOut = [];
+for (const c of userCases) {
+  const chainId = parseInt(c.signatureChainId);
+  const digest = hashTypedData({
+    domain: { name: "HyperliquidSignTransaction", version: "1", chainId, verifyingContract: ZERO },
+    types: ApproveAgentTypes,
+    primaryType: "HyperliquidTransaction:ApproveAgent",
+    message: { hyperliquidChain: c.hyperliquidChain, agentAddress: c.agentAddress, agentName: c.agentName, nonce: BigInt(c.nonce) },
+  });
+  const action = { type: "approveAgent", signatureChainId: c.signatureChainId, hyperliquidChain: c.hyperliquidChain, agentAddress: c.agentAddress, agentName: c.agentName, nonce: c.nonce };
+  const sig = normSig(await signUserSignedAction({ wallet: account, action, types: ApproveAgentTypes }));
+  userOut.push({ name: c.name, signatureChainId: c.signatureChainId, hyperliquidChain: c.hyperliquidChain, agentAddress: c.agentAddress, agentName: c.agentName, nonce: c.nonce, privKey: PK, digest, sig });
+}
+const userDest = resolve(dirname(fileURLToPath(import.meta.url)), "../../backend/internal/hl/testdata/golden_usersigned.json");
+writeFileSync(userDest, JSON.stringify(userOut, null, 2) + "\n");
+console.log(`wrote ${userOut.length} user-signed vectors to ${userDest}`);
