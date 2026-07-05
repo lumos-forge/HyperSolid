@@ -61,3 +61,19 @@ describe("validateParams grid", () => {
     expect(validateParams("grid", { ...ok, perLevelUsdc: 0 }).ok).toBe(false);
   });
 });
+
+describe("validateParams gridLimit", () => {
+  const ok = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+  it("accepts a valid gridLimit", () => {
+    expect(validateParams("gridLimit", ok)).toEqual({ ok: true, params: ok });
+  });
+  it("rejects upper <= lower", () => {
+    expect(validateParams("gridLimit", { ...ok, upperPrice: 100 }).ok).toBe(false);
+  });
+  it("rejects levels < 2", () => {
+    expect(validateParams("gridLimit", { ...ok, levels: 1 }).ok).toBe(false);
+  });
+  it("rejects perLevelUsdc <= 0", () => {
+    expect(validateParams("gridLimit", { ...ok, perLevelUsdc: 0 }).ok).toBe(false);
+  });
+});

@@ -1,5 +1,5 @@
-export type StrategyKind = "dca" | "twap" | "tpsl" | "grid";
-export type StrategyStatus = "running" | "paused" | "completed";
+export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
+export type StrategyStatus = "running" | "paused" | "completed" | "canceling";
 
 export interface DcaParams {
   coin: string;
@@ -31,7 +31,16 @@ export interface GridParams {
   /** longOnly (default): inventory-bounded long grid. symmetric: two-sided long/short grid. */
   mode?: "longOnly" | "symmetric";
 }
-export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams;
+export interface GridLimitParams {
+  coin: string;
+  lowerPrice: number;
+  upperPrice: number;
+  /** Number of grid lines (>= 2); rungs = levels - 1. */
+  levels: number;
+  /** Notional (USDC) rested as a buy per rung. */
+  perLevelUsdc: number;
+}
+export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
 
 interface StrategyBase {
   id: string;
@@ -52,4 +61,5 @@ export type Strategy =
   | (StrategyBase & { kind: "dca"; params: DcaParams })
   | (StrategyBase & { kind: "twap"; params: TwapParams })
   | (StrategyBase & { kind: "tpsl"; params: TpslParams })
-  | (StrategyBase & { kind: "grid"; params: GridParams });
+  | (StrategyBase & { kind: "grid"; params: GridParams })
+  | (StrategyBase & { kind: "gridLimit"; params: GridLimitParams });
