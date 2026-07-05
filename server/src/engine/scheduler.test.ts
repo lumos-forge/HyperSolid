@@ -1,6 +1,6 @@
 import { MemoryStrategyStore } from "../strategies/store";
 import { MemoryActivityStore } from "../strategies/activityStore";
-import { tick, cloidFor, type OrderPlacer, type PlaceRequest } from "./scheduler";
+import { tick, cloidFor, cloidForKey, type OrderPlacer, type PlaceRequest } from "./scheduler";
 
 function placerFake(): OrderPlacer & { calls: PlaceRequest[] } {
   const calls: PlaceRequest[] = [];
@@ -421,5 +421,16 @@ describe("grid tick", () => {
     await tick(store, placer as any, { maxNotionalUsdc: 10 }, false, 0, undefined, marks);
     expect(placer.place).not.toHaveBeenCalled();
     expect(store.get(s.id)!.lastLevel).toBeUndefined();
+  });
+});
+describe("cloidForKey", () => {
+  it("is deterministic per (strategyId, key) and 34-char hex", () => {
+    const a = cloidForKey("s1", "gl:2:3");
+    expect(a).toBe(cloidForKey("s1", "gl:2:3"));
+    expect(a).toMatch(/^0x[0-9a-f]{32}$/);
+  });
+  it("differs across keys and strategies", () => {
+    expect(cloidForKey("s1", "gl:2:3")).not.toBe(cloidForKey("s1", "gl:2:4"));
+    expect(cloidForKey("s1", "gl:2:3")).not.toBe(cloidForKey("s2", "gl:2:3"));
   });
 });

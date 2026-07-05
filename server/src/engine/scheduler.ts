@@ -52,6 +52,12 @@ export function cloidFor(strategyId: string, scheduledNextRunAt: number): string
   return `0x${h.slice(0, 32)}`;
 }
 
+/** Like {@link cloidFor} but keyed by an arbitrary string slot (e.g. gridLimit `gl:${rung}:${seq}`). */
+export function cloidForKey(strategyId: string, key: string): string {
+  const h = createHash("sha256").update(`${strategyId}:${key}`).digest("hex");
+  return `0x${h.slice(0, 32)}`;
+}
+
 /** Mark/position resolvers shared by the TP/SL trigger path and the Grid path. */
 export interface MarkDeps {
   resolveMark(coin: string): Promise<number>;
