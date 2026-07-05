@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useEnvStore } from "../state/envStore";
@@ -16,6 +16,7 @@ import {
   createOrdersInfoClient,
   createExchangeClient,
   createTwapInfoClient,
+  createTwapSubsClient,
 } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { marketSlippagePrice } from "../lib/hyperliquid/orderForm";
@@ -37,7 +38,7 @@ import { useT } from "../i18n/useT";
 import type { TranslationKey } from "../i18n/messages";
 import type { ThemeTokens } from "../theme/tokens";
 import type { Fill, OpenOrder, AccountSummary, Position } from "../lib/hyperliquid/types";
-import { twapProgressPct, type ActiveTwap } from "../lib/hyperliquid/twap";
+import { twapProgressPct, groupSliceFillsByTwapId, type ActiveTwap, type TwapHistoryEntry, type TwapSliceFill } from "../lib/hyperliquid/twap";
 
 export interface PositionsScreenDeps {
   positions: PositionsService;
@@ -69,7 +70,7 @@ export function PositionsScreen({
         positions: new PositionsService(createPositionsInfoClient(network)),
         fills: new FillsService(createFillsInfoClient(network)),
         orders: new OrdersService(createOrdersInfoClient(network)),
-        twap: new TwapService(createTwapInfoClient(network)),
+        twap: new TwapService(createTwapInfoClient(network), createTwapSubsClient(network)),
       },
     [deps, network],
   );
@@ -82,6 +83,9 @@ export function PositionsScreen({
   const [fillsError, setFillsError] = useState<FetchErrorCode | null>(null);
   const [ordersError, setOrdersError] = useState<FetchErrorCode | null>(null);
   const [activeTwaps, setActiveTwaps] = useState<ActiveTwap[]>([]);
+  const [twapHistory, setTwapHistory] = useState<TwapHistoryEntry[]>([]);
+  const [sliceFills, setSliceFills] = useState<Map<number, Fill[]>>(new Map());
+  const [expandedTwapId, setExpandedTwapId] = useState<number | null>(null);
   const [twapError, setTwapError] = useState<FetchErrorCode | null>(null);
 
   const runQuery = useCallback(
@@ -93,7 +97,11 @@ export function PositionsScreen({
       setTwapError(null);
       void services.fills.loadRecent(addr).then(setFills).catch((e) => setFillsError(classifyFetchError(e)));
       void services.orders.loadOpenOrders(addr).then(setOrders).catch((e) => setOrdersError(classifyFetchError(e)));
-      void services.twap.loadActive(addr).then(setActiveTwaps).catch((e) => setTwapError(classifyFetchError(e)));
+      void services.twap
+        .loadActiveAndHistory(addr)
+        .then(({ active, history }) => { setActiveTwaps(active); setTwapHistory(history); })
+        .catch((e) => setTwapError(classifyFetchError(e)));
+      void services.twap.loadSliceFills(addr).then(setSliceFills).catch(() => {});
     },
     [load, services],
   );
@@ -104,6 +112,66 @@ export function PositionsScreen({
   useEffect(() => {
     if (mode !== "none" && walletAddress && isValidAddress(walletAddress)) runQuery(walletAddress);
   }, [mode, walletAddress, runQuery]);
+
+  // Live TWAP slice fills over WS: append to slice detail, optimistically bump active-TWAP
+  // progress, and debounce-refetch twapHistory to reconcile the authoritative state.
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirror of sliceFills so onSlice can tell which incoming fills are genuinely new.
+  const sliceFillsRef = useRef<Map<number, Fill[]>>(new Map());
+  useEffect(() => {
+    sliceFillsRef.current = sliceFills;
+  }, [sliceFills]);
+  useEffect(() => {
+    if (mode === "none" || !walletAddress || !isValidAddress(walletAddress)) return;
+    const addr = walletAddress;
+    let sub: { unsubscribe: () => void | Promise<void> } | null = null;
+    let cancelled = false;
+
+    const onSlice = (fills: TwapSliceFill[]) => {
+      if (fills.length === 0) return;
+      const prev = sliceFillsRef.current;
+      // Skip already-known fills: the WS sends an initial snapshot that overlaps the Info load
+      // (and may redeliver events), so bumping on every fill would double-count executed size.
+      const fresh = fills.filter((f) => !prev.get(f.twapId)?.some((x) => x.tid === f.fill.tid));
+      if (fresh.length === 0) return;
+
+      const merged: TwapSliceFill[] = [];
+      for (const [twapId, arr] of prev) for (const f of arr) merged.push({ twapId, fill: f });
+      for (const f of fresh) merged.push(f);
+      const grouped = groupSliceFillsByTwapId(merged);
+      sliceFillsRef.current = grouped;
+      setSliceFills(grouped);
+
+      setActiveTwaps((prevTwaps) =>
+        prevTwaps.map((tw) => {
+          const mine = fresh.filter((f) => f.twapId === tw.twapId);
+          if (mine.length === 0) return tw;
+          const addSz = mine.reduce((n, f) => n + f.fill.sz, 0);
+          const addNtl = mine.reduce((n, f) => n + f.fill.sz * f.fill.px, 0);
+          return { ...tw, executedSz: Math.min(tw.sz, tw.executedSz + addSz), executedNtl: tw.executedNtl + addNtl };
+        }),
+      );
+
+      if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+      reconcileTimer.current = setTimeout(() => {
+        void services.twap
+          .loadActiveAndHistory(addr)
+          .then(({ active, history }) => { if (cancelled) return; setActiveTwaps(active); setTwapHistory(history); })
+          .catch(() => {});
+      }, 1500);
+    };
+
+    void services.twap
+      .subscribeSliceFills(addr, onSlice)
+      .then((s) => { if (cancelled) void s.unsubscribe(); else sub = s; })
+      .catch((e) => setTwapError(classifyFetchError(e)));
+
+    return () => {
+      cancelled = true;
+      if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+      void sub?.unsubscribe();
+    };
+  }, [mode, walletAddress, services]);
 
   // Build a signing exchange service on demand (signing wallet + asset index from the market store)
   // so close/cancel work even before the Trade tab is visited. Returns null if anything's missing.
@@ -278,6 +346,7 @@ export function PositionsScreen({
               return (
                 <Pressable
                   key={key}
+                  testID={`tab-${key}`}
                   onPress={() => setTab(key)}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -337,13 +406,41 @@ export function PositionsScreen({
           ) : null}
 
           {tab === "twap" ? (
-            twapError && activeTwaps.length === 0 ? (
-              <LoadError theme={theme} code={twapError} compact onRetry={() => runQuery(walletAddress ?? "")} testID="twap-error" />
-            ) : activeTwaps.length === 0 ? (
-              <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyTwaps")}</Text>
-            ) : (
-              activeTwaps.map((tw) => <TwapRow key={tw.twapId} twap={tw} theme={theme} onCancel={cancelTwap} />)
-            )
+            <>
+              {twapError && activeTwaps.length === 0 ? (
+                <LoadError theme={theme} code={twapError} compact onRetry={() => runQuery(walletAddress ?? "")} testID="twap-error" />
+              ) : activeTwaps.length === 0 ? (
+                <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.emptyTwaps")}</Text>
+              ) : (
+                activeTwaps.map((tw) => (
+                  <TwapRow
+                    key={tw.twapId}
+                    twap={tw}
+                    theme={theme}
+                    onCancel={cancelTwap}
+                    expanded={expandedTwapId === tw.twapId}
+                    onToggle={() => setExpandedTwapId(expandedTwapId === tw.twapId ? null : tw.twapId)}
+                    slices={sliceFills.get(tw.twapId) ?? []}
+                  />
+                ))
+              )}
+
+              <Text style={[styles.sectionTitle, { color: theme.muted }]}>{t("positions.twapHistoryTitle")}</Text>
+              {twapHistory.length === 0 ? (
+                <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.noTwapHistory")}</Text>
+              ) : (
+                twapHistory.map((h) => (
+                  <TwapHistoryRow
+                    key={h.twapId ?? `h-${h.startedAt}-${h.coin}`}
+                    entry={h}
+                    theme={theme}
+                    expanded={h.twapId !== null && expandedTwapId === h.twapId}
+                    onToggle={h.twapId === null ? undefined : () => setExpandedTwapId(expandedTwapId === h.twapId ? null : h.twapId)}
+                    slices={h.twapId !== null ? sliceFills.get(h.twapId) ?? [] : []}
+                  />
+                ))
+              )}
+            </>
           ) : null}
         </>
       ) : null}
@@ -469,33 +566,100 @@ function OrderRow({ order, theme, onCancel }: { order: OpenOrder; theme: ThemeTo
   );
 }
 
-function TwapRow({ twap, theme, onCancel }: { twap: ActiveTwap; theme: ThemeTokens; onCancel?: (t: ActiveTwap) => void }) {
+function TwapSliceList({ slices, theme }: { slices: Fill[]; theme: ThemeTokens }) {
+  const t = useT();
+  return (
+    <View testID="__slices__" style={[styles.sliceBox, { borderLeftColor: theme.line }]}>
+      <Text style={[styles.rowSub, { color: theme.muted }]}>{t("positions.twapSlicesTitle")}</Text>
+      {slices.length === 0 ? (
+        <Text style={[styles.rowSub, { color: theme.muted }]}>{t("positions.twapSlicesEmpty")}</Text>
+      ) : (
+        slices.map((f) => (
+          <View key={f.tid} style={styles.sliceRow}>
+            <Text style={[styles.rowSub, { color: theme.muted }]}>{new Date(f.time).toLocaleTimeString()}</Text>
+            <Text style={[styles.rowSub, { color: theme.text }]}>{`${f.sz} @ ${f.px} · $${Math.round(f.sz * f.px)}`}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+function TwapRow({
+  twap, theme, onCancel, expanded, onToggle, slices,
+}: {
+  twap: ActiveTwap; theme: ThemeTokens; onCancel?: (t: ActiveTwap) => void;
+  expanded: boolean; onToggle: () => void; slices: Fill[];
+}) {
   const t = useT();
   const sideColor = twap.side === "buy" ? theme.up : theme.down;
   const pct = Math.round(twapProgressPct(twap));
   return (
-    <View style={[styles.row, { borderBottomColor: theme.line }]} testID={`twap-${twap.twapId}`}>
-      <View>
-        <Text style={[styles.rowCoin, { color: theme.text }]}>
-          {twap.coin} <Text style={{ color: sideColor }}>{t(twap.side === "buy" ? "common.buy" : "common.sell")}</Text>
-          {twap.reduceOnly ? <Text style={{ color: theme.muted }}> {t("positions.reduceOnly")}</Text> : null}
-        </Text>
-        <Text style={[styles.rowSub, { color: theme.muted }]}>
-          {t("positions.twapProgress", { done: twap.executedSz, total: twap.sz, pct, ntl: Math.round(twap.executedNtl), minutes: twap.minutes })}
-        </Text>
+    <View testID={`twap-${twap.twapId}`}>
+      <View style={[styles.row, { borderBottomColor: theme.line }]}>
+        <Pressable onPress={onToggle} accessibilityRole="button" testID={`twap-row-${twap.twapId}`} style={styles.rowToggle}>
+          <Text style={[styles.rowCoin, { color: theme.text }]}>
+            {twap.coin} <Text style={{ color: sideColor }}>{t(twap.side === "buy" ? "common.buy" : "common.sell")}</Text>
+            {twap.reduceOnly ? <Text style={{ color: theme.muted }}> {t("positions.reduceOnly")}</Text> : null}
+          </Text>
+          <Text style={[styles.rowSub, { color: theme.muted }]}>
+            {t("positions.twapProgress", { done: twap.executedSz, total: twap.sz, pct, ntl: Math.round(twap.executedNtl), minutes: twap.minutes })}
+          </Text>
+        </Pressable>
+        <View style={styles.rowRight}>
+          {onCancel ? (
+            <Pressable
+              accessibilityRole="button"
+              testID={`twap-cancel-${twap.twapId}`}
+              onPress={() => onCancel(twap)}
+              style={[styles.cancelBtn, { borderColor: theme.lineStrong }]}
+            >
+              <Text style={[styles.cancelText, { color: theme.down }]}>{t("positions.cancelOrder")}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
-      <View style={styles.rowRight}>
-        {onCancel ? (
-          <Pressable
-            accessibilityRole="button"
-            testID={`twap-cancel-${twap.twapId}`}
-            onPress={() => onCancel(twap)}
-            style={[styles.cancelBtn, { borderColor: theme.lineStrong }]}
-          >
-            <Text style={[styles.cancelText, { color: theme.down }]}>{t("positions.cancelOrder")}</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      {expanded ? (
+        <View testID={`twap-slices-${twap.twapId}`}>
+          <TwapSliceList slices={slices} theme={theme} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function twapStatusLabelKey(status: TwapHistoryEntry["status"]): TranslationKey {
+  return status === "finished" ? "positions.twapStatusFinished" : status === "terminated" ? "positions.twapStatusTerminated" : "positions.twapStatusError";
+}
+
+function TwapHistoryRow({
+  entry, theme, expanded, onToggle, slices,
+}: {
+  entry: TwapHistoryEntry; theme: ThemeTokens; expanded: boolean; onToggle?: () => void; slices: Fill[];
+}) {
+  const t = useT();
+  const sideColor = entry.side === "buy" ? theme.up : theme.down;
+  const pct = entry.sz > 0 ? Math.round(Math.max(0, Math.min(100, (entry.executedSz / entry.sz) * 100))) : 0;
+  return (
+    <View testID={`twap-history-${entry.twapId ?? "x"}`}>
+      <Pressable onPress={onToggle} accessibilityRole="button" testID={`twap-history-row-${entry.twapId ?? "x"}`} style={[styles.row, { borderBottomColor: theme.line }]}>
+        <View>
+          <Text style={[styles.rowCoin, { color: theme.text }]}>
+            {entry.coin} <Text style={{ color: sideColor }}>{t(entry.side === "buy" ? "common.buy" : "common.sell")}</Text>
+          </Text>
+          <Text style={[styles.rowSub, { color: theme.muted }]}>
+            {t("positions.twapProgress", { done: entry.executedSz, total: entry.sz, pct, ntl: Math.round(entry.executedNtl), minutes: entry.minutes })}
+          </Text>
+        </View>
+        <View style={styles.rowRight}>
+          <Text style={[styles.statusPill, { color: theme.muted, borderColor: theme.line }]}>{t(twapStatusLabelKey(entry.status))}</Text>
+        </View>
+      </Pressable>
+      {expanded ? (
+        <View testID={`twap-slices-${entry.twapId}`}>
+          <TwapSliceList slices={slices} theme={theme} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -529,7 +693,12 @@ const styles = StyleSheet.create({
   rowSub: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 3 },
   right: { alignItems: "flex-end" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  rowToggle: { flex: 1 },
   cancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 7, borderWidth: 1 },
   cancelText: { fontFamily: fonts.display.bold, fontSize: 11.5, letterSpacing: 0.3 },
   rowVal: { fontFamily: fonts.mono.medium, fontSize: 13 },
+  sectionTitle: { fontFamily: fonts.body.regular, fontSize: 11, letterSpacing: 0.4, marginTop: 20, marginBottom: 6, textTransform: "uppercase" },
+  sliceBox: { borderLeftWidth: 2, paddingLeft: 10, paddingVertical: 6, marginBottom: 6 },
+  sliceRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
+  statusPill: { fontFamily: fonts.mono.bold, fontSize: 9, letterSpacing: 0.4, borderWidth: 1, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden" },
 });

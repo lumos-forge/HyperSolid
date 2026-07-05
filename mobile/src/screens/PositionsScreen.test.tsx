@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import { PositionsScreen } from "./PositionsScreen";
 import { useEnvStore } from "../state/envStore";
@@ -12,7 +12,7 @@ import type { FillsService } from "../services/fillsData";
 import type { OrdersService } from "../services/ordersData";
 import type { TwapService } from "../services/twapData";
 import type { PortfolioSnapshot, Fill, OpenOrder, MarketTicker } from "../lib/hyperliquid/types";
-import type { ActiveTwap } from "../lib/hyperliquid/twap";
+import type { ActiveTwap, TwapHistoryEntry } from "../lib/hyperliquid/twap";
 
 const mockPlaceOrder = jest.fn();
 const mockCancelOrder = jest.fn();
@@ -55,12 +55,24 @@ const orders: OpenOrder[] = [
 const activeTwaps: ActiveTwap[] = [
   { twapId: 7, coin: "BTC", side: "buy", sz: 1, executedSz: 0.4, executedNtl: 24000, minutes: 30, reduceOnly: false, startedAt: 1000 },
 ];
+const twapHistory: TwapHistoryEntry[] = [
+  { twapId: 8, coin: "ETH", side: "sell", sz: 2, executedSz: 2, executedNtl: 5000, minutes: 20, reduceOnly: false, startedAt: 500, status: "finished" },
+];
+const sliceFillsByTwapId = new Map<number, Fill[]>([
+  [7, [{ coin: "BTC", px: 60000, sz: 0.2, side: "buy", time: 1100, closedPnl: 0, dir: "Open Long", fee: 0.1, builderFee: 0, feeToken: "USDC", oid: 2, tid: 21, hash: "0x", crossed: true }]],
+]);
 
 const fakeDeps = {
   positions: { loadPortfolio: jest.fn(async () => portfolio) } as unknown as PositionsService,
   fills: { loadRecent: jest.fn(async () => fills) } as unknown as FillsService,
   orders: { loadOpenOrders: jest.fn(async () => orders) } as unknown as OrdersService,
-  twap: { loadActive: jest.fn(async () => activeTwaps) } as unknown as TwapService,
+  twap: {
+    loadActive: jest.fn(async () => activeTwaps),
+    loadHistory: jest.fn(async () => twapHistory),
+    loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: twapHistory })),
+    loadSliceFills: jest.fn(async () => sliceFillsByTwapId),
+    subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })),
+  } as unknown as TwapService,
 };
 
 describe("PositionsScreen", () => {
@@ -77,6 +89,10 @@ describe("PositionsScreen", () => {
     (fakeDeps.fills.loadRecent as jest.Mock).mockClear();
     (fakeDeps.orders.loadOpenOrders as jest.Mock).mockClear();
     (fakeDeps.twap.loadActive as jest.Mock).mockClear();
+    (fakeDeps.twap.loadActiveAndHistory as jest.Mock).mockClear();
+    (fakeDeps.twap.loadHistory as jest.Mock).mockClear();
+    (fakeDeps.twap.loadSliceFills as jest.Mock).mockClear();
+    (fakeDeps.twap.subscribeSliceFills as jest.Mock).mockClear();
   });
 
   it("shows a friendly network error with a Retry (no raw SDK string) and retries on tap", async () => {
@@ -90,7 +106,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio } as unknown as PositionsService,
       fills: { loadRecent: jest.fn(async () => []) } as unknown as FillsService,
       orders: { loadOpenOrders: jest.fn(async () => []) } as unknown as OrdersService,
-      twap: { loadActive: jest.fn(async () => []) } as unknown as TwapService,
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) } as unknown as TwapService,
     };
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<PositionsScreen deps={deps} />);
@@ -223,7 +239,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
-      twap: { loadActive: jest.fn(async () => []) },
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     const navigate = jest.fn();
@@ -239,7 +255,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
-      twap: { loadActive: jest.fn(async () => []) },
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "viewOnly", wallet: null, address: ADDR });
     render(<PositionsScreen deps={deps} />);
@@ -264,5 +280,83 @@ describe("PositionsScreen", () => {
     fireEvent.press(await screen.findByTestId("twap-cancel-7"));
     await confirmAlert();
     await waitFor(() => expect(mockCancelTwap).toHaveBeenCalledWith("BTC", 7));
+  });
+
+  it("renders the TWAP history list with a status label", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    fireEvent.press(await screen.findByTestId("tab-twap"));
+    expect(await screen.findByTestId("twap-history-8")).toBeTruthy();
+    expect(screen.getByText("Filled")).toBeTruthy();
+  });
+
+  it("expands a TWAP row to show its slice fills", async () => {
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={fakeDeps} />);
+    fireEvent.press(await screen.findByTestId("tab-twap"));
+    fireEvent.press(await screen.findByTestId("twap-row-7"));
+    expect(await screen.findByTestId("twap-slices-7")).toBeTruthy();
+  });
+
+  it("appends a live WS slice fill and optimistically bumps active-TWAP progress, then reconciles", async () => {
+    jest.useFakeTimers();
+    let captured: ((fills: unknown[]) => void) | null = null;
+    const deps = {
+      positions: { loadPortfolio: jest.fn(async () => portfolio) } as unknown as PositionsService,
+      fills: { loadRecent: jest.fn(async () => []) } as unknown as FillsService,
+      orders: { loadOpenOrders: jest.fn(async () => []) } as unknown as OrdersService,
+      twap: {
+        loadActive: jest.fn(async () => activeTwaps),
+        loadHistory: jest.fn(async () => []),
+        loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: [] })),
+        loadSliceFills: jest.fn(async () => new Map()),
+        subscribeSliceFills: jest.fn(async (_addr: string, cb: (f: unknown[]) => void) => { captured = cb; return { unsubscribe: jest.fn(async () => {}) }; }),
+      } as unknown as TwapService,
+    };
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={deps} />);
+    await waitFor(() => expect(deps.twap.subscribeSliceFills).toHaveBeenCalled());
+    fireEvent.press(screen.getByTestId("tab-twap"));
+
+    const loadActiveCallsBefore = (deps.twap.loadActiveAndHistory as jest.Mock).mock.calls.length;
+    act(() => {
+      captured!([{ twapId: 7, fill: { coin: "BTC", px: 60000, sz: 0.2, side: "buy", time: 1100, closedPnl: 0, dir: "Open Long", fee: 0, builderFee: 0, feeToken: "USDC", oid: 3, tid: 31, hash: "0x", crossed: true } }]);
+    });
+    fireEvent.press(await screen.findByTestId("twap-row-7"));
+    expect(await screen.findByTestId("twap-slices-7")).toBeTruthy();
+
+    act(() => { jest.advanceTimersByTime(1600); });
+    await waitFor(() => expect((deps.twap.loadActiveAndHistory as jest.Mock).mock.calls.length).toBeGreaterThan(loadActiveCallsBefore));
+    jest.useRealTimers();
+  });
+
+  it("does not double-count a duplicate WS slice fill in the optimistic progress", async () => {
+    jest.useFakeTimers();
+    let captured: ((fills: unknown[]) => void) | null = null;
+    const deps = {
+      positions: { loadPortfolio: jest.fn(async () => portfolio) } as unknown as PositionsService,
+      fills: { loadRecent: jest.fn(async () => []) } as unknown as FillsService,
+      orders: { loadOpenOrders: jest.fn(async () => []) } as unknown as OrdersService,
+      twap: {
+        loadActive: jest.fn(async () => activeTwaps),
+        loadHistory: jest.fn(async () => []),
+        loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: [] })),
+        loadSliceFills: jest.fn(async () => new Map()),
+        subscribeSliceFills: jest.fn(async (_addr: string, cb: (f: unknown[]) => void) => { captured = cb; return { unsubscribe: jest.fn(async () => {}) }; }),
+      } as unknown as TwapService,
+    };
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<PositionsScreen deps={deps} />);
+    await waitFor(() => expect(deps.twap.subscribeSliceFills).toHaveBeenCalled());
+    fireEvent.press(screen.getByTestId("tab-twap"));
+
+    const dupFill = [{ twapId: 7, fill: { coin: "BTC", px: 60000, sz: 0.2, side: "buy", time: 1100, closedPnl: 0, dir: "Open Long", fee: 0, builderFee: 0, feeToken: "USDC", oid: 3, tid: 31, hash: "0x", crossed: true } }];
+    act(() => { captured!(dupFill); });
+    act(() => { captured!(dupFill); }); // same tid delivered again (e.g. snapshot overlap)
+
+    // 0.4 executed + one 0.2 fill = 60%; a double-count would show 80%.
+    expect(await screen.findByText(/· 60% ·/)).toBeTruthy();
+    expect(screen.queryByText(/· 80% ·/)).toBeNull();
+    jest.useRealTimers();
   });
 });

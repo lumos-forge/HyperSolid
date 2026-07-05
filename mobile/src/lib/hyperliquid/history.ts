@@ -15,6 +15,26 @@ function sideFromBA(side: "B" | "A"): "buy" | "sell" {
   return side === "B" ? "buy" : "sell";
 }
 
+/** Normalize a single raw userFill into a Fill. */
+export function normalizeFill(f: RawUserFill): Fill {
+  return {
+    coin: f.coin,
+    px: Number(f.px),
+    sz: Number(f.sz),
+    side: sideFromBA(f.side),
+    time: f.time,
+    closedPnl: Number(f.closedPnl),
+    dir: f.dir,
+    fee: Number(f.fee),
+    builderFee: f.builderFee !== undefined ? Number(f.builderFee) : 0,
+    feeToken: f.feeToken,
+    oid: f.oid,
+    tid: f.tid,
+    hash: f.hash,
+    crossed: f.crossed,
+  };
+}
+
 /** Normalize userFills, de-duplicating by `tid` (partial-fill id), newest first. */
 export function normalizeFills(raw: RawUserFill[]): Fill[] {
   const seen = new Set<number>();
@@ -22,22 +42,7 @@ export function normalizeFills(raw: RawUserFill[]): Fill[] {
   for (const f of raw) {
     if (seen.has(f.tid)) continue;
     seen.add(f.tid);
-    out.push({
-      coin: f.coin,
-      px: Number(f.px),
-      sz: Number(f.sz),
-      side: sideFromBA(f.side),
-      time: f.time,
-      closedPnl: Number(f.closedPnl),
-      dir: f.dir,
-      fee: Number(f.fee),
-      builderFee: f.builderFee !== undefined ? Number(f.builderFee) : 0,
-      feeToken: f.feeToken,
-      oid: f.oid,
-      tid: f.tid,
-      hash: f.hash,
-      crossed: f.crossed,
-    });
+    out.push(normalizeFill(f));
   }
   return out.sort((a, b) => b.time - a.time);
 }

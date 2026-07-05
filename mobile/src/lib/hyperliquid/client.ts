@@ -9,7 +9,7 @@ import type { Network } from "../../state/envStore";
 import { resolveIsTestnet } from "./network";
 import type { DetailInfoLike, DetailSubsLike, InfoLike, PositionsInfoLike, SubsLike, FillsInfoLike, OrdersInfoLike, FundingsInfoLike, OrderStatusInfoLike, RawOrderStatus } from "./types";
 import type { ExchangeLike } from "../../services/exchange";
-import type { TwapInfoLike } from "./twap";
+import type { TwapInfoLike, TwapSubsLike } from "./twap";
 
 export function createInfoClient(network: Network): InfoLike {
   const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
@@ -93,9 +93,23 @@ export function createTwapInfoClient(network: Network): TwapInfoLike {
     transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
   }) as unknown as {
     twapHistory(args: { user: string }): Promise<unknown>;
+    userTwapSliceFills(args: { user: string }): Promise<unknown>;
   };
   return {
     twapHistory: (address) => info.twapHistory({ user: address }) as never,
+    userTwapSliceFills: (address) => info.userTwapSliceFills({ user: address }) as never,
+  };
+}
+
+export function createTwapSubsClient(network: Network): TwapSubsLike {
+  const subs = new SubscriptionClient({
+    transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network) }),
+  }) as unknown as {
+    userTwapSliceFills(args: { user: string }, cb: (e: unknown) => void): Promise<unknown>;
+  };
+  return {
+    userTwapSliceFills: (address, listener) =>
+      subs.userTwapSliceFills({ user: address }, (e) => listener(e as never)) as never,
   };
 }
 

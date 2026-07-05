@@ -1,4 +1,5 @@
 import {
+  normalizeFill,
   normalizeFills,
   normalizeFundings,
   normalizeOpenOrders,
@@ -182,5 +183,15 @@ describe("reconcileOpenOrders (read-only consumption of the cloid ledger)", () =
     const [o] = reconcileOpenOrders(orders, ledger);
     expect(o.tracked).toBe(false);
     expect(o.intentStatus).toBeNull();
+  });
+});
+
+describe("normalizeFill", () => {
+  it("maps a single raw userFill (side B->buy, numeric coercion, builderFee default 0)", () => {
+    const raw = { coin: "BTC", px: "60000", sz: "0.5", side: "B" as const, time: 123, startPosition: "0", dir: "Open Long", closedPnl: "0", hash: "0x" as const, oid: 1, crossed: true, fee: "0.3", tid: 42, feeToken: "USDC", twapId: null };
+    expect(normalizeFill(raw)).toEqual({
+      coin: "BTC", px: 60000, sz: 0.5, side: "buy", time: 123, closedPnl: 0, dir: "Open Long",
+      fee: 0.3, builderFee: 0, feeToken: "USDC", oid: 1, tid: 42, hash: "0x", crossed: true,
+    });
   });
 });
