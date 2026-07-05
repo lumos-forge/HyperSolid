@@ -548,3 +548,46 @@ describe("gridLimit tick (running)", () => {
     expect(store.gridLimitRungs(s.id).find((r) => r.rung === 0)).toMatchObject({ state: "armed", side: "buy", cloid: orphan, seq: 1 });
   });
 });
+
+describe("gridLimit tick (draining)", () => {
+  it("cancels all resting orders when paused and leaves the strategy paused", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xS2", px: 160, seq: 2 });
+    store.setStatus(s.id, "paused");
+    const exec = fakeExec();
+    const reader = fakeReader(["0xB0", "0xS2"]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.cancels.map((c) => c.cloid).sort()).toEqual(["0xB0", "0xS2"]);
+    expect(store.gridLimitRungs(s.id).every((r) => r.state === "idle" && r.cloid === null)).toBe(true);
+    expect(store.get(s.id)!.status).toBe("paused");
+  });
+
+  it("cancels all under the global kill-switch and does not place", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    const exec = fakeExec();
+    const reader = fakeReader(["0xB0"]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.cancels.map((c) => c.cloid)).toEqual(["0xB0"]);
+    expect(exec.placeLimit).not.toHaveBeenCalled();
+  });
+
+  it("drains a canceling strategy then removes it once nothing is left resting", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    store.setStatus(s.id, "canceling");
+    const exec = fakeExec();
+    // First tick: order still open -> cancel it, not yet removed.
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader(["0xB0"]) as any);
+    expect(store.get(s.id)).toBeDefined();
+    // Second tick: order gone -> removed.
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
+    expect(store.get(s.id)).toBeUndefined();
+  });
+});

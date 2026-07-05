@@ -253,8 +253,22 @@ export async function tick(
 
     for (const s of all) {
       if (s.kind !== "gridLimit") continue;
-      if (s.status !== "running" || killSwitch) continue; // draining handled in a later task
       const p = s.params as GridLimitParams;
+
+      // Drain: paused / canceling / global kill -> cancel every resting order for this strategy.
+      if (killSwitch || s.status !== "running") {
+        const open = await getOpen(s.owner);
+        let anyResting = false;
+        for (const r of store.gridLimitRungs(s.id)) {
+          if (!r.cloid) continue;
+          if (open.has(r.cloid)) anyResting = true;
+          await restingExec.cancelCloid({ owner: s.owner, coin: p.coin, cloid: r.cloid });
+          store.setGridLimitRung(s.id, { rung: r.rung, state: "idle", side: null, cloid: null, px: null, seq: r.seq });
+        }
+        if (s.status === "canceling" && !anyResting) store.remove(s.id);
+        continue;
+      }
+
       const mark = await marks.resolveMark(p.coin);
       if (!Number.isFinite(mark) || mark <= 0) continue;
       const open = await getOpen(s.owner);
