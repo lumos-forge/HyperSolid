@@ -366,9 +366,9 @@ export function PositionsScreen({
               {twapHistory.length === 0 ? (
                 <Text style={[styles.msg, { color: theme.muted }]}>{t("positions.noTwapHistory")}</Text>
               ) : (
-                twapHistory.map((h, i) => (
+                twapHistory.map((h) => (
                   <TwapHistoryRow
-                    key={h.twapId ?? `h${i}`}
+                    key={h.twapId ?? `h-${h.startedAt}-${h.coin}`}
                     entry={h}
                     theme={theme}
                     expanded={h.twapId !== null && expandedTwapId === h.twapId}
@@ -533,8 +533,8 @@ function TwapRow({
   const pct = Math.round(twapProgressPct(twap));
   return (
     <View testID={`twap-${twap.twapId}`}>
-      <Pressable onPress={onToggle} accessibilityRole="button" testID={`twap-row-${twap.twapId}`} style={[styles.row, { borderBottomColor: theme.line }]}>
-        <View>
+      <View style={[styles.row, { borderBottomColor: theme.line }]}>
+        <Pressable onPress={onToggle} accessibilityRole="button" testID={`twap-row-${twap.twapId}`} style={styles.rowToggle}>
           <Text style={[styles.rowCoin, { color: theme.text }]}>
             {twap.coin} <Text style={{ color: sideColor }}>{t(twap.side === "buy" ? "common.buy" : "common.sell")}</Text>
             {twap.reduceOnly ? <Text style={{ color: theme.muted }}> {t("positions.reduceOnly")}</Text> : null}
@@ -542,7 +542,7 @@ function TwapRow({
           <Text style={[styles.rowSub, { color: theme.muted }]}>
             {t("positions.twapProgress", { done: twap.executedSz, total: twap.sz, pct, ntl: Math.round(twap.executedNtl), minutes: twap.minutes })}
           </Text>
-        </View>
+        </Pressable>
         <View style={styles.rowRight}>
           {onCancel ? (
             <Pressable
@@ -555,7 +555,7 @@ function TwapRow({
             </Pressable>
           ) : null}
         </View>
-      </Pressable>
+      </View>
       {expanded ? (
         <View testID={`twap-slices-${twap.twapId}`}>
           <TwapSliceList slices={slices} theme={theme} />
@@ -630,6 +630,7 @@ const styles = StyleSheet.create({
   rowSub: { fontFamily: fonts.body.regular, fontSize: 11, marginTop: 3 },
   right: { alignItems: "flex-end" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  rowToggle: { flex: 1 },
   cancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 7, borderWidth: 1 },
   cancelText: { fontFamily: fonts.display.bold, fontSize: 11.5, letterSpacing: 0.3 },
   rowVal: { fontFamily: fonts.mono.medium, fontSize: 13 },
