@@ -36,14 +36,24 @@ interface StrategyDto {
   slicesDone?: number;
   triggeredAt?: number;
   lastLevel?: number;
+  armedCount?: number;
+  holdingCount?: number;
 }
 
-function toDto(s: Strategy): StrategyDto {
+function toDto(s: Strategy, store: StrategyStore): StrategyDto {
+  const summary =
+    s.kind === "gridLimit"
+      ? (() => {
+          const rungs = store.gridLimitRungs(s.id);
+          return { armedCount: rungs.filter((r) => r.state === "armed").length, holdingCount: rungs.filter((r) => r.state === "holding").length };
+        })()
+      : {};
   return {
     id: s.id,
     type: s.kind,
     status: s.status,
     params: s.params,
+    ...summary,
     ...(s.filledTotalUsdc !== undefined ? { filledTotalUsdc: s.filledTotalUsdc } : {}),
     ...(s.nextRunAt !== undefined ? { nextRunAt: s.nextRunAt } : {}),
     ...(s.slicesDone !== undefined ? { slicesDone: s.slicesDone } : {}),
@@ -151,7 +161,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get("/strategies", async (req, reply) => {
     const owner = ownerOf(req, reply);
     if (!owner) return;
-    return deps.store.list(owner).map(toDto);
+    return deps.store.list(owner).map((s) => toDto(s, deps.store));
   });
 
   app.post("/strategies", async (req, reply) => {
@@ -163,7 +173,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const { type, params } = req.body as { type: StrategyKind; params: unknown };
     const v = validateParams(type, params);
     if (!v.ok) return reply.code(400).send({ error: v.error });
-    return toDto(deps.store.create(owner, type, v.params));
+    return toDto(deps.store.create(owner, type, v.params), deps.store);
   });
 
   const ownedStrategy = (owner: string, id: string, reply: FastifyReply): Strategy | null => {
@@ -182,15 +192,20 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!ownedStrategy(owner, id, reply)) return;
     const { status } = req.body as { status: "running" | "paused" };
     deps.store.setStatus(id, status);
-    return toDto(deps.store.get(id)!);
+    return toDto(deps.store.get(id)!, deps.store);
   });
 
   app.delete("/strategies/:id", async (req, reply) => {
     const owner = ownerOf(req, reply);
     if (!owner) return;
     const { id } = req.params as { id: string };
-    if (!ownedStrategy(owner, id, reply)) return;
-    deps.store.remove(id);
+    const s = ownedStrategy(owner, id, reply);
+    if (!s) return;
+    if (s.kind === "gridLimit" && s.status !== "canceling") {
+      deps.store.setStatus(id, "canceling"); // scheduler drains resting orders, then removes
+    } else {
+      deps.store.remove(id);
+    }
     return reply.code(204).send();
   });
 
