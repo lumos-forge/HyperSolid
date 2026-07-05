@@ -25,6 +25,16 @@ export class TwapService {
     return normalizeTwapHistory(await this.info.twapHistory(address));
   }
 
+  /**
+   * Active + history TWAPs from a SINGLE `twapHistory` fetch. Deriving both from one response
+   * halves the request volume and guarantees a given twapId lands in exactly one list (no
+   * transient active/history split-brain across two separate responses).
+   */
+  async loadActiveAndHistory(address: string): Promise<{ active: ActiveTwap[]; history: TwapHistoryEntry[] }> {
+    const raw = await this.info.twapHistory(address);
+    return { active: normalizeActiveTwaps(raw), history: normalizeTwapHistory(raw) };
+  }
+
   /** Slice fills for an address, grouped by twapId (newest first per group). */
   async loadSliceFills(address: string): Promise<Map<number, Fill[]>> {
     return groupSliceFillsByTwapId(normalizeSliceFills(await this.info.userTwapSliceFills(address)));

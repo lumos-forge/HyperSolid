@@ -97,8 +97,10 @@ export function PositionsScreen({
       setTwapError(null);
       void services.fills.loadRecent(addr).then(setFills).catch((e) => setFillsError(classifyFetchError(e)));
       void services.orders.loadOpenOrders(addr).then(setOrders).catch((e) => setOrdersError(classifyFetchError(e)));
-      void services.twap.loadActive(addr).then(setActiveTwaps).catch((e) => setTwapError(classifyFetchError(e)));
-      void services.twap.loadHistory(addr).then(setTwapHistory).catch((e) => setTwapError(classifyFetchError(e)));
+      void services.twap
+        .loadActiveAndHistory(addr)
+        .then(({ active, history }) => { setActiveTwaps(active); setTwapHistory(history); })
+        .catch((e) => setTwapError(classifyFetchError(e)));
       void services.twap.loadSliceFills(addr).then(setSliceFills).catch(() => {});
     },
     [load, services],
@@ -152,8 +154,10 @@ export function PositionsScreen({
 
       if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
       reconcileTimer.current = setTimeout(() => {
-        void services.twap.loadActive(addr).then(setActiveTwaps).catch(() => {});
-        void services.twap.loadHistory(addr).then(setTwapHistory).catch(() => {});
+        void services.twap
+          .loadActiveAndHistory(addr)
+          .then(({ active, history }) => { if (cancelled) return; setActiveTwaps(active); setTwapHistory(history); })
+          .catch(() => {});
       }, 1500);
     };
 

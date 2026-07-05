@@ -60,3 +60,17 @@ describe("TwapService.subscribeSliceFills", () => {
     await expect(new TwapService(info).subscribeSliceFills("0xabc", jest.fn())).rejects.toThrow();
   });
 });
+
+describe("TwapService.loadActiveAndHistory", () => {
+  it("derives both active and history from a single twapHistory call", async () => {
+    const raw = [
+      { status: { status: "activated" }, twapId: 7, state: { coin: "BTC", side: "B", sz: "1", executedSz: "0.4", executedNtl: "24000", minutes: 30, reduceOnly: false, timestamp: 1000 } },
+      { status: { status: "finished" }, twapId: 8, state: { coin: "ETH", side: "A", sz: "2", executedSz: "2", executedNtl: "5000", minutes: 20, reduceOnly: false, timestamp: 500 } },
+    ];
+    const info = { twapHistory: jest.fn(async () => raw), userTwapSliceFills: jest.fn() };
+    const out = await new TwapService(info).loadActiveAndHistory("0xabc");
+    expect(info.twapHistory).toHaveBeenCalledTimes(1);
+    expect(out.active.map((a) => a.twapId)).toEqual([7]);
+    expect(out.history.map((h) => h.twapId)).toEqual([8]);
+  });
+});
