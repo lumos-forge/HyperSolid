@@ -103,3 +103,46 @@ func TestMoreDigestsFailClosed(t *testing.T) {
 		t.Fatal("approveBuilderFee: expected bad-builder-address error")
 	}
 }
+
+func TestEncodeFieldBool(t *testing.T) {
+	tr, err := encodeField(Field{"toPerp", "bool"}, true)
+	if err != nil {
+		t.Fatalf("bool true: %v", err)
+	}
+	wantTrue := make([]byte, 32)
+	wantTrue[31] = 1
+	if !bytes.Equal(tr, wantTrue) {
+		t.Fatalf("bool(true) word = %x, want %x", tr, wantTrue)
+	}
+	fa, err := encodeField(Field{"toPerp", "bool"}, false)
+	if err != nil {
+		t.Fatalf("bool false: %v", err)
+	}
+	wantFalse := make([]byte, 32)
+	if !bytes.Equal(fa, wantFalse) {
+		t.Fatalf("bool(false) word = %x, want all-zero", fa)
+	}
+	if _, err := encodeField(Field{"toPerp", "bool"}, "nope"); err == nil {
+		t.Fatal("expected type error for non-bool value")
+	}
+}
+
+func TestUsdClassTransferDigestTogglesOnToPerp(t *testing.T) {
+	base := UsdClassTransferInput{SignatureChainID: "0xa4b1", HyperliquidChain: "Mainnet", Amount: "100", ToPerp: true, Nonce: 1700000000000}
+	toPerp, err := UsdClassTransferDigest(base)
+	if err != nil {
+		t.Fatalf("toPerp: %v", err)
+	}
+	off := base
+	off.ToPerp = false
+	toSpot, err := UsdClassTransferDigest(off)
+	if err != nil {
+		t.Fatalf("toSpot: %v", err)
+	}
+	if toPerp == toSpot {
+		t.Fatal("digest must differ when toPerp flips")
+	}
+	if _, err := UsdClassTransferDigest(UsdClassTransferInput{SignatureChainID: "0x", HyperliquidChain: "Mainnet", Amount: "1", Nonce: 1}); err == nil {
+		t.Fatal("expected error on empty signatureChainId")
+	}
+}
