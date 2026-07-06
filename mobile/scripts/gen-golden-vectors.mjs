@@ -32,6 +32,19 @@ function buildAction(kind, p) {
     return { type: "modify", oid, order: o };
   }
   if (kind === "updateLeverage") return { type: "updateLeverage", asset: p.asset, isCross: p.isCross, leverage: p.leverage };
+  if (kind === "batchModify") {
+    return { type: "batchModify", modifies: p.modifies.map((m) => {
+      const o = { a: m.order.asset, b: m.order.isBuy, p: m.order.px, s: m.order.sz, r: m.order.reduceOnly, t: { limit: { tif: m.order.tif } } };
+      if (m.order.cloid) o.c = m.order.cloid;
+      return { oid: m.oidCloid ?? m.oidNum, order: o };
+    }) };
+  }
+  if (kind === "updateIsolatedMargin") return { type: "updateIsolatedMargin", asset: p.asset, isBuy: p.isBuy, ntli: p.ntli };
+  if (kind === "scheduleCancel") {
+    const a = { type: "scheduleCancel" };
+    if (p.time !== undefined) a.time = p.time;
+    return a;
+  }
   throw new Error("unknown kind " + kind);
 }
 
@@ -48,6 +61,14 @@ const cases = [
   { name: "modify-oid-large-order-cloid-mainnet", kind: "modify", isTestnet: false, params: { oidNum: 4294967297, order: { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Alo", cloid: "0x00000000000000000000000000000009" } } },
   { name: "updateLeverage-cross-mainnet", kind: "updateLeverage", isTestnet: false, params: { asset: 0, isCross: true, leverage: 5 } },
   { name: "updateLeverage-isolated-testnet", kind: "updateLeverage", isTestnet: true, params: { asset: 1, isCross: false, leverage: 3 } },
+  { name: "batchModify-mainnet", kind: "batchModify", isTestnet: false, params: { modifies: [
+    { oidNum: 123, order: { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Gtc" } },
+    { oidCloid: "0x00000000000000000000000000000002", order: { asset: 1, isBuy: false, px: "3000", sz: "0.5", reduceOnly: true, tif: "Alo", cloid: "0x00000000000000000000000000000009" } },
+  ] } },
+  { name: "updateIsolatedMargin-add-mainnet", kind: "updateIsolatedMargin", isTestnet: false, params: { asset: 0, isBuy: true, ntli: 1000000 } },
+  { name: "updateIsolatedMargin-remove-testnet", kind: "updateIsolatedMargin", isTestnet: true, params: { asset: 1, isBuy: false, ntli: -500000 } },
+  { name: "scheduleCancel-set-mainnet", kind: "scheduleCancel", isTestnet: false, params: { time: 1700000000000 } },
+  { name: "scheduleCancel-clear-testnet", kind: "scheduleCancel", isTestnet: true, params: {} },
 ];
 
 function normSig(sig) {

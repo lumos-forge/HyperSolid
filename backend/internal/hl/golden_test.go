@@ -128,6 +128,46 @@ func actionForVector(t *testing.T, v goldenVector) Map {
 		}
 		mustJSON(t, v.Params, &p)
 		return BuildUpdateLeverageAction(p.Asset, p.IsCross, p.Leverage)
+	case "batchModify":
+		var p struct {
+			Modifies []struct {
+				OidNum   int64  `json:"oidNum"`
+				OidCloid string `json:"oidCloid"`
+				Order    struct {
+					Asset      int64  `json:"asset"`
+					IsBuy      bool   `json:"isBuy"`
+					Px         string `json:"px"`
+					Sz         string `json:"sz"`
+					ReduceOnly bool   `json:"reduceOnly"`
+					Tif        string `json:"tif"`
+					Cloid      string `json:"cloid"`
+				} `json:"order"`
+			} `json:"modifies"`
+		}
+		mustJSON(t, v.Params, &p)
+		mods := make([]ModifyInput, len(p.Modifies))
+		for i, m := range p.Modifies {
+			mods[i] = ModifyInput{
+				Oid:   m.OidNum,
+				Cloid: m.OidCloid,
+				Order: OrderInput{Asset: m.Order.Asset, IsBuy: m.Order.IsBuy, Px: m.Order.Px, Sz: m.Order.Sz, ReduceOnly: m.Order.ReduceOnly, Tif: m.Order.Tif, Cloid: m.Order.Cloid},
+			}
+		}
+		return BuildBatchModifyAction(mods)
+	case "updateIsolatedMargin":
+		var p struct {
+			Asset int64 `json:"asset"`
+			IsBuy bool  `json:"isBuy"`
+			Ntli  int64 `json:"ntli"`
+		}
+		mustJSON(t, v.Params, &p)
+		return BuildUpdateIsolatedMarginAction(p.Asset, p.IsBuy, p.Ntli)
+	case "scheduleCancel":
+		var p struct {
+			Time *int64 `json:"time"`
+		}
+		mustJSON(t, v.Params, &p)
+		return BuildScheduleCancelAction(p.Time)
 	}
 	t.Fatalf("unknown kind %q", v.Kind)
 	return nil

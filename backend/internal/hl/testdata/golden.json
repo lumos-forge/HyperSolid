@@ -270,5 +270,116 @@
       "s": "0x3213cc37e0679cf35243bc101aadb21ab71cff5e843fad590eaed4294b97c2f0",
       "v": 28
     }
+  },
+  {
+    "name": "batchModify-mainnet",
+    "kind": "batchModify",
+    "params": {
+      "modifies": [
+        {
+          "oidNum": 123,
+          "order": {
+            "asset": 0,
+            "isBuy": true,
+            "px": "50000",
+            "sz": "0.01",
+            "reduceOnly": false,
+            "tif": "Gtc"
+          }
+        },
+        {
+          "oidCloid": "0x00000000000000000000000000000002",
+          "order": {
+            "asset": 1,
+            "isBuy": false,
+            "px": "3000",
+            "sz": "0.5",
+            "reduceOnly": true,
+            "tif": "Alo",
+            "cloid": "0x00000000000000000000000000000009"
+          }
+        }
+      ]
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x0a7e6ca16937153b5f96c9af42484539729105fb5a59acd8464b352a8782ff49",
+    "agentDigest": "0x0193ca4e93a405b26cf3d62910a35ecf381b7fbfb9752be2dc863df1a03d3010",
+    "sig": {
+      "r": "0x5bb1c9ecb52ae1e8e9b9b44396f3d077d8c9116a9be8ffac68308a60cbf566ad",
+      "s": "0x4923072465962ac3de84598baaeb3d0769093c4b26a2ec57b7f37576f37b16e7",
+      "v": 28
+    }
+  },
+  {
+    "name": "updateIsolatedMargin-add-mainnet",
+    "kind": "updateIsolatedMargin",
+    "params": {
+      "asset": 0,
+      "isBuy": true,
+      "ntli": 1000000
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0xaab953f3d8c7aee3815e345292be5a968a253ba9848bf013984e97a87bdc60d4",
+    "agentDigest": "0xe2c854f47309478f1c36e30d08f2ba95298d32e7633e184f859daec38164ea43",
+    "sig": {
+      "r": "0x9278d5023eaa783044849c15cbb09732108f71b02c929e5def2bb2dfd6b54722",
+      "s": "0x032b8eb16dd7e292d6a8372793acb6cdc6e99a988285f0e243b8a6c63aea8bcf",
+      "v": 27
+    }
+  },
+  {
+    "name": "updateIsolatedMargin-remove-testnet",
+    "kind": "updateIsolatedMargin",
+    "params": {
+      "asset": 1,
+      "isBuy": false,
+      "ntli": -500000
+    },
+    "nonce": 1700000000000,
+    "isTestnet": true,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0xf793947d683b9274d09333ebab187f5c7eb03eb52541c53212f91196d7259e5c",
+    "agentDigest": "0xda52f413414db12f77f4c4e10614fe7b4cd316916b37af8e502be60aa39d2f15",
+    "sig": {
+      "r": "0xd33bda0460277a1cc47aec8fcd0462a6ce981257ce3ec9bc6c3c342ea75e446d",
+      "s": "0x0693767a574ffc7474476691b407fd48326a8b87672142257e8ecce9063e8b4d",
+      "v": 28
+    }
+  },
+  {
+    "name": "scheduleCancel-set-mainnet",
+    "kind": "scheduleCancel",
+    "params": {
+      "time": 1700000000000
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x376f6bf2c7eeb0e505a5bd97a86a9eee67e3602331b8fec5ec16468866210b19",
+    "agentDigest": "0xe72faa5ab6c2d82c8b9a343dec601d84b267703c5d7f10ed961f9df686977e27",
+    "sig": {
+      "r": "0x18b3eb99e182a6268246fb75807945b7b383f937cd192eed9f0872caff7dc576",
+      "s": "0x5b151ec0fd2d6994b58badc0aec70835f2c9d26aa48910b12a69c595c575e9a5",
+      "v": 27
+    }
+  },
+  {
+    "name": "scheduleCancel-clear-testnet",
+    "kind": "scheduleCancel",
+    "params": {},
+    "nonce": 1700000000000,
+    "isTestnet": true,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x3203332b8f438c09b3d96dc86b924df85640505711dacbbe2ba373d7f16ef09c",
+    "agentDigest": "0x4cd0b6d952848dbdd0e2f04ed4634f12d2d1e92747afb1008a1f159ef61444ea",
+    "sig": {
+      "r": "0x67b1f57b3ca2d6dec927c5e508ac84903d797223fbb61bb8bb5a0638a7f93fa6",
+      "s": "0x356a17759b0a6b0c4a6239166b7ab536e62b469404f69336d511b6331586b0f4",
+      "v": 28
+    }
   }
 ]
