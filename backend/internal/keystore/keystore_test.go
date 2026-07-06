@@ -1,6 +1,8 @@
 package keystore
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
@@ -88,4 +90,25 @@ func TestCloseAll(t *testing.T) {
 	if _, ok := ks.Signer("b"); ok {
 		t.Fatal("b should be gone")
 	}
+}
+
+func TestConcurrentAccess(t *testing.T) {
+	ks := New()
+	defer ks.Close()
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			id := fmt.Sprintf("k%d", n%8)
+			_ = ks.Add(id, testKey(byte(n)))
+			if s, ok := ks.Signer(id); ok {
+				_ = canSign(s)
+			}
+			if n%3 == 0 {
+				ks.Remove(id)
+			}
+		}(i)
+	}
+	wg.Wait()
 }

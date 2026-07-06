@@ -1,6 +1,8 @@
-// Command signer is the M5 signing service (phase 1: keyless digest endpoints).
-// It does NOT hold keys, sign, or persist anything; it only reproduces HL action
-// hashes/digests for cross-language shadow verification.
+// Command signer is the M5 signing service. It exposes keyless digest endpoints
+// (/healthz, /v1/digest/l1) plus a keystore-backed L1 signing endpoint (/v1/sign/l1).
+// The shipped binary starts with an EMPTY keystore (fail-closed: nothing is signable)
+// and has no key-injection path. It performs NO policy checks — a reject-first policy
+// layer must wrap /v1/sign/l1 before any production use (docs/BACKEND-ARCHITECTURE.md §5.1a).
 package main
 
 import (
