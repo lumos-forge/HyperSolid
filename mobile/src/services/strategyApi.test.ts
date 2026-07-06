@@ -62,4 +62,12 @@ describe("StrategyApi", () => {
     const api = new StrategyApi("https://api", "tok", fetchImpl);
     await expect(api.listStrategies()).rejects.toThrow(/401/);
   });
+
+  it("getRungs GETs the strategy rung ladder", async () => {
+    const fetchMock = jest.fn(async (_u: string, _i?: RequestInit) => res([{ rung: 0, state: "armed", buyPrice: 100, sellPrice: 120 }]));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    const rungs = await api.getRungs("s1");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api/strategies/s1/rungs");
+    expect(rungs).toEqual([{ rung: 0, state: "armed", buyPrice: 100, sellPrice: 120 }]);
+  });
 });
