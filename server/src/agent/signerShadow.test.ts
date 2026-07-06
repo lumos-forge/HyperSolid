@@ -1,25 +1,11 @@
 import { makeShadowVerifier, SHADOW_NONCE } from "./signerShadow";
+import { createL1ActionHash } from "@nktkas/hyperliquid/signing";
 
-// Mock the @nktkas/hyperliquid/signing module
-jest.mock("@nktkas/hyperliquid/signing", () => ({
-  createL1ActionHash: jest.fn((args: { action: unknown; nonce: number }) => {
-    // Return a deterministic hash based on the action for testing
-    const action = args.action as { type: string; orders?: unknown[]; grouping?: string };
-    if (action.type === "order" && action.orders && action.orders.length > 0) {
-      const o = action.orders[0] as Record<string, unknown>;
-      // This hash must match what expectedLocalHash() returns
-      if (o.a === 0 && o.b === true && o.p === "50000" && o.s === "0.01" && o.r === false) {
-        return "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-      }
-    }
-    return "0x0000000000000000000000000000000000000000000000000000000000000000";
-  }),
-}));
-
-const orderParams = { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Ioc", grouping: "na", cloid: "0x00000000000000000000000000000000000000000000000000000000000001" };
+const orderParams = { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Ioc", grouping: "na", cloid: "0x00000000000000000000000000000001" };
 
 function expectedLocalHash(): string {
-  return "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+  const o: Record<string, unknown> = { a: 0, b: true, p: "50000", s: "0.01", r: false, t: { limit: { tif: "Ioc" } }, c: "0x00000000000000000000000000000001" };
+  return createL1ActionHash({ action: { type: "order", orders: [o], grouping: "na" }, nonce: SHADOW_NONCE });
 }
 
 const flush = () => new Promise((r) => setImmediate(r));
@@ -29,7 +15,7 @@ function fetchReturning(hash: string, ok = true, status = 200) {
 }
 
 describe("makeShadowVerifier", () => {
-  it("no warn when hashes match", async () => {
+  it("no warn when hashes match (real @nktkas hash)", async () => {
     const warn = jest.fn();
     const f = fetchReturning(expectedLocalHash());
     const verify = makeShadowVerifier({ url: "http://x", fetchImpl: f as never, logger: { warn, debug: jest.fn() } });
