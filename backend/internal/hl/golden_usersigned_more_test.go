@@ -18,6 +18,8 @@ type moreVector struct {
 	MaxFeeRate       string    `json:"maxFeeRate"`
 	Builder          string    `json:"builder"`
 	Nonce            uint64    `json:"nonce"`
+	ToPerp           bool      `json:"toPerp"`
+	Token            string    `json:"token"`
 	PrivKey          string    `json:"privKey"`
 	Digest           string    `json:"digest"`
 	Sig              goldenSig `json:"sig"`
@@ -50,6 +52,10 @@ func moreDigest(t *testing.T, v moreVector) [32]byte {
 		d, err = UsdSendDigest(UsdSendInput{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Amount, v.Time})
 	case "approveBuilderFee":
 		d, err = ApproveBuilderFeeDigest(ApproveBuilderFeeInput{v.SignatureChainID, v.HyperliquidChain, v.MaxFeeRate, v.Builder, v.Nonce})
+	case "usdClassTransfer":
+		d, err = UsdClassTransferDigest(UsdClassTransferInput{v.SignatureChainID, v.HyperliquidChain, v.Amount, v.ToPerp, v.Nonce})
+	case "spotSend":
+		d, err = SpotSendDigest(SpotSendInput{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Token, v.Amount, v.Time})
 	default:
 		t.Fatalf("unknown action %q", v.Action)
 	}
@@ -79,6 +85,10 @@ func moreSign(t *testing.T, s *Signer, v moreVector) (Sig, error) {
 		return s.SignUsdSend(UsdSendInput{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Amount, v.Time})
 	case "approveBuilderFee":
 		return s.SignApproveBuilderFee(ApproveBuilderFeeInput{v.SignatureChainID, v.HyperliquidChain, v.MaxFeeRate, v.Builder, v.Nonce})
+	case "usdClassTransfer":
+		return s.SignUsdClassTransfer(UsdClassTransferInput{v.SignatureChainID, v.HyperliquidChain, v.Amount, v.ToPerp, v.Nonce})
+	case "spotSend":
+		return s.SignSpotSend(SpotSendInput{v.SignatureChainID, v.HyperliquidChain, v.Destination, v.Token, v.Amount, v.Time})
 	}
 	t.Fatalf("unknown action %q", v.Action)
 	return Sig{}, nil

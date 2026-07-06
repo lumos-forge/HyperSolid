@@ -45,6 +45,16 @@ func encodeField(f Field, val any) ([]byte, error) {
 			return nil, fmt.Errorf("field %q: expected uint64, got %T", f.Name, val)
 		}
 		return word(new(big.Int).SetUint64(n)), nil
+	case "bool":
+		bv, ok := val.(bool)
+		if !ok {
+			return nil, fmt.Errorf("field %q: expected bool, got %T", f.Name, val)
+		}
+		n := uint64(0)
+		if bv {
+			n = 1
+		}
+		return word(new(big.Int).SetUint64(n)), nil
 	default:
 		return nil, fmt.Errorf("field %q: unsupported type %q", f.Name, f.Type)
 	}
@@ -206,5 +216,61 @@ func ApproveBuilderFeeDigest(in ApproveBuilderFeeInput) ([32]byte, error) {
 	}
 	return UserSignedDigest("HyperliquidTransaction:ApproveBuilderFee", approveBuilderFeeFields, chainID, map[string]any{
 		"hyperliquidChain": in.HyperliquidChain, "maxFeeRate": in.MaxFeeRate, "builder": in.Builder, "nonce": in.Nonce,
+	})
+}
+
+// --- usdClassTransfer (spot<->perp USDC transfer; toPerp is an EIP-712 bool) ---
+
+var usdClassTransferFields = []Field{
+	{"hyperliquidChain", "string"},
+	{"amount", "string"},
+	{"toPerp", "bool"},
+	{"nonce", "uint64"},
+}
+
+type UsdClassTransferInput struct {
+	SignatureChainID string
+	HyperliquidChain string
+	Amount           string
+	ToPerp           bool
+	Nonce            uint64
+}
+
+func UsdClassTransferDigest(in UsdClassTransferInput) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return UserSignedDigest("HyperliquidTransaction:UsdClassTransfer", usdClassTransferFields, chainID, map[string]any{
+		"hyperliquidChain": in.HyperliquidChain, "amount": in.Amount, "toPerp": in.ToPerp, "nonce": in.Nonce,
+	})
+}
+
+// --- spotSend (spot token transfer; destination hashed as a string, matching HL) ---
+
+var spotSendFields = []Field{
+	{"hyperliquidChain", "string"},
+	{"destination", "string"},
+	{"token", "string"},
+	{"amount", "string"},
+	{"time", "uint64"},
+}
+
+type SpotSendInput struct {
+	SignatureChainID string
+	HyperliquidChain string
+	Destination      string
+	Token            string
+	Amount           string
+	Time             uint64
+}
+
+func SpotSendDigest(in SpotSendInput) ([32]byte, error) {
+	chainID, err := parseHexChainID(in.SignatureChainID)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return UserSignedDigest("HyperliquidTransaction:SpotSend", spotSendFields, chainID, map[string]any{
+		"hyperliquidChain": in.HyperliquidChain, "destination": in.Destination, "token": in.Token, "amount": in.Amount, "time": in.Time,
 	})
 }

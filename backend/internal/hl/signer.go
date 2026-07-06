@@ -84,6 +84,16 @@ func (s *Signer) SignApproveBuilderFee(in ApproveBuilderFeeInput) (Sig, error) {
 	return s.signGuarded(func() ([32]byte, error) { return ApproveBuilderFeeDigest(in) })
 }
 
+// SignUsdClassTransfer signs a usdClassTransfer user-signed action.
+func (s *Signer) SignUsdClassTransfer(in UsdClassTransferInput) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return UsdClassTransferDigest(in) })
+}
+
+// SignSpotSend signs a spotSend user-signed action.
+func (s *Signer) SignSpotSend(in SpotSendInput) (Sig, error) {
+	return s.signGuarded(func() ([32]byte, error) { return SpotSendDigest(in) })
+}
+
 // Close best-effort zeroizes the key material (the library scalar + the scratch buffer).
 func (s *Signer) Close() {
 	s.mu.Lock()

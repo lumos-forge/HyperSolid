@@ -46,5 +46,54 @@
       "s": "0x0443dfb3477cbe028db9d933e7a68f9d243a956315c65cd7e4bf850763fbdce8",
       "v": 27
     }
+  },
+  {
+    "name": "usdClassTransfer-toPerp-mainnet",
+    "action": "usdClassTransfer",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "amount": "100",
+    "toPerp": true,
+    "nonce": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0xf88c4b41bda62cb90bf2bf245d63080060e525e94d6d64b8d3b1837ff8284005",
+    "sig": {
+      "r": "0x8fccefe2ec4e05b3b9a6e8d57a97ff3522e5c6f2931619d48f2762c8544d434f",
+      "s": "0x52959e5007759f75eb955b13e466ad2b5fa6a3c161d1bd20fb9a2f713c692328",
+      "v": 27
+    }
+  },
+  {
+    "name": "usdClassTransfer-toSpot-testnet",
+    "action": "usdClassTransfer",
+    "signatureChainId": "0x66eee",
+    "hyperliquidChain": "Testnet",
+    "amount": "50.5",
+    "toPerp": false,
+    "nonce": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0x73955adaf82ab146c52dc385b5ddfc00a66f95e9ca7eb57342dda3a710fef6ce",
+    "sig": {
+      "r": "0x58048ebc186f89e9b93e9b224a9a8dd73d075facf48b0af476bef7548eacc43f",
+      "s": "0x3332b50cf30f491f9edd4d4bba6a811366a69f95c4c0319fe71e1ac4d83d1f46",
+      "v": 28
+    }
+  },
+  {
+    "name": "spotSend-mainnet",
+    "action": "spotSend",
+    "signatureChainId": "0xa4b1",
+    "hyperliquidChain": "Mainnet",
+    "destination": "0x000000000000000000000000000000000000dEaD",
+    "token": "USDC:0xeb62eee3685fc4c43992febcd9e75443",
+    "amount": "1",
+    "time": 1700000000000,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "digest": "0xeaf35d1a28e8ca696d32fa581ab0f3335a97bc27d7c734dd1bbfe1422f8c5301",
+    "sig": {
+      "r": "0x112589dc1a9c3fbe54b41f5c2e187667b96195615ab735c6a0cd12c4f4654c1e",
+      "s": "0x103add66bb5d437ace5063558fae81c45dd27425a1f3a2d452d1d0a1ca43a2a1",
+      "v": 27
+    }
   }
 ]

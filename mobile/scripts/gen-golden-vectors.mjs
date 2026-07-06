@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createL1ActionHash, signL1Action, signUserSignedAction } from "@nktkas/hyperliquid/signing";
-import { ApproveAgentTypes, Withdraw3Types, UsdSendTypes, ApproveBuilderFeeTypes } from "@nktkas/hyperliquid/api/exchange";
+import { ApproveAgentTypes, Withdraw3Types, UsdSendTypes, ApproveBuilderFeeTypes, UsdClassTransferTypes, SpotSendTypes } from "@nktkas/hyperliquid/api/exchange";
 import { hashTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -127,6 +127,9 @@ const moreCases = [
   { name: "withdraw3-mainnet", action: "withdraw3", types: Withdraw3Types, primaryType: "HyperliquidTransaction:Withdraw", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { destination: "0x000000000000000000000000000000000000dEaD", amount: "100.5", time: NONCE } },
   { name: "usdSend-testnet", action: "usdSend", types: UsdSendTypes, primaryType: "HyperliquidTransaction:UsdSend", signatureChainId: "0x66eee", hyperliquidChain: "Testnet", fields: { destination: "0x00000000000000000000000000000000cafe0001", amount: "25", time: NONCE } },
   { name: "approveBuilderFee-mainnet", action: "approveBuilderFee", types: ApproveBuilderFeeTypes, primaryType: "HyperliquidTransaction:ApproveBuilderFee", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { maxFeeRate: "0.001%", builder: "0x1111111111111111111111111111111111111111", nonce: NONCE } },
+  { name: "usdClassTransfer-toPerp-mainnet", action: "usdClassTransfer", types: UsdClassTransferTypes, primaryType: "HyperliquidTransaction:UsdClassTransfer", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { amount: "100", toPerp: true, nonce: NONCE } },
+  { name: "usdClassTransfer-toSpot-testnet", action: "usdClassTransfer", types: UsdClassTransferTypes, primaryType: "HyperliquidTransaction:UsdClassTransfer", signatureChainId: "0x66eee", hyperliquidChain: "Testnet", fields: { amount: "50.5", toPerp: false, nonce: NONCE } },
+  { name: "spotSend-mainnet", action: "spotSend", types: SpotSendTypes, primaryType: "HyperliquidTransaction:SpotSend", signatureChainId: "0xa4b1", hyperliquidChain: "Mainnet", fields: { destination: "0x000000000000000000000000000000000000dEaD", token: "USDC:0xeb62eee3685fc4c43992febcd9e75443", amount: "1", time: NONCE } },
 ];
 
 const moreOut = [];
