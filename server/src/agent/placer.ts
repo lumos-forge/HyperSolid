@@ -15,6 +15,8 @@ export interface PlacerDeps {
   resolvePrice(coin: string): Promise<number>;
   /** Aggressive-limit slippage in basis points (e.g. 50 = 0.5%). */
   slippageBps: number;
+  /** Optional fire-and-forget shadow verifier (compares Go signer digest); never affects placement. */
+  shadowVerify?: (kind: string, params: unknown) => void;
 }
 
 interface OrderStatus {
@@ -63,6 +65,20 @@ export function makeHlPlacer(deps: PlacerDeps): OrderPlacer {
           t: { limit: { tif: "Ioc" as const } },
           c: req.cloid,
         };
+        try {
+          deps.shadowVerify?.("order", {
+            asset: assetIndex,
+            isBuy: buy,
+            px: order.p,
+            sz: order.s,
+            reduceOnly: order.r,
+            tif: "Ioc",
+            grouping: "na",
+            cloid: order.c,
+          });
+        } catch {
+          /* shadow must never affect placement */
+        }
         const res = await client.order({ orders: [order], grouping: "na" });
         const fill = fillOf(res);
         if (fill === undefined) return { ok: false };
