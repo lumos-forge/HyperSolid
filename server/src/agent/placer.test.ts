@@ -100,4 +100,22 @@ describe("makeHlPlacer", () => {
       cloid: "0xabc",
     })).ok).toBe(false);
   });
+
+  it("calls shadowVerify with the order params, fire-and-forget", async () => {
+    const shadow = jest.fn();
+    const placer = makeHlPlacer(deps(() => undefined, 100, filled, { shadowVerify: shadow }));
+    const res = await placer.place({ owner: "0xo", coin: "BTC", cloid: "0xc", side: "buy", reduceOnly: false, sizeUsdc: 200 });
+    expect(res.ok).toBe(true);
+    expect(shadow).toHaveBeenCalledTimes(1);
+    const [kind, params] = shadow.mock.calls[0];
+    expect(kind).toBe("order");
+    expect(params).toMatchObject({ asset: 3, isBuy: true, reduceOnly: false, tif: "Ioc", grouping: "na", cloid: "0xc" });
+  });
+
+  it("a throwing shadowVerify does not affect placement", async () => {
+    const shadow = jest.fn(() => { throw new Error("boom"); });
+    const placer = makeHlPlacer(deps(() => undefined, 100, filled, { shadowVerify: shadow }));
+    const res = await placer.place({ owner: "0xo", coin: "BTC", cloid: "0xc", side: "buy", reduceOnly: false, sizeUsdc: 200 });
+    expect(res.ok).toBe(true);
+  });
 });

@@ -9,6 +9,7 @@ import type { StrategyStore } from "./strategies/store";
 import { appConfigFromEnv, geoHeadersFromEnv } from "./config/appConfig";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
 import { makeHlPlacer } from "./agent/placer";
+import { makeShadowVerifier } from "./agent/signerShadow";
 import { makeRestingExecutor } from "./agent/restingExecutor";
 import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
@@ -69,10 +70,15 @@ export async function main(): Promise<void> {
   const info = makeInfoClient(transport);
   const resolvers = makeResolvers(info, 60_000, now);
   const clientFor = makeClientFor(agents, transport, now);
+  const signerShadowUrl = process.env.SIGNER_SHADOW_URL;
+  const shadowVerify = signerShadowUrl
+    ? makeShadowVerifier({ url: signerShadowUrl, isTestnet })
+    : undefined;
   const placer = makeHlPlacer({
     clientFor,
     ...resolvers,
     slippageBps,
+    shadowVerify,
   });
   const restingExec = makeRestingExecutor({ clientFor, resolveAsset: resolvers.resolveAsset });
   const ordersReader = makeOpenOrdersReader(info as unknown as { frontendOpenOrders(a: { user: string }): Promise<unknown> });
