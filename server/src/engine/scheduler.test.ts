@@ -547,6 +547,48 @@ describe("gridLimit tick (running)", () => {
     expect(exec.placeLimit).not.toHaveBeenCalled(); // adopted, not re-placed
     expect(store.gridLimitRungs(s.id).find((r) => r.rung === 0)).toMatchObject({ state: "armed", side: "buy", cloid: orphan, seq: 1 });
   });
+
+  function fakeFills(map: Record<string, { sz: number; px: number; closedPnl: number }>) {
+    return { fillsByCloid: jest.fn(async () => new Map(Object.entries(map))) };
+  }
+
+  it("records precise sz/px from userFills on a buy fill", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 2, state: "armed", side: "buy", cloid: "0xBUY", px: 140, seq: 1 });
+    const activity = { record: jest.fn(), notionalSince: () => 0 };
+    const exec = fakeExec();
+    const fills = fakeFills({ "0xBUY": { sz: 0.36, px: 139.9, closedPnl: 0 } });
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, activity as any, marks, exec as any, fakeReader([]) as any, fills as any);
+    expect(activity.record).toHaveBeenCalledWith(expect.objectContaining({ side: "buy", sz: 0.36, px: 139.9 }));
+  });
+
+  it("uses userFills closedPnl for realized pnl on a sell fill", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xSELL", px: 160, seq: 2 });
+    const activity = { record: jest.fn(), notionalSince: () => 0 };
+    const exec = fakeExec();
+    const fills = fakeFills({ "0xSELL": { sz: 0.36, px: 160.1, closedPnl: 7.25 } });
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, activity as any, marks, exec as any, fakeReader([]) as any, fills as any);
+    expect(activity.record).toHaveBeenCalledWith(expect.objectContaining({ side: "sell", sz: 0.36, px: 160.1 }));
+    expect(store.get(s.id)!.filledTotalUsdc).toBeCloseTo(7.25, 6);
+  });
+
+  it("falls back to the limit-price approximation when userFills lacks the cloid", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xSELL", px: 160, seq: 2 });
+    const activity = { record: jest.fn(), notionalSince: () => 0 };
+    const exec = fakeExec();
+    const fills = fakeFills({}); // cloid absent -> fallback
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, activity as any, marks, exec as any, fakeReader([]) as any, fills as any);
+    expect(store.get(s.id)!.filledTotalUsdc).toBeCloseTo((160 - 140) * (50 / 140), 6);
+    expect(activity.record).toHaveBeenCalledWith(expect.objectContaining({ side: "sell", px: 160 }));
+  });
 });
 
 describe("gridLimit tick (draining)", () => {

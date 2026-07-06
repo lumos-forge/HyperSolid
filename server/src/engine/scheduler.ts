@@ -9,6 +9,7 @@ import { gridStep, bandIndex, gridAction, targetNetUsdc } from "../strategies/gr
 import { rungCount, rungBuyPrice, rungSellPrice, rungSizeCoin, armable, type RungState } from "../strategies/gridLimit";
 import type { RestingExecutor } from "../agent/restingExecutor";
 import type { OpenOrdersReader } from "../agent/openOrdersReader";
+import type { UserFillsReader, CloidFill } from "../agent/userFillsReader";
 
 export interface PlaceRequest {
   owner: string;
@@ -81,6 +82,7 @@ export async function tick(
   marks?: MarkDeps,
   restingExec?: RestingExecutor,
   ordersReader?: OpenOrdersReader,
+  userFillsReader?: UserFillsReader,
 ): Promise<void> {
   const all = store.listAll();
 
@@ -250,6 +252,12 @@ export async function tick(
       if (!m) { m = await ordersReader.openCloids(owner); openByOwner.set(owner, m); }
       return m;
     };
+    const fillsByOwner = new Map<string, Map<string, CloidFill>>();
+    const getFills = async (owner: string) => {
+      let m = fillsByOwner.get(owner);
+      if (!m) { m = userFillsReader ? await userFillsReader.fillsByCloid(owner) : new Map(); fillsByOwner.set(owner, m); }
+      return m;
+    };
 
     for (const s of all) {
       if (s.kind !== "gridLimit") continue;
@@ -311,15 +319,20 @@ export async function tick(
       for (let i = 0; i < rungCount(p); i++) {
         let r = rungAt(i);
 
-        // fill detection: a tracked resting order that vanished from open orders filled
+        // fill detection: a tracked resting order that vanished from open orders filled.
+        // Enrich with the actual fill (userFills, indexed by cloid) for precise sz/px + closedPnl;
+        // fall back to the limit-price approximation when userFills hasn't propagated the fill yet.
         if ((r.state === "armed" || r.state === "holding") && r.cloid && !open.has(r.cloid)) {
+          const fill = userFillsReader ? (await getFills(s.owner)).get(r.cloid) : undefined;
+          const sz = fill?.sz ?? rungSizeCoin(p, i);
+          const px = fill?.px ?? r.px ?? rungBuyPrice(p, i);
           if (r.state === "armed") {
-            if (activity && r.px) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: "buy", sz: rungSizeCoin(p, i), px: r.px });
+            if (activity) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: "buy", sz, px });
             await placeSell(i, r);
             continue;
           }
-          if (activity && r.px) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: "sell", sz: rungSizeCoin(p, i), px: r.px });
-          store.addFilledUsdc(s.id, Math.max(0, (rungSellPrice(p, i) - rungBuyPrice(p, i)) * rungSizeCoin(p, i)));
+          if (activity) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: "sell", sz, px });
+          store.addFilledUsdc(s.id, fill ? fill.closedPnl : Math.max(0, (rungSellPrice(p, i) - rungBuyPrice(p, i)) * rungSizeCoin(p, i)));
           store.setGridLimitRung(s.id, { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq });
           r = { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq };
         }

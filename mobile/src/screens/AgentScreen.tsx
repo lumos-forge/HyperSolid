@@ -11,7 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type Activity } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type Activity, type Rung } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
@@ -268,7 +268,7 @@ function StrategyPanel({
       {ctrl.strategies.length === 0 ? (
         <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.noStrategies")}</Text>
       ) : (
-        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} onToggle={() => void ctrl.toggle(s)} />)
+        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} onToggle={() => void ctrl.toggle(s)} getRungs={(id) => api.getRungs(id)} />)
       )}
 
       <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.recentActivity")}</Text>
@@ -424,8 +424,34 @@ function ActivityRow({ theme, activity }: { theme: ThemeTokens; activity: Activi
   );
 }
 
-function StrategyRow({ theme, strategy, onToggle }: { theme: ThemeTokens; strategy: Strategy; onToggle: () => void }) {
+function RungLine({ theme, id, r }: { theme: ThemeTokens; id: string; r: Rung }) {
   const t = useT();
+  const stateColor = r.state === "armed" ? theme.brand : r.state === "holding" ? theme.up : theme.muted;
+  const stateLabel = r.state === "armed" ? t("agent.rungStateArmed") : r.state === "holding" ? t("agent.rungStateHolding") : t("agent.rungStateIdle");
+  return (
+    <View style={styles.rungLine} testID={`gl-rung-${id}-${r.rung}`}>
+      <Text style={[styles.hint, { color: theme.muted }]}>{`#${r.rung} · ${r.buyPrice} → ${r.sellPrice}`}</Text>
+      <Text style={[styles.hint, { color: stateColor }]}>{stateLabel}</Text>
+    </View>
+  );
+}
+
+function StrategyRow({
+  theme, strategy, onToggle, getRungs,
+}: {
+  theme: ThemeTokens; strategy: Strategy; onToggle: () => void; getRungs?: (id: string) => Promise<Rung[]>;
+}) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  const [rungs, setRungs] = useState<Rung[]>([]);
+  const isGl = strategy.type === "gridLimit";
+  const onExpand = async () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && getRungs) {
+      try { setRungs(await getRungs(strategy.id)); } catch { /* leave rungs as-is */ }
+    }
+  };
   const title =
     strategy.type === "twap" ? t("agent.strategyTwap", { coin: strategy.params.coin })
     : strategy.type === "tpsl" ? t("agent.strategyTpsl", { coin: strategy.params.coin })
@@ -451,22 +477,42 @@ function StrategyRow({ theme, strategy, onToggle }: { theme: ThemeTokens; strate
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";
+  const info = (
+    <>
+      <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
+      <Text style={[styles.hint, { color: theme.muted }]}>{sub}</Text>
+    </>
+  );
   return (
-    <SurfaceCard theme={theme} rule={false} testID={`strategy-${strategy.id}`} style={styles.row}>
-      <View style={styles.rowMain}>
-        <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.hint, { color: theme.muted }]}>{sub}</Text>
+    <SurfaceCard theme={theme} rule={false} testID={`strategy-${strategy.id}`} style={styles.rowCard}>
+      <View style={styles.rowTop}>
+        {isGl ? (
+          <Pressable onPress={onExpand} accessibilityRole="button" testID={`gl-row-${strategy.id}`} style={styles.rowMain}>
+            {info}
+          </Pressable>
+        ) : (
+          <View style={styles.rowMain}>{info}</View>
+        )}
+        {completed || canceling ? (
+          <Text style={[styles.hint, { color: theme.faint }]}>{t(canceling ? "agent.statusCanceling" : "agent.statusCompleted")}</Text>
+        ) : (
+          <Toggle
+            theme={theme}
+            value={strategy.status === "running"}
+            onValueChange={onToggle}
+            accessibilityLabel={`toggle-${strategy.id}`}
+          />
+        )}
       </View>
-      {completed || canceling ? (
-        <Text style={[styles.hint, { color: theme.faint }]}>{t(canceling ? "agent.statusCanceling" : "agent.statusCompleted")}</Text>
-      ) : (
-        <Toggle
-          theme={theme}
-          value={strategy.status === "running"}
-          onValueChange={onToggle}
-          accessibilityLabel={`toggle-${strategy.id}`}
-        />
-      )}
+      {isGl && expanded ? (
+        <View style={styles.rungBox} testID={`gl-rungs-${strategy.id}`}>
+          {rungs.length === 0 ? (
+            <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.rungsEmpty")}</Text>
+          ) : (
+            rungs.map((r) => <RungLine key={r.rung} theme={theme} id={strategy.id} r={r} />)
+          )}
+        </View>
+      ) : null}
     </SurfaceCard>
   );
 }
@@ -531,4 +577,8 @@ const styles = StyleSheet.create({
   field: { marginBottom: 12 },
   fieldLabel: { fontFamily: fonts.body.regular, fontSize: 11, marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontFamily: fonts.mono.medium, fontSize: 14 },
+  rowCard: { padding: 14, marginBottom: 8 },
+  rowTop: { flexDirection: "row", alignItems: "center" },
+  rungBox: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "transparent", paddingTop: 8 },
+  rungLine: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
 });

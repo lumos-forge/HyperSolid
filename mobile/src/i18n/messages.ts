@@ -324,6 +324,10 @@ export const messages = {
     "agent.statusCanceling": "Canceling",
     "agent.recentActivity": "Recent activity",
     "agent.noActivity": "No activity yet — fills and triggers will show here.",
+    "agent.rungStateIdle": "Idle",
+    "agent.rungStateArmed": "Resting",
+    "agent.rungStateHolding": "Holding",
+    "agent.rungsEmpty": "No rungs",
 
     "trade.invalidOrder": "Invalid order",
     "trade.leverageFailed": "Couldn't set leverage",
@@ -787,6 +791,10 @@ export const messages = {
     "agent.statusCanceling": "取消中",
     "agent.recentActivity": "最近活动",
     "agent.noActivity": "暂无活动——成交与触发会显示在这里。",
+    "agent.rungStateIdle": "空闲",
+    "agent.rungStateArmed": "挂单",
+    "agent.rungStateHolding": "持仓",
+    "agent.rungsEmpty": "暂无档梯",
 
     "trade.invalidOrder": "订单无效",
     "trade.leverageFailed": "设置杠杆失败",

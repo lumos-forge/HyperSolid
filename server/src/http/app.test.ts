@@ -303,4 +303,25 @@ describe("gridLimit HTTP", () => {
     expect(patch.statusCode).toBe(409);
     expect(store.get(id)!.status).toBe("canceling");
   });
+
+  it("GET /strategies/:id/rungs returns the gridLimit rung ladder", async () => {
+    const { app, store } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "gridLimit", params: glParams } });
+    const id = created.json().id as string;
+    store.setGridLimitRung(id, { rung: 0, state: "armed", side: "buy", cloid: "0xa", px: 100, seq: 1 });
+    const rungs = (await app.inject({ method: "GET", url: `/strategies/${id}/rungs`, headers: auth })).json();
+    expect(rungs).toHaveLength(5); // levels 6 -> 5 rungs
+    expect(rungs[0]).toEqual({ rung: 0, state: "armed", buyPrice: 100, sellPrice: 120 });
+    expect(rungs[1]).toEqual({ rung: 1, state: "idle", buyPrice: 120, sellPrice: 140 });
+  });
+
+  it("returns [] rungs for a non-gridLimit strategy", async () => {
+    const { app } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "dca", params: { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 } } });
+    const id = created.json().id as string;
+    const rungs = (await app.inject({ method: "GET", url: `/strategies/${id}/rungs`, headers: auth })).json();
+    expect(rungs).toEqual([]);
+  });
 });

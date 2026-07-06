@@ -19,6 +19,10 @@ const mockApiFake = {
   setStrategyStatus: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "paused" })),
   killSwitch: jest.fn(async () => undefined),
   getRecentActivity: jest.fn(async () => [] as unknown[]),
+  getRungs: jest.fn(async () => [
+    { rung: 0, state: "armed", buyPrice: 100, sellPrice: 120 },
+    { rung: 1, state: "idle", buyPrice: 120, sellPrice: 140 },
+  ]),
 };
 const mockApproveAgent = jest.fn(async () => ({ ok: true as const }));
 const mockOpenSession = jest.fn(async () => "tok");
@@ -227,5 +231,17 @@ describe("AgentScreen", () => {
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));
     await waitFor(() => expect(screen.getByTestId("strategy-gl2")).toBeTruthy());
     expect(screen.queryByLabelText("toggle-gl2")).toBeNull();
+  });
+
+  it("expands a gridLimit row to show the rung ladder", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "gl1", type: "gridLimit", status: "running", params: { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }, filledTotalUsdc: 12, armedCount: 1, holdingCount: 0 },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-gl1")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("gl-row-gl1"));
+    expect(await screen.findByTestId("gl-rungs-gl1")).toBeTruthy();
+    expect(await screen.findByTestId("gl-rung-gl1-0")).toBeTruthy();
   });
 });

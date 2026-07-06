@@ -20,6 +20,13 @@ export interface GridLimitParams {
 }
 export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
 
+export interface Rung {
+  rung: number;
+  state: "idle" | "armed" | "holding";
+  buyPrice: number;
+  sellPrice: number;
+}
+
 export interface Strategy {
   id: string;
   type: StrategyType;
@@ -111,6 +118,9 @@ export class StrategyApi {
   }
   getActivity(id: string) {
     return this.request<Activity[]>(`/strategies/${id}/activity`, "GET");
+  }
+  getRungs(id: string) {
+    return this.request<Rung[]>(`/strategies/${id}/rungs`, "GET");
   }
   getRecentActivity(limit?: number) {
     const q = limit ? `?limit=${limit}` : "";

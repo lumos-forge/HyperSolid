@@ -2,11 +2,12 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { Auth } from "../auth/auth";
 import type { AgentManager } from "../agent/agentManager";
 import type { StrategyStore } from "../strategies/store";
-import type { Strategy, StrategyKind } from "../strategies/types";
+import type { Strategy, StrategyKind, GridLimitParams } from "../strategies/types";
 import { validateParams } from "../strategies/validate";
 import type { ActivityStore } from "../strategies/activityStore";
 import type { AppConfigPayload } from "../config/appConfig";
 import { resolveGeo, type GeoHeaderConfig } from "./geo";
+import { rungCount, rungBuyPrice, rungSellPrice } from "../strategies/gridLimit";
 
 export interface AppDeps {
   auth: Auth;
@@ -230,6 +231,22 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       sz: a.sz,
       px: a.px,
     }));
+  });
+
+  app.get("/strategies/:id/rungs", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    const { id } = req.params as { id: string };
+    const s = ownedStrategy(owner, id, reply);
+    if (!s) return;
+    if (s.kind !== "gridLimit") return [];
+    const p = s.params as GridLimitParams;
+    const state = new Map(deps.store.gridLimitRungs(id).map((r) => [r.rung, r.state]));
+    const out: Array<{ rung: number; state: string; buyPrice: number; sellPrice: number }> = [];
+    for (let i = 0; i < rungCount(p); i++) {
+      out.push({ rung: i, state: state.get(i) ?? "idle", buyPrice: rungBuyPrice(p, i), sellPrice: rungSellPrice(p, i) });
+    }
+    return out;
   });
 
   // --- owner-wide recent activity feed ---
