@@ -248,3 +248,59 @@ describe("HTTP app", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+function buildWithStore() {
+  const auth = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+  const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+  const store = new MemoryStrategyStore(() => 1000);
+  const app = buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000 });
+  return { app, store };
+}
+
+describe("gridLimit HTTP", () => {
+  const glParams = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+
+  it("creates a gridLimit strategy and lists it with an armed/holding summary", async () => {
+    const { app, store } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "gridLimit", params: glParams } });
+    expect(created.statusCode).toBe(200);
+    const id = created.json().id as string;
+    store.setGridLimitRung(id, { rung: 0, state: "armed", side: "buy", cloid: "0xa", px: 100, seq: 1 });
+    store.setGridLimitRung(id, { rung: 1, state: "holding", side: "sell", cloid: "0xb", px: 140, seq: 2 });
+    const dto = (await app.inject({ method: "GET", url: "/strategies", headers: auth })).json().find((d: any) => d.id === id);
+    expect(dto).toMatchObject({ type: "gridLimit", armedCount: 1, holdingCount: 1 });
+  });
+
+  it("DELETE of a gridLimit marks it canceling (not immediately removed)", async () => {
+    const { app, store } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "gridLimit", params: glParams } });
+    const id = created.json().id as string;
+    const del = await app.inject({ method: "DELETE", url: `/strategies/${id}`, headers: auth });
+    expect(del.statusCode).toBe(204);
+    expect(store.get(id)!.status).toBe("canceling");
+  });
+
+  it("is idempotent: a repeat DELETE on a canceling gridLimit does not remove it mid-drain", async () => {
+    const { app, store } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "gridLimit", params: glParams } });
+    const id = created.json().id as string;
+    await app.inject({ method: "DELETE", url: `/strategies/${id}`, headers: auth });
+    const del2 = await app.inject({ method: "DELETE", url: `/strategies/${id}`, headers: auth });
+    expect(del2.statusCode).toBe(204);
+    expect(store.get(id)!.status).toBe("canceling"); // still present + canceling, not removed
+  });
+
+  it("rejects a PATCH on a canceling gridLimit so a delete cannot be undone", async () => {
+    const { app, store } = buildWithStore();
+    const auth = { authorization: `Bearer ${await tokenFor(app)}` };
+    const created = await app.inject({ method: "POST", url: "/strategies", headers: auth, payload: { type: "gridLimit", params: glParams } });
+    const id = created.json().id as string;
+    await app.inject({ method: "DELETE", url: `/strategies/${id}`, headers: auth }); // -> canceling
+    const patch = await app.inject({ method: "PATCH", url: `/strategies/${id}`, headers: auth, payload: { status: "running" } });
+    expect(patch.statusCode).toBe(409);
+    expect(store.get(id)!.status).toBe("canceling");
+  });
+});

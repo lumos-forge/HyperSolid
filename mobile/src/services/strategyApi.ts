@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from "../lib/fetchWithTimeout";
 
-export type StrategyType = "dca" | "twap" | "tpsl" | "grid";
+export type StrategyType = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
 
 export interface DcaParams {
   coin: string; side: "buy"; quoteAmountUsdc: number; intervalHours: number; maxTotalUsdc?: number;
@@ -15,18 +15,23 @@ export interface GridParams {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
   mode?: "longOnly" | "symmetric";
 }
-export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams;
+export interface GridLimitParams {
+  coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
+}
+export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
 
 export interface Strategy {
   id: string;
   type: StrategyType;
   params: StrategyParams;
-  status: "running" | "paused" | "completed";
+  status: "running" | "paused" | "completed" | "canceling";
   filledTotalUsdc?: number;
   nextRunAt?: number;
   slicesDone?: number;
   triggeredAt?: number;
   lastLevel?: number;
+  armedCount?: number;
+  holdingCount?: number;
 }
 
 export interface Activity {

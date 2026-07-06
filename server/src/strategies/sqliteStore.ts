@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import type { StrategyStore } from "./store";
 import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, TwapParams, GridParams } from "./types";
+import type { RungState } from "./gridLimit";
 
 interface Row {
   id: string; owner: string; status: string; params: string;
@@ -16,6 +17,7 @@ function toStrategy(row: Row): Strategy {
   if (row.kind === "twap") return { ...base, kind: "twap", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc, slicesDone: row.slices_done };
   if (row.kind === "tpsl") return { ...base, kind: "tpsl", params, triggeredAt: row.triggered_at ?? undefined };
   if (row.kind === "grid") return { ...base, kind: "grid", params, filledTotalUsdc: row.filled_total_usdc, actionsDone: row.actions_done, lastLevel: row.last_level ?? undefined };
+  if (row.kind === "gridLimit") return { ...base, kind: "gridLimit", params, filledTotalUsdc: row.filled_total_usdc };
   return { ...base, kind: "dca", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc };
 }
 
@@ -34,6 +36,18 @@ function migrate(db: Database.Database): void {
   if (!cols.has("created_at")) db.exec("ALTER TABLE strategies ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
   if (!cols.has("last_level")) db.exec("ALTER TABLE strategies ADD COLUMN last_level INTEGER");
   if (!cols.has("actions_done")) db.exec("ALTER TABLE strategies ADD COLUMN actions_done INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS grid_orders (
+      strategy_id TEXT NOT NULL,
+      rung INTEGER NOT NULL,
+      state TEXT NOT NULL,
+      side TEXT,
+      cloid TEXT,
+      px REAL,
+      seq INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (strategy_id, rung)
+    )
+  `);
 }
 
 /** Durable `StrategyStore` over SQLite. Owner matching is case-insensitive. */
@@ -55,7 +69,7 @@ export class SqliteStrategyStore implements StrategyStore {
   create(owner: string, kind: StrategyKind, params: StrategyParams): Strategy {
     const now = this.now();
     const id = randomUUID();
-    const scheduled = kind === "tpsl" || kind === "grid" ? 0 : now;
+    const scheduled = kind === "tpsl" || kind === "grid" || kind === "gridLimit" ? 0 : now;
     this.db
       .prepare(
         "INSERT INTO strategies (id, owner, status, params, kind, next_run_at, filled_total_usdc, slices_done, triggered_at, created_at, last_level, actions_done) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -98,6 +112,23 @@ export class SqliteStrategyStore implements StrategyStore {
       .prepare("UPDATE strategies SET last_level = ?, actions_done = actions_done + 1, filled_total_usdc = filled_total_usdc + ? WHERE id = ?")
       .run(newLevel, boughtUsdc, id);
   }
-  remove(id: string): void { this.db.prepare("DELETE FROM strategies WHERE id = ?").run(id); }
+  gridLimitRungs(id: string): RungState[] {
+    const rows = this.db
+      .prepare("SELECT rung, state, side, cloid, px, seq FROM grid_orders WHERE strategy_id = ? ORDER BY rung")
+      .all(id) as Array<{ rung: number; state: string; side: string | null; cloid: string | null; px: number | null; seq: number }>;
+    return rows.map((r) => ({ rung: r.rung, state: r.state as RungState["state"], side: (r.side ?? null) as RungState["side"], cloid: r.cloid, px: r.px, seq: r.seq }));
+  }
+  setGridLimitRung(id: string, r: RungState): void {
+    this.db
+      .prepare("INSERT INTO grid_orders (strategy_id, rung, state, side, cloid, px, seq) VALUES (?,?,?,?,?,?,?) ON CONFLICT(strategy_id, rung) DO UPDATE SET state=excluded.state, side=excluded.side, cloid=excluded.cloid, px=excluded.px, seq=excluded.seq")
+      .run(id, r.rung, r.state, r.side, r.cloid, r.px, r.seq);
+  }
+  addFilledUsdc(id: string, usdc: number): void {
+    this.db.prepare("UPDATE strategies SET filled_total_usdc = filled_total_usdc + ? WHERE id = ?").run(usdc, id);
+  }
+  remove(id: string): void {
+    this.db.prepare("DELETE FROM grid_orders WHERE strategy_id = ?").run(id);
+    this.db.prepare("DELETE FROM strategies WHERE id = ?").run(id);
+  }
   close(): void { this.db.close(); }
 }

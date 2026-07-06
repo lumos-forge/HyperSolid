@@ -2,6 +2,7 @@ import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { privateKeyToAccount } from "viem/accounts";
 import type { AgentManager } from "./agentManager";
 import type { ExchangeLike } from "./placer";
+import type { RestingClientLike } from "./restingExecutor";
 import { assetIndexFromMeta, priceFromMids, positionSzi, type PerpMeta, type ClearinghouseState } from "./hlMeta";
 
 /**
@@ -13,8 +14,8 @@ export function makeClientFor(
   agents: AgentManager,
   transport: HttpTransport,
   now: () => number,
-): (owner: string) => ExchangeLike | undefined {
-  const cache = new Map<string, ExchangeLike>();
+): (owner: string) => RestingClientLike | undefined {
+  const cache = new Map<string, RestingClientLike>();
   return (owner: string) => {
     if (!agents.status(owner, now()).approved) return undefined;
     const key = agents.privateKeyFor(owner);
@@ -22,7 +23,7 @@ export function makeClientFor(
     let client = cache.get(owner);
     if (!client) {
       const wallet = privateKeyToAccount(key);
-      client = new ExchangeClient({ wallet, transport }) as unknown as ExchangeLike;
+      client = new ExchangeClient({ wallet, transport }) as unknown as RestingClientLike;
       cache.set(owner, client);
     }
     return client;

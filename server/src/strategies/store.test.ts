@@ -78,3 +78,23 @@ describe("grid store state", () => {
     expect(store.get(s.id)).toMatchObject({ lastLevel: 4, actionsDone: 2, filledTotalUsdc: 100 });
   });
 });
+
+describe("gridLimit rung state (memory)", () => {
+  it("builds a gridLimit strategy and defaults to no rung rows", () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    expect(s.kind).toBe("gridLimit");
+    expect(s.filledTotalUsdc).toBe(0);
+    expect(store.gridLimitRungs(s.id)).toEqual([]);
+  });
+  it("upserts a rung and reads it back; addFilledUsdc accumulates", () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    store.setGridLimitRung(s.id, { rung: 2, state: "armed", side: "buy", cloid: "0xabc", px: 140, seq: 1 });
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xdef", px: 160, seq: 2 });
+    expect(store.gridLimitRungs(s.id)).toEqual([{ rung: 2, state: "holding", side: "sell", cloid: "0xdef", px: 160, seq: 2 }]);
+    store.addFilledUsdc(s.id, 10);
+    store.addFilledUsdc(s.id, 5);
+    expect(store.get(s.id)!.filledTotalUsdc).toBe(15);
+  });
+});

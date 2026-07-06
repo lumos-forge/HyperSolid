@@ -9,6 +9,8 @@ import type { StrategyStore } from "./strategies/store";
 import { appConfigFromEnv, geoHeadersFromEnv } from "./config/appConfig";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
 import { makeHlPlacer } from "./agent/placer";
+import { makeRestingExecutor } from "./agent/restingExecutor";
+import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { tick } from "./engine/scheduler";
 import { buildApp } from "./http/app";
 
@@ -65,11 +67,14 @@ export async function main(): Promise<void> {
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
   const resolvers = makeResolvers(info, 60_000, now);
+  const clientFor = makeClientFor(agents, transport, now);
   const placer = makeHlPlacer({
-    clientFor: makeClientFor(agents, transport, now),
+    clientFor,
     ...resolvers,
     slippageBps,
   });
+  const restingExec = makeRestingExecutor({ clientFor, resolveAsset: resolvers.resolveAsset });
+  const ordersReader = makeOpenOrdersReader(info as unknown as { frontendOpenOrders(a: { user: string }): Promise<unknown> });
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const timer = setInterval(() => {
@@ -81,6 +86,8 @@ export async function main(): Promise<void> {
       now(),
       activity,
       { resolveMark: resolvers.resolvePrice, resolvePosition: resolvers.resolvePosition },
+      restingExec,
+      ordersReader,
     ).catch((e) =>
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),

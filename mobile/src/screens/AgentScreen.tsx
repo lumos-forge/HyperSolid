@@ -11,7 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type Activity } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type Activity } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
@@ -22,7 +22,7 @@ import type { LocalWalletService } from "../wallet/localWallet";
 import type { Account } from "viem";
 
 const AGENT_VALIDITY_MS = 90 * 24 * 3600 * 1000;
-type Template = "dca" | "twap" | "tpsl" | "grid";
+type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
 
 function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -161,6 +161,11 @@ function StrategyPanel({
   const [gridPerLevel, setGridPerLevel] = useState("");
   const [gridMode, setGridMode] = useState<"longOnly" | "symmetric">("longOnly");
 
+  const [glLower, setGlLower] = useState("");
+  const [glUpper, setGlUpper] = useState("");
+  const [glLevels, setGlLevels] = useState("6");
+  const [glPerLevel, setGlPerLevel] = useState("");
+
   async function onApprove() {
     const res = await ctrl.approveAgentFlow();
     if (!res.ok) Alert.alert(res.uncertain ? t("common.uncertainReceipt") : t("agent.approveFailed"), res.error);
@@ -207,6 +212,16 @@ function StrategyPanel({
     }
     await ctrl.createGrid({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: gridMode });
     setGridLower(""); setGridUpper(""); setGridPerLevel("");
+  }
+
+  async function onCreateGridLimit() {
+    const lower = Number(glLower), upper = Number(glUpper), levels = Number(glLevels), perLevel = Number(glPerLevel);
+    if (!(lower > 0) || !(upper > lower) || !Number.isInteger(levels) || levels < 2 || !(perLevel > 0)) {
+      Alert.alert(t("agent.invalidParams"), t("agent.invalidGrid"));
+      return;
+    }
+    await ctrl.createGridLimit({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel });
+    setGlLower(""); setGlUpper(""); setGlPerLevel("");
   }
 
   return (
@@ -265,7 +280,7 @@ function StrategyPanel({
 
       <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.template")}</Text>
       <View style={styles.segment} testID="template-picker">
-        {(["dca", "twap", "tpsl", "grid"] as Template[]).map((k) => (
+        {(["dca", "twap", "tpsl", "grid", "gridLimit"] as Template[]).map((k) => (
           <Pressable
             key={k}
             testID={`template-${k}`}
@@ -278,7 +293,8 @@ function StrategyPanel({
                 k === "dca" ? "agent.templateDca"
                 : k === "twap" ? "agent.templateTwap"
                 : k === "tpsl" ? "agent.templateTpsl"
-                : "agent.templateGrid",
+                : k === "grid" ? "agent.templateGrid"
+                : "agent.templateGridLimit",
               )}
             </Text>
           </Pressable>
@@ -370,6 +386,20 @@ function StrategyPanel({
         </SurfaceCard>
       ) : null}
 
+      {template === "gridLimit" ? (
+        <SurfaceCard theme={theme} rule={false} testID="new-grid-limit" style={styles.card}>
+          <Text style={[styles.title, { color: theme.text }]}>{t("agent.newGridLimit")}</Text>
+          <Field theme={theme} label={t("agent.coin")} value={coin} onChangeText={setCoin} autoCap testID="grid-limit-coin" />
+          <Field theme={theme} label={t("agent.gridLower")} value={glLower} onChangeText={setGlLower} keyboard testID="grid-limit-lower" />
+          <Field theme={theme} label={t("agent.gridUpper")} value={glUpper} onChangeText={setGlUpper} keyboard testID="grid-limit-upper" />
+          <Field theme={theme} label={t("agent.gridLevels")} value={glLevels} onChangeText={setGlLevels} keyboard testID="grid-limit-levels" />
+          <Field theme={theme} label={t("agent.gridPerLevel")} value={glPerLevel} onChangeText={setGlPerLevel} keyboard testID="grid-limit-per-level" />
+          <Pressable onPress={onCreateGridLimit} accessibilityRole="button" testID="grid-limit-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
+            <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createGridLimit")}</Text>
+          </Pressable>
+        </SurfaceCard>
+      ) : null}
+
       <Pressable onPress={() => void ctrl.killAll()} accessibilityRole="button" testID="kill-switch" style={[styles.ctaOutline, { borderColor: theme.down }]}>
         <Text style={[styles.ctaText, { color: theme.down }]}>{t("agent.pauseAll")}</Text>
       </Pressable>
@@ -400,6 +430,7 @@ function StrategyRow({ theme, strategy, onToggle }: { theme: ThemeTokens; strate
     strategy.type === "twap" ? t("agent.strategyTwap", { coin: strategy.params.coin })
     : strategy.type === "tpsl" ? t("agent.strategyTpsl", { coin: strategy.params.coin })
     : strategy.type === "grid" ? t("agent.strategyGrid", { coin: (strategy.params as GridParams).coin })
+    : strategy.type === "gridLimit" ? t("agent.strategyGridLimit", { coin: (strategy.params as GridLimitParams).coin })
     : t("agent.strategyDca", { coin: (strategy.params as DcaParams).coin });
   const sub =
     strategy.type === "twap"
@@ -415,16 +446,19 @@ function StrategyRow({ theme, strategy, onToggle }: { theme: ThemeTokens; strate
           levels: String((strategy.params as GridParams).levels),
           filled: String(Math.round(strategy.filledTotalUsdc ?? 0)),
         })
+      : strategy.type === "gridLimit"
+      ? t("agent.gridLimitProgress", { armed: String(strategy.armedCount ?? 0), holding: String(strategy.holdingCount ?? 0), filled: String(Math.round(strategy.filledTotalUsdc ?? 0)) })
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
+  const canceling = strategy.status === "canceling";
   return (
     <SurfaceCard theme={theme} rule={false} testID={`strategy-${strategy.id}`} style={styles.row}>
       <View style={styles.rowMain}>
         <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
         <Text style={[styles.hint, { color: theme.muted }]}>{sub}</Text>
       </View>
-      {completed ? (
-        <Text style={[styles.hint, { color: theme.faint }]}>{t("agent.statusCompleted")}</Text>
+      {completed || canceling ? (
+        <Text style={[styles.hint, { color: theme.faint }]}>{t(canceling ? "agent.statusCanceling" : "agent.statusCompleted")}</Text>
       ) : (
         <Toggle
           theme={theme}

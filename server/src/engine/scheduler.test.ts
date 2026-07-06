@@ -1,6 +1,6 @@
 import { MemoryStrategyStore } from "../strategies/store";
 import { MemoryActivityStore } from "../strategies/activityStore";
-import { tick, cloidFor, type OrderPlacer, type PlaceRequest } from "./scheduler";
+import { tick, cloidFor, cloidForKey, type OrderPlacer, type PlaceRequest } from "./scheduler";
 
 function placerFake(): OrderPlacer & { calls: PlaceRequest[] } {
   const calls: PlaceRequest[] = [];
@@ -421,5 +421,188 @@ describe("grid tick", () => {
     await tick(store, placer as any, { maxNotionalUsdc: 10 }, false, 0, undefined, marks);
     expect(placer.place).not.toHaveBeenCalled();
     expect(store.get(s.id)!.lastLevel).toBeUndefined();
+  });
+});
+describe("cloidForKey", () => {
+  it("is deterministic per (strategyId, key) and 34-char hex", () => {
+    const a = cloidForKey("s1", "gl:2:3");
+    expect(a).toBe(cloidForKey("s1", "gl:2:3"));
+    expect(a).toMatch(/^0x[0-9a-f]{32}$/);
+  });
+  it("differs across keys and strategies", () => {
+    expect(cloidForKey("s1", "gl:2:3")).not.toBe(cloidForKey("s1", "gl:2:4"));
+    expect(cloidForKey("s1", "gl:2:3")).not.toBe(cloidForKey("s2", "gl:2:3"));
+  });
+});
+
+// A fake resting executor whose placeLimit records calls and returns an incrementing resting oid;
+// callers can override the outcome per test.
+function fakeExec(outcome?: (req: any) => any) {
+  const calls: any[] = [];
+  const cancels: any[] = [];
+  let oid = 1000;
+  return {
+    calls, cancels,
+    placeLimit: jest.fn(async (req: any) => { calls.push(req); return outcome ? outcome(req) : { ok: true, oid: oid++ }; }),
+    cancelCloid: jest.fn(async (req: any) => { cancels.push(req); return true; }),
+  };
+}
+function fakeReader(cloids: string[]) {
+  return { openCloids: jest.fn(async () => new Map(cloids.map((c) => [c, { oid: 1, coin: "BTC", side: "buy" as const, px: 100 }]))) };
+}
+
+const glParams = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+// lines 100,120,140,160,180,200; rungs 0..4 (buy@line[i], sell@line[i+1])
+
+describe("gridLimit tick (running)", () => {
+  it("arms resting buys on every rung whose buy line is below the mark", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    const exec = fakeExec();
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    const armed = store.gridLimitRungs(s.id).filter((r) => r.state === "armed").map((r) => r.rung);
+    expect(armed).toEqual([0, 1, 2]);
+    expect(exec.placeLimit).toHaveBeenCalledTimes(3);
+    expect(exec.calls[0]).toMatchObject({ side: "buy", reduceOnly: false, price: 100 });
+  });
+
+  it("on a filled buy, places a reduce-only sell one line up and goes holding", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 2, state: "armed", side: "buy", cloid: "0xBUY", px: 140, seq: 1 });
+    const exec = fakeExec();
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 145, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    const r2 = store.gridLimitRungs(s.id).find((r) => r.rung === 2)!;
+    expect(r2).toMatchObject({ state: "holding", side: "sell", px: 160 });
+    expect(exec.calls.find((c) => c.side === "sell")).toMatchObject({ side: "sell", reduceOnly: true, price: 160 });
+  });
+
+  it("on a filled sell, realizes profit and re-arms the buy", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xSELL", px: 160, seq: 2 });
+    const exec = fakeExec();
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    const r2 = store.gridLimitRungs(s.id).find((r) => r.rung === 2)!;
+    expect(r2.state).toBe("armed");
+    expect(store.get(s.id)!.filledTotalUsdc).toBeCloseTo((160 - 140) * (50 / 140), 6);
+  });
+
+  it("does not re-arm a rung whose buy line is at/above mark (stays idle)", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 4, state: "holding", side: "sell", cloid: "0xSELL", px: 200, seq: 2 });
+    const exec = fakeExec();
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(store.gridLimitRungs(s.id).find((r) => r.rung === 4)!.state).toBe("idle");
+  });
+
+  it("leaves a rung unchanged when an ALO placement is rejected (retry next tick)", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    const exec = fakeExec(() => ({ ok: false, rejected: true }));
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(store.gridLimitRungs(s.id).filter((r) => r.state === "armed")).toEqual([]);
+  });
+
+  it("gates buys with the per-order notional cap", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "gridLimit", glParams);
+    const exec = fakeExec();
+    const reader = fakeReader([]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 10 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.placeLimit).not.toHaveBeenCalled();
+  });
+
+  it("keeps an already-resting armed buy without re-placing", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xBUY0", px: 100, seq: 1 });
+    const exec = fakeExec();
+    const reader = fakeReader(["0xBUY0"]);
+    const marks = { resolveMark: async () => 110, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.placeLimit).not.toHaveBeenCalled();
+  });
+
+  it("adopts a crash-orphaned resting order matching our deterministic cloid instead of re-placing", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    const orphan = cloidForKey(s.id, "gl:0:1"); // what an idle rung 0 (seq 0) would place next
+    const exec = fakeExec();
+    const reader = fakeReader([orphan]);
+    const marks = { resolveMark: async () => 110, resolvePosition: async () => undefined }; // only rung 0 armable
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.placeLimit).not.toHaveBeenCalled(); // adopted, not re-placed
+    expect(store.gridLimitRungs(s.id).find((r) => r.rung === 0)).toMatchObject({ state: "armed", side: "buy", cloid: orphan, seq: 1 });
+  });
+});
+
+describe("gridLimit tick (draining)", () => {
+  it("cancels resting orders when paused, clearing rungs only once the book confirms them gone", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    store.setGridLimitRung(s.id, { rung: 2, state: "holding", side: "sell", cloid: "0xS2", px: 160, seq: 2 });
+    store.setStatus(s.id, "paused");
+    const exec = fakeExec();
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    // Tick 1: both still open -> cancel both, keep rungs tracked (cancel not yet confirmed).
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, fakeReader(["0xB0", "0xS2"]) as any);
+    expect(exec.cancels.map((c) => c.cloid).sort()).toEqual(["0xB0", "0xS2"]);
+    expect(store.gridLimitRungs(s.id).some((r) => r.cloid !== null)).toBe(true);
+    expect(store.get(s.id)!.status).toBe("paused");
+    // Tick 2: book empty -> rungs cleared to idle, still paused.
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, fakeReader([]) as any);
+    expect(store.gridLimitRungs(s.id).every((r) => r.state === "idle" && r.cloid === null)).toBe(true);
+    expect(store.get(s.id)!.status).toBe("paused");
+  });
+
+  it("cancels all under the global kill-switch and does not place", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    const exec = fakeExec();
+    const reader = fakeReader(["0xB0"]);
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, marks, exec as any, reader as any);
+    expect(exec.cancels.map((c) => c.cloid)).toEqual(["0xB0"]);
+    expect(exec.placeLimit).not.toHaveBeenCalled();
+  });
+
+  it("drains a canceling strategy then removes it once nothing is left resting", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setGridLimitRung(s.id, { rung: 0, state: "armed", side: "buy", cloid: "0xB0", px: 100, seq: 1 });
+    store.setStatus(s.id, "canceling");
+    const exec = fakeExec();
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader(["0xB0"]) as any);
+    expect(store.get(s.id)).toBeDefined();
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
+    expect(store.get(s.id)).toBeUndefined();
+  });
+
+  it("cancels a crash-orphaned resting order (never persisted) before removing a canceling strategy", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", glParams);
+    store.setStatus(s.id, "canceling");
+    const orphan = cloidForKey(s.id, "gl:0:1"); // rung 0 default seq 0 -> next-seq crash orphan
+    const exec = fakeExec();
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([orphan]) as any);
+    expect(exec.cancels.map((c) => c.cloid)).toContain(orphan);
+    expect(store.get(s.id)).toBeDefined();
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
+    expect(store.get(s.id)).toBeUndefined();
   });
 });

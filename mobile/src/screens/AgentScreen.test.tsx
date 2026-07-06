@@ -193,4 +193,39 @@ describe("AgentScreen", () => {
     expect(screen.getByText("BTC Grid")).toBeTruthy();
     expect(screen.getByText("level 3/6 · $100 bought")).toBeTruthy();
   });
+
+  it("switches to the Limit grid template and creates one", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-gridLimit")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-gridLimit"));
+    fireEvent.changeText(screen.getByTestId("grid-limit-coin"), "BTC");
+    fireEvent.changeText(screen.getByTestId("grid-limit-lower"), "100");
+    fireEvent.changeText(screen.getByTestId("grid-limit-upper"), "200");
+    fireEvent.changeText(screen.getByTestId("grid-limit-levels"), "6");
+    fireEvent.changeText(screen.getByTestId("grid-limit-per-level"), "50");
+    fireEvent.press(screen.getByTestId("grid-limit-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }),
+    );
+  });
+
+  it("renders a gridLimit strategy row", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "gl1", type: "gridLimit", status: "running", params: { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }, filledTotalUsdc: 12, armedCount: 3, holdingCount: 1 },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-gl1")).toBeTruthy());
+  });
+
+  it("shows a canceling label and no toggle for a canceling gridLimit row", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "gl2", type: "gridLimit", status: "canceling", params: { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }, filledTotalUsdc: 0, armedCount: 0, holdingCount: 0 },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-gl2")).toBeTruthy());
+    expect(screen.queryByLabelText("toggle-gl2")).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
-import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams } from "./types";
+import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams } from "./types";
+import type { RungState } from "./gridLimit";
 
 /** Persistence boundary for strategies. */
 export interface StrategyStore {
@@ -14,6 +15,12 @@ export interface StrategyStore {
   seedGridLevel(id: string, level: number): void;
   /** Grid: advance to `newLevel`, bump the action counter, add `boughtUsdc` (0 for reduce-only sells). */
   recordGridAction(id: string, newLevel: number, boughtUsdc: number): void;
+  /** gridLimit: all persisted rung states for a strategy (rungs never touched are absent). */
+  gridLimitRungs(id: string): RungState[];
+  /** gridLimit: upsert a rung's state. */
+  setGridLimitRung(id: string, rung: RungState): void;
+  /** Increment realized notional/pnl (used by gridLimit take-profit + generic accounting). */
+  addFilledUsdc(id: string, usdc: number): void;
   remove(id: string): void;
 }
 
@@ -22,12 +29,14 @@ function build(owner: string, kind: StrategyKind, params: StrategyParams, now: n
   if (kind === "dca") return { ...base, kind, params: params as DcaParams, nextRunAt: now, filledTotalUsdc: 0 };
   if (kind === "twap") return { ...base, kind, params: params as TwapParams, nextRunAt: now, filledTotalUsdc: 0, slicesDone: 0 };
   if (kind === "grid") return { ...base, kind, params: params as GridParams, filledTotalUsdc: 0, actionsDone: 0 };
+  if (kind === "gridLimit") return { ...base, kind, params: params as GridLimitParams, filledTotalUsdc: 0 };
   return { ...base, kind, params: params as TpslParams };
 }
 
 /** In-memory store for tests/dev. `now` is injectable so scheduling is deterministic. */
 export class MemoryStrategyStore implements StrategyStore {
   private byId = new Map<string, Strategy>();
+  private rungs = new Map<string, Map<number, RungState>>();
   constructor(private now: () => number = () => Date.now()) {}
 
   create(owner: string, kind: StrategyKind, params: StrategyParams): Strategy {
@@ -75,5 +84,21 @@ export class MemoryStrategyStore implements StrategyStore {
     s.filledTotalUsdc = (s.filledTotalUsdc ?? 0) + boughtUsdc;
   }
 
-  remove(id: string): void { this.byId.delete(id); }
+  gridLimitRungs(id: string): RungState[] {
+    return [...(this.rungs.get(id)?.values() ?? [])].sort((a, b) => a.rung - b.rung);
+  }
+  setGridLimitRung(id: string, rung: RungState): void {
+    let m = this.rungs.get(id);
+    if (!m) { m = new Map(); this.rungs.set(id, m); }
+    m.set(rung.rung, { ...rung });
+  }
+  addFilledUsdc(id: string, usdc: number): void {
+    const s = this.byId.get(id);
+    if (s) s.filledTotalUsdc = (s.filledTotalUsdc ?? 0) + usdc;
+  }
+
+  remove(id: string): void {
+    this.byId.delete(id);
+    this.rungs.delete(id);
+  }
 }

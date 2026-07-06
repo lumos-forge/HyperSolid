@@ -102,3 +102,27 @@ describe("sqlite grid state", () => {
     store.close();
   });
 });
+
+describe("gridLimit persistence (sqlite)", () => {
+  it("creates a gridLimit strategy, upserts rungs, accumulates filled, cascades delete", () => {
+    const store = SqliteStrategyStore.open(":memory:", () => 0);
+    const s = store.create("0xo", "gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    expect(store.get(s.id)!.kind).toBe("gridLimit");
+    expect(store.gridLimitRungs(s.id)).toEqual([]);
+
+    store.setGridLimitRung(s.id, { rung: 1, state: "armed", side: "buy", cloid: "0xa", px: 120, seq: 1 });
+    store.setGridLimitRung(s.id, { rung: 1, state: "holding", side: "sell", cloid: "0xb", px: 140, seq: 2 });
+    store.setGridLimitRung(s.id, { rung: 3, state: "armed", side: "buy", cloid: "0xc", px: 160, seq: 1 });
+    expect(store.gridLimitRungs(s.id)).toEqual([
+      { rung: 1, state: "holding", side: "sell", cloid: "0xb", px: 140, seq: 2 },
+      { rung: 3, state: "armed", side: "buy", cloid: "0xc", px: 160, seq: 1 },
+    ]);
+
+    store.addFilledUsdc(s.id, 7);
+    expect(store.get(s.id)!.filledTotalUsdc).toBe(7);
+
+    store.remove(s.id);
+    expect(store.gridLimitRungs(s.id)).toEqual([]);
+    store.close();
+  });
+});

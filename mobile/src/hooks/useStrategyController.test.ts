@@ -83,4 +83,13 @@ describe("useStrategyController", () => {
     });
     expect(api.createStrategy).toHaveBeenCalledWith("grid", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" });
   });
+
+  it("createGridLimit creates a gridLimit then refreshes", async () => {
+    const api = makeApi();
+    const { result } = renderHook(() => useStrategyController(api as never, approveAgent, "n"));
+    await act(async () => {
+      await result.current.createGridLimit({ coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+    });
+    expect(api.createStrategy).toHaveBeenCalledWith("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 });
+  });
 });
