@@ -11,6 +11,7 @@ import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./a
 import { makeHlPlacer } from "./agent/placer";
 import { makeRestingExecutor } from "./agent/restingExecutor";
 import { makeOpenOrdersReader } from "./agent/openOrdersReader";
+import { makeUserFillsReader } from "./agent/userFillsReader";
 import { tick } from "./engine/scheduler";
 import { buildApp } from "./http/app";
 
@@ -75,6 +76,7 @@ export async function main(): Promise<void> {
   });
   const restingExec = makeRestingExecutor({ clientFor, resolveAsset: resolvers.resolveAsset });
   const ordersReader = makeOpenOrdersReader(info as unknown as { frontendOpenOrders(a: { user: string }): Promise<unknown> });
+  const userFillsReader = makeUserFillsReader(info as unknown as { userFills(a: { user: string }): Promise<unknown> });
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const timer = setInterval(() => {
@@ -88,6 +90,7 @@ export async function main(): Promise<void> {
       { resolveMark: resolvers.resolvePrice, resolvePosition: resolvers.resolvePosition },
       restingExec,
       ordersReader,
+      userFillsReader,
     ).catch((e) =>
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
