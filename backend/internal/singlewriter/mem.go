@@ -22,7 +22,7 @@ func NewMem() *Mem { return &Mem{state: make(map[string]State)} }
 func (m *Mem) Authorize(_ context.Context, r Request) (Grant, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	next, g, err := decide(m.state[r.KeyID], r)
+	next, g, err := Decide(m.state[r.KeyID], r)
 	if err != nil {
 		return Grant{}, err
 	}

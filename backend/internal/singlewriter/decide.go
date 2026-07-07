@@ -2,14 +2,14 @@ package singlewriter
 
 import "math"
 
-// decide is the pure single-writer transition. Given the current persisted
+// Decide is the pure single-writer transition. Given the current persisted
 // state and a request it returns the next state and grant, or a typed error
 // (leaving state UNCHANGED on every reject). Both the in-memory and Postgres
 // writers apply this identical logic so their behavior cannot drift.
 //
 // Order: fence → invalid notional → daily cap → nonce. A fenced, invalid, or
 // cap-denied request never advances the nonce (matches the M5 sign pipeline).
-func decide(s State, r Request) (State, Grant, error) {
+func Decide(s State, r Request) (State, Grant, error) {
 	// 1. fence: a stale writer (lower token) is rejected without touching state.
 	if r.Fence < s.Fence {
 		return s, Grant{}, ErrFenced
