@@ -4,6 +4,7 @@ package pg_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -79,12 +80,18 @@ func TestPgWriterConcurrentNoReuseNoOverspend(t *testing.T) {
 	var mu sync.Mutex
 	nonces := make(map[uint64]int)
 	accepted := 0
+	var unexpected []error
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			g, err := w.Authorize(ctx, singlewriter.Request{KeyID: "k1", Fence: 1, Notional: per, DailyCap: cap, NowMs: now})
 			if err != nil {
+				if !errors.Is(err, singlewriter.ErrDailyCap) {
+					mu.Lock()
+					unexpected = append(unexpected, err)
+					mu.Unlock()
+				}
 				return
 			}
 			mu.Lock()
@@ -94,6 +101,9 @@ func TestPgWriterConcurrentNoReuseNoOverspend(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	if len(unexpected) > 0 {
+		t.Fatalf("unexpected non-cap errors: %v", unexpected)
+	}
 	if accepted != int(cap/per) {
 		t.Fatalf("accepted = %d, want %d (no overspend across transactions)", accepted, int(cap/per))
 	}

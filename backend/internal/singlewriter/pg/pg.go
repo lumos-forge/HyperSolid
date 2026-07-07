@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
@@ -21,6 +22,10 @@ type PgWriter struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *PgWriter { return &PgWriter{pool: pool} }
 
 const (
+	// seedSQL guarantees the row exists so SELECT … FOR UPDATE always has a row to
+	// lock (race-free for brand-new keys). It runs on every Authorize, so a
+	// conflicting speculative insert leaves a dead tuple (minor bloat, vacuumed).
+	// Do NOT replace with a lazy SELECT-then-insert: that reintroduces a new-key race.
 	seedSQL   = `INSERT INTO sw_state (key_id, fence, last_nonce, spend_day, spend_total) VALUES ($1, 0, 0, 0, 0) ON CONFLICT (key_id) DO NOTHING`
 	selectSQL = `SELECT fence, last_nonce, spend_day, spend_total FROM sw_state WHERE key_id = $1 FOR UPDATE`
 	updateSQL = `UPDATE sw_state SET fence = $2, last_nonce = $3, spend_day = $4, spend_total = $5 WHERE key_id = $1`
@@ -32,7 +37,10 @@ const (
 // rejection (leaving no state change). Infrastructure errors are wrapped so the
 // caller can distinguish them (5xx) from typed policy rejections (4xx).
 func (w *PgWriter) Authorize(ctx context.Context, r singlewriter.Request) (singlewriter.Grant, error) {
-	tx, err := w.pool.Begin(ctx)
+	// READ COMMITTED + SELECT … FOR UPDATE is what serializes same-key writers;
+	// pin it explicitly so a cluster defaulting to SERIALIZABLE can't turn row
+	// contention into 40001 serialization errors this code would surface as infra.
+	tx, err := w.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return singlewriter.Grant{}, fmt.Errorf("pg singlewriter: begin: %w", err)
 	}
