@@ -71,6 +71,7 @@ const fakeDeps = {
     loadHistory: jest.fn(async () => twapHistory),
     loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: twapHistory })),
     loadSliceFills: jest.fn(async () => sliceFillsByTwapId),
+    loadSliceFillsByTime: jest.fn(async () => sliceFillsByTwapId),
     subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })),
   } as unknown as TwapService,
 };
@@ -91,7 +92,7 @@ describe("PositionsScreen", () => {
     (fakeDeps.twap.loadActive as jest.Mock).mockClear();
     (fakeDeps.twap.loadActiveAndHistory as jest.Mock).mockClear();
     (fakeDeps.twap.loadHistory as jest.Mock).mockClear();
-    (fakeDeps.twap.loadSliceFills as jest.Mock).mockClear();
+    (fakeDeps.twap.loadSliceFillsByTime as jest.Mock).mockClear();
     (fakeDeps.twap.subscribeSliceFills as jest.Mock).mockClear();
   });
 
@@ -106,7 +107,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio } as unknown as PositionsService,
       fills: { loadRecent: jest.fn(async () => []) } as unknown as FillsService,
       orders: { loadOpenOrders: jest.fn(async () => []) } as unknown as OrdersService,
-      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) } as unknown as TwapService,
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), loadSliceFillsByTime: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) } as unknown as TwapService,
     };
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     render(<PositionsScreen deps={deps} />);
@@ -239,7 +240,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
-      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), loadSliceFillsByTime: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
     const navigate = jest.fn();
@@ -255,7 +256,7 @@ describe("PositionsScreen", () => {
       positions: { loadPortfolio: jest.fn(async () => empty) },
       fills: { loadRecent: jest.fn(async () => []) },
       orders: { loadOpenOrders: jest.fn(async () => []) },
-      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
+      twap: { loadActive: jest.fn(async () => []), loadHistory: jest.fn(async () => []), loadActiveAndHistory: jest.fn(async () => ({ active: [], history: [] })), loadSliceFills: jest.fn(async () => new Map()), loadSliceFillsByTime: jest.fn(async () => new Map()), subscribeSliceFills: jest.fn(async () => ({ unsubscribe: jest.fn(async () => {}) })) },
     } as unknown as typeof fakeDeps;
     useWalletStore.setState({ mode: "viewOnly", wallet: null, address: ADDR });
     render(<PositionsScreen deps={deps} />);
@@ -310,6 +311,7 @@ describe("PositionsScreen", () => {
         loadHistory: jest.fn(async () => []),
         loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: [] })),
         loadSliceFills: jest.fn(async () => new Map()),
+        loadSliceFillsByTime: jest.fn(async () => new Map()),
         subscribeSliceFills: jest.fn(async (_addr: string, cb: (f: unknown[]) => void) => { captured = cb; return { unsubscribe: jest.fn(async () => {}) }; }),
       } as unknown as TwapService,
     };
@@ -342,6 +344,7 @@ describe("PositionsScreen", () => {
         loadHistory: jest.fn(async () => []),
         loadActiveAndHistory: jest.fn(async () => ({ active: activeTwaps, history: [] })),
         loadSliceFills: jest.fn(async () => new Map()),
+        loadSliceFillsByTime: jest.fn(async () => new Map()),
         subscribeSliceFills: jest.fn(async (_addr: string, cb: (f: unknown[]) => void) => { captured = cb; return { unsubscribe: jest.fn(async () => {}) }; }),
       } as unknown as TwapService,
     };
