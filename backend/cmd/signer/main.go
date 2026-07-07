@@ -8,20 +8,30 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
+	"github.com/lumos-forge/hypersolid/backend/internal/leader"
+	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
+	swpg "github.com/lumos-forge/hypersolid/backend/internal/singlewriter/pg"
 )
 
 type digestL1Request struct {
@@ -251,18 +261,121 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, writer singlewriter.W
 	return mux
 }
 
-func main() {
-	addr := os.Getenv("SIGNER_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8087"
+// Fencer is satisfied by leader.Leader (compile-time check).
+var _ Fencer = (*leader.Leader)(nil)
+
+// config is the signer's runtime configuration.
+type config struct {
+	addr        string
+	databaseURL string
+	leaseName   string
+	holderID    string
+	leaseTTL    time.Duration
+	renewEvery  time.Duration
+}
+
+// configFromEnv reads SIGNER_ADDR / DATABASE_URL / SIGNER_LEASE_NAME /
+// SIGNER_HOLDER_ID and fills sensible defaults. A non-empty DATABASE_URL selects
+// the Postgres cross-host backend; otherwise the signer runs single-instance.
+func configFromEnv() config {
+	cfg := config{
+		addr:        os.Getenv("SIGNER_ADDR"),
+		databaseURL: os.Getenv("DATABASE_URL"),
+		leaseName:   os.Getenv("SIGNER_LEASE_NAME"),
+		holderID:    os.Getenv("SIGNER_HOLDER_ID"),
+		leaseTTL:    15 * time.Second,
+		renewEvery:  5 * time.Second,
 	}
+	if cfg.addr == "" {
+		cfg.addr = "127.0.0.1:8087"
+	}
+	if cfg.leaseName == "" {
+		cfg.leaseName = "signer-leader"
+	}
+	if cfg.holderID == "" {
+		cfg.holderID = defaultHolderID()
+	}
+	return cfg
+}
+
+// defaultHolderID returns hostname-pid-<random hex>, a per-process lease identity.
+func defaultHolderID() string {
+	host, _ := os.Hostname()
+	var b [4]byte
+	_, _ = rand.Read(b[:])
+	return fmt.Sprintf("%s-%d-%s", host, os.Getpid(), hex.EncodeToString(b[:]))
+}
+
+// buildHandler assembles the signing router for cfg using the given keystore and
+// policy store. With an empty DATABASE_URL it wires a single-instance in-memory
+// single-writer + an always-leader fencer. Otherwise it opens a pgxpool, ensures
+// both schemas, and wires the Postgres single-writer + a lease-backed leader
+// started in the background. The returned cleanup cancels the leader (releasing
+// the lease) and closes the pool; on any setup error the pool is closed and the
+// error returned.
+func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, policies *policy.Store) (http.Handler, func(), error) {
+	nowMs := func() int64 { return time.Now().UnixMilli() }
+
+	if cfg.databaseURL == "" {
+		h := newMux(ks, policies, singlewriter.NewMem(), staticFencer{epoch: 1}, nowMs)
+		return h, func() {}, nil
+	}
+
+	pool, err := pgxpool.New(ctx, cfg.databaseURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("signer: pgxpool: %w", err)
+	}
+	if err := swpg.EnsureSchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("signer: singlewriter schema: %w", err)
+	}
+	if err := leasepg.EnsureSchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("signer: lease schema: %w", err)
+	}
+
+	writer := swpg.New(pool)
+	store := leasepg.New(pool)
+	ld := leader.New(store, cfg.leaseName, cfg.holderID, cfg.leaseTTL)
+
+	leaderCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		ld.Run(leaderCtx, cfg.renewEvery)
+		close(done)
+	}()
+	cleanup := func() {
+		cancel() // leader.Run releases the lease on ctx cancel
+		<-done   // wait for Run to finish releasing before closing the pool
+		pool.Close()
+	}
+
+	h := newMux(ks, policies, writer, ld, nowMs)
+	return h, cleanup, nil
+}
+
+func main() {
+	cfg := configFromEnv()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	ks := keystore.New()
 	policies := policy.NewStore()
-	writer := singlewriter.NewMem()
-	fencer := staticFencer{epoch: 1}
-	nowMs := func() int64 { return time.Now().UnixMilli() }
-	log.Printf("signer service listening on %s (empty keystore + policy; in-memory single-writer, single instance)", addr)
-	if err := http.ListenAndServe(addr, newMux(ks, policies, writer, fencer, nowMs)); err != nil {
+	h, cleanup, err := buildHandler(ctx, cfg, ks, policies)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cleanup()
+
+	srv := &http.Server{Addr: cfg.addr, Handler: h}
+	go func() {
+		<-ctx.Done()
+		sc, c := context.WithTimeout(context.Background(), 5*time.Second)
+		defer c()
+		_ = srv.Shutdown(sc)
+	}()
+	log.Printf("signer service listening on %s (db=%t)", cfg.addr, cfg.databaseURL != "")
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }
