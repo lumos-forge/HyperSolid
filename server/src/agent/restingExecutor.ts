@@ -9,6 +9,8 @@ export interface RestingClientLike {
 export interface RestingExecutorDeps {
   clientFor(owner: string): RestingClientLike | undefined;
   resolveAsset(coin: string): Promise<{ assetIndex: number; szDecimals: number }>;
+  /** Optional fire-and-forget shadow verifier (compares Go signer digest); never affects execution. */
+  shadowVerify?: (kind: string, params: unknown) => void;
 }
 
 export interface PlaceLimitRequest {
@@ -64,6 +66,20 @@ export function makeRestingExecutor(deps: RestingExecutorDeps): RestingExecutor 
           t: { limit: { tif: "Alo" as const } },
           c: req.cloid,
         };
+        try {
+          deps.shadowVerify?.("order", {
+            asset: assetIndex,
+            isBuy: req.side === "buy",
+            px: order.p,
+            sz: order.s,
+            reduceOnly: order.r,
+            tif: "Alo",
+            grouping: "na",
+            cloid: order.c,
+          });
+        } catch {
+          /* shadow must never affect placement */
+        }
         const res = await client.order({ orders: [order], grouping: "na" });
         const st = statusOf(res);
         if (st?.resting?.oid !== undefined) return { ok: true, oid: st.resting.oid };
@@ -84,6 +100,11 @@ export function makeRestingExecutor(deps: RestingExecutorDeps): RestingExecutor 
       if (!client) return false;
       try {
         const { assetIndex } = await deps.resolveAsset(req.coin);
+        try {
+          deps.shadowVerify?.("cancelByCloid", { cancels: [{ asset: assetIndex, cloid: req.cloid }] });
+        } catch {
+          /* shadow must never affect cancellation */
+        }
         await client.cancelByCloid({ cancels: [{ asset: assetIndex, cloid: req.cloid }] });
         return true;
       } catch {
