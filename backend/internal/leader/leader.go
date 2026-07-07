@@ -7,6 +7,7 @@ package leader
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -48,11 +49,22 @@ func (l *Leader) step(ctx context.Context) {
 	l.mu.Unlock()
 
 	if leading {
-		if ls, err := l.store.Renew(ctx, l.name, l.holder, l.ttl); err == nil {
+		ls, err := l.store.Renew(ctx, l.name, l.holder, l.ttl)
+		switch {
+		case err == nil:
 			l.set(ls.Epoch, true)
 			return
+		case errors.Is(err, lease.ErrNotHolder), errors.Is(err, lease.ErrExpired):
+			// Genuine loss of the lease: drop leadership and try to (re)acquire below.
+			l.set(0, false)
+		default:
+			// Transient infra error (e.g. a DB blip): the lease is still validly held
+			// until its TTL, so keep the current (epoch, isLeader) and retry Renew next
+			// tick rather than flapping into a leaderless gap + spurious epoch bump. A
+			// truly lost lease is caught on a later tick; the singlewriter fence is the
+			// safety backstop against a stale leader.
+			return
 		}
-		l.set(0, false) // lost the lease; fall through to a (re)acquire attempt
 	}
 
 	if ls, err := l.store.Acquire(ctx, l.name, l.holder, l.ttl); err == nil {

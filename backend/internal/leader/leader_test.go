@@ -2,6 +2,7 @@ package leader
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -60,7 +61,9 @@ func TestStepFailoverBumpsEpoch(t *testing.T) {
 
 func TestRunAcquiresAndReleasesOnCancel(t *testing.T) {
 	store := lease.NewMem(nil) // real clock
-	l := New(store, "signer-leader", "a", time.Second)
+	// Long TTL so the post-cancel acquire below can only succeed if Run actually
+	// Released the lease (natural expiry would take 30s, well past the 2s poll).
+	l := New(store, "signer-leader", "a", 30*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go l.Run(ctx, 5*time.Millisecond)
@@ -86,5 +89,45 @@ func TestRunAcquiresAndReleasesOnCancel(t *testing.T) {
 			t.Fatal("lease not released after Run cancelled")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// flakyStore wraps a lease.Store and can force Renew to return a given error
+// (simulating a transient infrastructure failure that is NOT a typed loss).
+type flakyStore struct {
+	lease.Store
+	renewErr error
+}
+
+func (f *flakyStore) Renew(ctx context.Context, name, holder string, ttl time.Duration) (lease.Lease, error) {
+	if f.renewErr != nil {
+		return lease.Lease{}, f.renewErr
+	}
+	return f.Store.Renew(ctx, name, holder, ttl)
+}
+
+func TestStepTransientRenewErrorKeepsLeadership(t *testing.T) {
+	now := int64(1_700_000_000_000)
+	fs := &flakyStore{Store: lease.NewMem(func() int64 { return now })}
+	ctx := context.Background()
+	l := New(fs, "signer-leader", "a", time.Second)
+
+	l.step(ctx) // acquire → leader epoch 1
+	if e, ok := l.Fence(); !ok || e != 1 {
+		t.Fatalf("after acquire Fence=(%d,%v), want (1,true)", e, ok)
+	}
+
+	// A transient infra error on Renew must NOT drop leadership or bump the epoch.
+	fs.renewErr = errors.New("pg lease: select: connection reset")
+	l.step(ctx)
+	if e, ok := l.Fence(); !ok || e != 1 {
+		t.Fatalf("after transient renew error Fence=(%d,%v), want (1,true) retained", e, ok)
+	}
+
+	// Once the blip clears, a normal renew keeps leadership at the same epoch.
+	fs.renewErr = nil
+	l.step(ctx)
+	if e, ok := l.Fence(); !ok || e != 1 {
+		t.Fatalf("after recovery Fence=(%d,%v), want (1,true)", e, ok)
 	}
 }
