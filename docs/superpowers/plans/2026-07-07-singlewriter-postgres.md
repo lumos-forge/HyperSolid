@@ -337,10 +337,12 @@ func TestPgWriterConcurrentNoReuseNoOverspend(t *testing.T) {
 
 > 第三方库 API 提示：若安装的 testcontainers-go 版本的 `postgres.Run` 选项名或 `wait` 包路径与上文略有出入（如 `WithOccurrence` 签名、`ConnectionString` 参数形态），按该版本的实际 API 微调导入与调用，保持行为不变（起容器 → 取 DSN → 建 pool → `EnsureSchema`）。运行 Step 3 时编译器会明确指出任何签名差异。
 
-- [ ] **Step 3: 运行集成测试（需 Docker）**
+- [ ] **Step 3: 本地编译校验集成测试（无需 Docker；真跑在 CI）**
 
-Run: `cd backend && go mod tidy && go test -tags=integration ./internal/singlewriter/pg/ -v`
-Expected: PASS —— `TestPgWriterConformance`（`conformance.Run` 的 11 个子场景对 `PgWriter` 全过）+ `TestPgWriterConcurrentNoReuseNoOverspend`（成功 10 笔、nonce 全唯一）。首次运行会拉取 `postgres:17-alpine` 镜像，耗时数十秒。
+本机通常无 Docker daemon，故不在本地启动容器；改为**只编译**集成测试二进制以校验类型/签名正确（`TestMain` 不会被执行，不需要 Docker）：
+Run: `cd backend && go mod tidy && go test -c -tags=integration -o /dev/null ./internal/singlewriter/pg/`
+Expected: 编译成功、无输出（不拉镜像、不起容器）。若签名与所装 testcontainers 版本有出入，编译器会在此明确报错——据此微调导入/调用。
+（可选，若本机恰有 Docker：`go test -tags=integration ./internal/singlewriter/pg/ -v` 应看到 `TestPgWriterConformance` + 并发测试全过。真正的容器化执行由 CI 保证。）
 
 - [ ] **Step 4: 确认无标签基线不受影响**
 
@@ -370,7 +372,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ## Final Verification（全部任务完成后）
 
 - 无 Docker 基线：`cd backend && go test ./... && go vet ./... && go build ./...` 全绿（pg 集成被标签跳过）。
-- 集成（需 Docker）：`cd backend && go test -tags=integration ./...` 全绿。
+- 集成测试**本地编译校验**：`cd backend && go test -c -tags=integration -o /dev/null ./internal/singlewriter/pg/` 成功（不需 Docker）；其**真跑由 CI**（ubuntu-latest 自带 Docker）保证——PR 上 backend job 会 `go test -tags=integration ./...` 拉起 Postgres 跑通 `conformance.Run` + 并发测试。
 - `go build ./cmd/signer && rm -f signer` 成功。
 - `git diff --stat main...HEAD` 仅触及：`internal/singlewriter/{decide.go,mem.go,decide_test.go}`、新增 `internal/singlewriter/pg/{schema.go,pg.go,pg_integration_test.go}`、`.github/workflows/ci.yml`、`backend/go.mod`/`go.sum`、两份 docs。
 
