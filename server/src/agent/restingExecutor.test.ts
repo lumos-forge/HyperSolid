@@ -1,7 +1,7 @@
 import { makeRestingExecutor, type RestingClientLike } from "./restingExecutor";
 
-function deps(client: RestingClientLike | undefined) {
-  return { clientFor: () => client, resolveAsset: async () => ({ assetIndex: 3, szDecimals: 2 }) };
+function deps(client: RestingClientLike | undefined, shadowVerify?: (kind: string, params: unknown) => void) {
+  return { clientFor: () => client, resolveAsset: async () => ({ assetIndex: 3, szDecimals: 2 }), shadowVerify };
 }
 
 const restingRes = { response: { data: { statuses: [{ resting: { oid: 999 } }] } } };
@@ -50,5 +50,41 @@ describe("makeRestingExecutor.cancelCloid", () => {
   it("returns false with no client", async () => {
     const exec = makeRestingExecutor(deps(undefined));
     expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(false);
+  });
+});
+
+describe("makeRestingExecutor shadow verify", () => {
+  it("shadow-verifies the ALO order, fire-and-forget", async () => {
+    const shadow = jest.fn();
+    const client: RestingClientLike = { order: async () => restingRes, cancelByCloid: async () => ({}) };
+    const exec = makeRestingExecutor(deps(client, shadow));
+    const r = await exec.placeLimit({ owner: "0xo", coin: "BTC", price: 140, sizeCoin: 0.357, side: "buy", reduceOnly: false, cloid: "0xc" });
+    expect(r).toEqual({ ok: true, oid: 999 });
+    expect(shadow).toHaveBeenCalledTimes(1);
+    const [kind, params] = shadow.mock.calls[0];
+    expect(kind).toBe("order");
+    expect(params).toMatchObject({ asset: 3, isBuy: true, tif: "Alo", grouping: "na", cloid: "0xc" });
+  });
+
+  it("shadow-verifies cancelByCloid, fire-and-forget", async () => {
+    const shadow = jest.fn();
+    const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async () => ({}) };
+    const exec = makeRestingExecutor(deps(client, shadow));
+    const ok = await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" });
+    expect(ok).toBe(true);
+    expect(shadow).toHaveBeenCalledTimes(1);
+    const [kind, params] = shadow.mock.calls[0];
+    expect(kind).toBe("cancelByCloid");
+    expect(params).toEqual({ cancels: [{ asset: 3, cloid: "0xc" }] });
+  });
+
+  it("a throwing shadowVerify does not affect placeLimit/cancelCloid", async () => {
+    const shadow = jest.fn(() => {
+      throw new Error("boom");
+    });
+    const client: RestingClientLike = { order: async () => restingRes, cancelByCloid: async () => ({}) };
+    const exec = makeRestingExecutor(deps(client, shadow));
+    expect(await exec.placeLimit({ owner: "0xo", coin: "BTC", price: 140, sizeCoin: 0.5, side: "buy", reduceOnly: false, cloid: "0xc" })).toEqual({ ok: true, oid: 999 });
+    expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(true);
   });
 });

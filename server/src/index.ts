@@ -80,7 +80,7 @@ export async function main(): Promise<void> {
     slippageBps,
     shadowVerify,
   });
-  const restingExec = makeRestingExecutor({ clientFor, resolveAsset: resolvers.resolveAsset });
+  const restingExec = makeRestingExecutor({ clientFor, resolveAsset: resolvers.resolveAsset, shadowVerify });
   const ordersReader = makeOpenOrdersReader(info as unknown as { frontendOpenOrders(a: { user: string }): Promise<unknown> });
   const userFillsReader = makeUserFillsReader(info as unknown as { userFills(a: { user: string }): Promise<unknown> });
 
