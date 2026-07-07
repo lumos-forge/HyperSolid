@@ -44,8 +44,9 @@ func (s *PgStore) Release(ctx context.Context, name, holder string) error {
 }
 
 // run executes one lease operation in a single row-locked READ COMMITTED
-// transaction: seed the row, lock it FOR UPDATE (reading the DB clock in the same
-// query), apply lease.Decide, then UPDATE+COMMIT (mutation) or COMMIT (no-op), or
+// transaction: seed the row, lock it FOR UPDATE, read the DB transaction-start
+// clock now() in the same query (≤ real time — conservative for expiry), apply
+// lease.Decide, then UPDATE+COMMIT (mutation) or COMMIT (no-op), or
 // roll back on a typed rejection. Infra errors are wrapped.
 func (s *PgStore) run(ctx context.Context, name string, op lease.Op, holder string, ttl time.Duration) (lease.Lease, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})

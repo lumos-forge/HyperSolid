@@ -156,3 +156,64 @@ func TestConcurrentAcquireSingleWinner(t *testing.T) {
 		t.Fatalf("ErrHeld count = %d, want %d", held, holders-1)
 	}
 }
+
+func TestConcurrentStealExpiredSingleWinnerUniqueEpoch(t *testing.T) {
+	ctx := context.Background()
+	s := pg.New(testPool)
+	name := "steal-race"
+	// Establish an existing lease (epoch 1), then let it EXPIRE on the DB clock so
+	// the contended path is "steal an existing expired row" — the path whose
+	// correctness depends on SELECT … FOR UPDATE (not the seed-insert unique index).
+	if _, err := s.Acquire(ctx, name, "seed", 100*time.Millisecond); err != nil {
+		t.Fatalf("seed acquire: %v", err)
+	}
+	time.Sleep(250 * time.Millisecond) // expire
+
+	const holders = 30
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	held := 0
+	winEpochs := map[uint64]int{}
+	unexpected := []error{}
+	for i := 0; i < holders; i++ {
+		h := fmt.Sprintf("s%d", i)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			l, err := s.Acquire(ctx, name, h, time.Minute)
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err == nil:
+				wins++
+				winEpochs[l.Epoch]++
+			case errors.Is(err, lease.ErrHeld):
+				held++
+			default:
+				unexpected = append(unexpected, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(unexpected) > 0 {
+		t.Fatalf("unexpected: %v", unexpected)
+	}
+	if wins != 1 {
+		t.Fatalf("winners = %d, want exactly 1 (FOR UPDATE must serialize the steal of an expired row)", wins)
+	}
+	if held != holders-1 {
+		t.Fatalf("ErrHeld = %d, want %d", held, holders-1)
+	}
+	// The single winner's epoch must be minted exactly once and strictly greater
+	// than the seed's epoch 1 — two winners sharing an epoch would break fencing.
+	for e, c := range winEpochs {
+		if c != 1 {
+			t.Fatalf("epoch %d minted %d times (two winners sharing an epoch → fence broken)", e, c)
+		}
+		if e <= 1 {
+			t.Fatalf("winner epoch %d, want > 1 (seed was epoch 1)", e)
+		}
+	}
+}
