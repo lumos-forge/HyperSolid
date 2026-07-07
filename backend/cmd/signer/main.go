@@ -1,23 +1,27 @@
-// Command signer is the M5 signing service. It exposes keyless digest endpoints
-// (/healthz, /v1/digest/l1) plus a keystore-backed L1 signing endpoint (/v1/sign/l1).
-// The shipped binary starts with an EMPTY keystore (fail-closed: nothing is signable)
-// and has no key-injection path. It performs NO policy checks — a reject-first policy
-// layer must wrap /v1/sign/l1 before any production use (docs/BACKEND-ARCHITECTURE.md §5.1a).
+// Command signer is the M5/M6 signing service. It exposes keyless digest endpoints
+// (/healthz, /v1/digest/l1) plus a keystore-backed L1 signing endpoint (/v1/sign/l1)
+// gated by the reject-first policy (Evaluate) then the single-writer authority
+// (fence + daily notional cap + monotonic nonce, atomically). The shipped binary
+// starts with an EMPTY keystore (fail-closed) and, by default, an in-memory
+// single-writer + an always-leader fencer (single instance); wiring a leased
+// cross-host single-writer is a later slice (docs/BACKEND-ARCHITECTURE.md §5.1a/§6.2).
 package main
 
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"math"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
-	"github.com/lumos-forge/hypersolid/backend/internal/nonce"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
 
 type digestL1Request struct {
@@ -146,11 +150,25 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 	}
 }
 
-// handleSignL1 signs an L1 action with the keystore signer named by keyId, after
-// the reject-first policy passes. The server is the nonce single-writer: it
-// allocates a strictly-increasing nonce per key and returns it. Fail-closed:
-// an unknown keyId returns 404. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator, spend *policy.SpendTracker) http.HandlerFunc {
+// Fencer supplies the current fencing token (a lease epoch) and whether this
+// instance currently holds leadership. A non-leader must not sign. leader.Leader
+// satisfies this; main() uses a static always-leader fencer for the in-memory
+// single-instance default.
+type Fencer interface {
+	Fence() (epoch uint64, isLeader bool)
+}
+
+// staticFencer is an always-leader fencer with a fixed epoch (single instance).
+type staticFencer struct{ epoch uint64 }
+
+func (s staticFencer) Fence() (uint64, bool) { return s.epoch, true }
+
+// handleSignL1 signs an L1 action with the keystore signer named by keyId. The
+// reject-first policy (Evaluate) runs first; then, if this instance is the leader,
+// the single-writer atomically enforces the fencing token + daily notional cap and
+// allocates a strictly-increasing per-key nonce, which is returned. Fail-closed: an
+// unknown keyId → 404; a non-leader → 503; a stale fence → 409. Never logs key material.
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewriter.Writer, fencer Fencer, nowMs func() int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -177,12 +195,34 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.A
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if !spend.Charge(req.KeyID, intent.NotionalUsdc, cfg.DailyMaxNotionalUsdc) {
-			writeErr(w, http.StatusForbidden, "daily cap exceeded")
+		fence, isLeader := fencer.Fence()
+		if !isLeader {
+			writeErr(w, http.StatusServiceUnavailable, "not leader")
 			return
 		}
-		n := nonces.Next(req.KeyID)
-		sig, err := signer.SignL1Action(action, n, req.IsTestnet)
+		grant, err := writer.Authorize(r.Context(), singlewriter.Request{
+			KeyID:    req.KeyID,
+			Fence:    fence,
+			Notional: intent.NotionalUsdc,
+			DailyCap: cfg.DailyMaxNotionalUsdc,
+			NowMs:    nowMs(),
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, singlewriter.ErrFenced):
+				writeErr(w, http.StatusConflict, "fenced")
+			case errors.Is(err, singlewriter.ErrDailyCap):
+				writeErr(w, http.StatusForbidden, "daily cap exceeded")
+			case errors.Is(err, singlewriter.ErrInvalidNotional):
+				writeErr(w, http.StatusForbidden, "invalid notional")
+			case errors.Is(err, singlewriter.ErrInvalidClock):
+				writeErr(w, http.StatusInternalServerError, "invalid clock")
+			default:
+				writeErr(w, http.StatusInternalServerError, "authorize failed")
+			}
+			return
+		}
+		sig, err := signer.SignL1Action(action, grant.Nonce, req.IsTestnet)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "sign failed")
 			return
@@ -192,21 +232,22 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.A
 			R:     "0x" + hex.EncodeToString(sig.R[:]),
 			S:     "0x" + hex.EncodeToString(sig.S[:]),
 			V:     int(sig.V),
-			Nonce: n,
+			Nonce: grant.Nonce,
 		})
 	}
 }
 
-// newMux builds the service router (no side effects; testable).
-// The digest endpoints are keyless; /v1/sign/l1 uses the injected keystore.
-func newMux(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator, spend *policy.SpendTracker) http.Handler {
+// newMux builds the service router (no side effects; testable). The digest
+// endpoints are keyless; /v1/sign/l1 uses the injected keystore, policy,
+// single-writer, fencer, and clock.
+func newMux(ks *keystore.Keystore, policies *policy.Store, writer singlewriter.Writer, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, nonces, spend))
+	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, writer, fencer, nowMs))
 	return mux
 }
 
@@ -217,10 +258,11 @@ func main() {
 	}
 	ks := keystore.New()
 	policies := policy.NewStore()
-	nonces := nonce.New(nil)
-	spend := policy.NewSpendTracker(nil)
-	log.Printf("signer service listening on %s (empty keystore + policy; fail-closed)", addr)
-	if err := http.ListenAndServe(addr, newMux(ks, policies, nonces, spend)); err != nil {
+	writer := singlewriter.NewMem()
+	fencer := staticFencer{epoch: 1}
+	nowMs := func() int64 { return time.Now().UnixMilli() }
+	log.Printf("signer service listening on %s (empty keystore + policy; in-memory single-writer, single instance)", addr)
+	if err := http.ListenAndServe(addr, newMux(ks, policies, writer, fencer, nowMs)); err != nil {
 		log.Fatal(err)
 	}
 }

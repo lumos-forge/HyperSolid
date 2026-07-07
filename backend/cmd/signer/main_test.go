@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -11,12 +12,27 @@ import (
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
-	"github.com/lumos-forge/hypersolid/backend/internal/nonce"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
 
+// constFencer is a test Fencer with a fixed epoch and leadership flag.
+type constFencer struct {
+	epoch  uint64
+	leader bool
+}
+
+func (c constFencer) Fence() (uint64, bool) { return c.epoch, c.leader }
+
+// leaderMux builds a mux with a fresh in-memory single-writer, an always-leader
+// fencer (epoch 1), and the given clock (nil → real time). It reproduces the
+// pre-wiring in-memory nonce+cap behavior plus the fence gate.
+func leaderMux(ks *keystore.Keystore, policies *policy.Store, nowMs func() int64) http.Handler {
+	return newMux(ks, policies, singlewriter.NewMem(), constFencer{epoch: 1, leader: true}, nowMs)
+}
+
 func TestHealthz(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
 	defer srv.Close()
 	res, err := http.Get(srv.URL + "/healthz")
 	if err != nil {
@@ -29,7 +45,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestDigestL1Endpoint(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
 	defer srv.Close()
 	body := `{"kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"nonce":1700000000000,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/digest/l1", "application/json", strings.NewReader(body))
@@ -56,7 +72,7 @@ func TestDigestL1Endpoint(t *testing.T) {
 }
 
 func TestDigestL1BadRequests(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
 	defer srv.Close()
 	r1, err := http.Post(srv.URL+"/v1/digest/l1", "application/json", strings.NewReader(`{"kind":"nope","params":{},"nonce":1,"isTestnet":false}`))
 	if err != nil {
@@ -121,10 +137,9 @@ func TestSignL1Endpoint(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{v.Kind: true}, MaxNotionalUsdc: 1e12})
-	// Fixed clock = the golden nonce, so Next("k1") returns v.Nonce and the
-	// produced signature matches the golden vector byte-for-byte.
-	nonces := nonce.New(func() int64 { return int64(v.Nonce) })
-	srv := httptest.NewServer(newMux(ks, policies, nonces, policy.NewSpendTracker(nil)))
+	// Fixed clock = the golden nonce, so Authorize returns v.Nonce and the produced
+	// signature matches the golden vector byte-for-byte.
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
 	defer srv.Close()
 	body, _ := json.Marshal(struct {
 		KeyID     string          `json:"keyId"`
@@ -158,7 +173,7 @@ func TestSignL1Endpoint(t *testing.T) {
 }
 
 func TestSignL1UnknownKey(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
 	defer srv.Close()
 	body := `{"keyId":"nope","kind":"order","params":{"asset":0,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"nonce":1,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -179,7 +194,7 @@ func TestSignL1BadKind(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"nope","params":{},"nonce":1,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -198,7 +213,7 @@ func TestSignL1DeniedWithoutPolicy(t *testing.T) {
 	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	srv := httptest.NewServer(newMux(ks, policy.NewStore(), nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policy.NewStore(), nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"nonce":1,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -226,7 +241,7 @@ func TestSignL1OverNotionalCap(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 100})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"nonce":1,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -254,7 +269,7 @@ func TestSignL1BadParamsAfterPolicy(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"cancel": true}, MaxNotionalUsdc: 1e12})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"cancel","params":{"cancels":"notarray"},"nonce":1,"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -275,7 +290,7 @@ func TestSignL1ModifyOverNotionalCap(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"modify": true}, MaxNotionalUsdc: 100})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	// modify carrying an order with notional 50000*0.01 = 500 > cap 100.
 	body := `{"keyId":"k1","kind":"modify","params":{"oidNum":123,"order":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc"}},"nonce":1,"isTestnet":false}`
@@ -304,7 +319,7 @@ func TestSignL1BatchModifyOverNotionalCap(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"batchModify": true}, MaxNotionalUsdc: 100})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	// two orders summing to 500 + 300 = 800 > cap 100.
 	body := `{"keyId":"k1","kind":"batchModify","params":{"modifies":[{"oidNum":1,"order":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc"}},{"oidNum":2,"order":{"asset":0,"isBuy":true,"px":"30000","sz":"0.01","reduceOnly":false,"tif":"Gtc"}}]},"nonce":1,"isTestnet":false}`
@@ -326,7 +341,7 @@ func TestSignL1BatchModifyNegativeLegMasking(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"batchModify": true}, MaxNotionalUsdc: 100})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	// A +50000 leg (over cap 100) masked by a negative leg so the naive sum is 40.
 	// Must NOT be allowed: the negative leg is malformed → fail closed.
@@ -356,7 +371,7 @@ func TestSignL1OrderNegativePriceRejected(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
-	srv := httptest.NewServer(newMux(ks, policies, nonce.New(nil), policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
 	defer srv.Close()
 	// Negative px AND negative sz would multiply to a positive product; must fail closed.
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"-50000","sz":"-1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"nonce":1,"isTestnet":false}`
@@ -385,8 +400,7 @@ func TestSignL1GeneratesMonotonicNonce(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
-	nonces := nonce.New(func() int64 { return 1700000000000 })
-	srv := httptest.NewServer(newMux(ks, policies, nonces, policy.NewSpendTracker(nil)))
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	sign := func() uint64 {
@@ -425,9 +439,7 @@ func TestSignL1DailyCapExceeded(t *testing.T) {
 	policies := policy.NewStore()
 	// Per-order cap is generous (1e12); the DAILY cap is 600 and each order is 500.
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 600})
-	nonces := nonce.New(func() int64 { return 1700000000000 })
-	spend := policy.NewSpendTracker(func() int64 { return 1700000000000 })
-	srv := httptest.NewServer(newMux(ks, policies, nonces, spend))
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	post := func() int {
@@ -468,9 +480,7 @@ func TestSignL1TwapOrderDeniedNoPrice(t *testing.T) {
 	// twapOrder is explicitly allowed and caps are generous; it must STILL be
 	// denied because a TWAP has no request price and cannot be notional-checked.
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"twapOrder": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 1e12})
-	nonces := nonce.New(func() int64 { return 1700000000000 })
-	spend := policy.NewSpendTracker(func() int64 { return 1700000000000 })
-	srv := httptest.NewServer(newMux(ks, policies, nonces, spend))
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"twapOrder","params":{"asset":0,"isBuy":true,"sz":"0.01","reduceOnly":false,"minutes":30,"randomize":false},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -487,5 +497,70 @@ func TestSignL1TwapOrderDeniedNoPrice(t *testing.T) {
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	if out.Error != "invalid notional" {
 		t.Fatalf("reason = %q, want %q", out.Error, "invalid notional")
+	}
+}
+
+func TestSignL1NonLeader503(t *testing.T) {
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	// A non-leader must refuse to sign (503) even for an otherwise-valid request.
+	srv := httptest.NewServer(newMux(ks, policies, singlewriter.NewMem(), constFencer{epoch: 1, leader: false}, nil))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 503 {
+		t.Fatalf("status = %d, want 503 (not leader)", res.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Error != "not leader" {
+		t.Fatalf("reason = %q, want %q", out.Error, "not leader")
+	}
+}
+
+func TestSignL1FencedConflict(t *testing.T) {
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	// A newer leader has already advanced this key's fence to 5 in the single-writer.
+	writer := singlewriter.NewMem()
+	if _, err := writer.Authorize(context.Background(), singlewriter.Request{
+		KeyID: "k1", Fence: 5, Notional: 0, DailyCap: 0, NowMs: 1700000000000,
+	}); err != nil {
+		t.Fatalf("seed fence: %v", err)
+	}
+	// This endpoint still believes it is the leader at the STALE epoch 1 → fenced (409).
+	srv := httptest.NewServer(newMux(ks, policies, writer, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 409 {
+		t.Fatalf("status = %d, want 409 (stale fence)", res.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Error != "fenced" {
+		t.Fatalf("reason = %q, want %q", out.Error, "fenced")
 	}
 }
