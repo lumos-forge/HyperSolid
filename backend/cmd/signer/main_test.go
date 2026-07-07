@@ -457,3 +457,35 @@ func TestSignL1DailyCapExceeded(t *testing.T) {
 		t.Fatalf("reason = %q, want %q", out.Error, "daily cap exceeded")
 	}
 }
+
+func TestSignL1TwapOrderDeniedNoPrice(t *testing.T) {
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	// twapOrder is explicitly allowed and caps are generous; it must STILL be
+	// denied because a TWAP has no request price and cannot be notional-checked.
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"twapOrder": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 1e12})
+	nonces := nonce.New(func() int64 { return 1700000000000 })
+	spend := policy.NewSpendTracker(func() int64 { return 1700000000000 })
+	srv := httptest.NewServer(newMux(ks, policies, nonces, spend))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"twapOrder","params":{"asset":0,"isBuy":true,"sz":"0.01","reduceOnly":false,"minutes":30,"randomize":false},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 403 {
+		t.Fatalf("twapOrder status = %d, want 403 (unpriceable size-bearing order, fail-closed)", res.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Error != "invalid notional" {
+		t.Fatalf("reason = %q, want %q", out.Error, "invalid notional")
+	}
+}

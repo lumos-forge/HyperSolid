@@ -41,6 +41,11 @@ func (s *SpendTracker) Charge(keyID string, notional, dailyCap float64) bool {
 	if math.IsNaN(notional) || math.IsInf(notional, 0) || notional < 0 {
 		return false
 	}
+	// A negative daily cap is a misconfiguration; fail closed rather than treat
+	// it as unlimited (dailyCap == 0 remains the explicit "no limit" sentinel).
+	if dailyCap < 0 {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d := s.nowMs() / dayMs

@@ -111,3 +111,13 @@ func TestChargeRejectsInvalidNotional(t *testing.T) {
 		t.Fatalf("Spent = %v, want 500 (invalid charges must not mutate total)", got)
 	}
 }
+
+func TestChargeNegativeCapFailsClosed(t *testing.T) {
+	s := NewSpendTracker(func() int64 { return 1_700_000_000_000 })
+	if s.Charge("k1", 1, -5) {
+		t.Fatal("negative dailyCap (misconfig) must fail closed (deny)")
+	}
+	if got := s.Spent("k1"); got != 0 {
+		t.Fatalf("Spent = %v, want 0 (denied charge not added)", got)
+	}
+}

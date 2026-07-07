@@ -135,6 +135,12 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 		}
 		// Multiple assets possible → leave Coin "" so only the global cap applies.
 		return policy.Intent{Kind: kind, NotionalUsdc: total}
+	case "twapOrder":
+		// A TWAP order carries size but no request price (it executes at market
+		// over `minutes`), so its USD notional cannot be computed here. Fail
+		// closed: NaN notional makes Evaluate deny it ("invalid notional") rather
+		// than let a size-bearing order bypass the per-order and daily caps.
+		return policy.Intent{Kind: kind, NotionalUsdc: math.NaN()}
 	default:
 		return policy.Intent{Kind: kind}
 	}
