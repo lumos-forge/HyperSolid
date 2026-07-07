@@ -564,3 +564,32 @@ func TestSignL1FencedConflict(t *testing.T) {
 		t.Fatalf("reason = %q, want %q", out.Error, "fenced")
 	}
 }
+
+func TestBuildHandlerInMemory(t *testing.T) {
+	h, cleanup, err := buildHandler(context.Background(), config{}, keystore.New(), policy.NewStore())
+	if err != nil {
+		t.Fatalf("buildHandler: %v", err)
+	}
+	defer cleanup()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("healthz: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("healthz status = %d, want 200", res.StatusCode)
+	}
+	// The sign route is wired; an unknown key returns 404 (empty keystore).
+	body := `{"keyId":"nope","kind":"order","params":{"asset":0,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	sr, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	sr.Body.Close()
+	if sr.StatusCode != 404 {
+		t.Fatalf("sign unknown key status = %d, want 404", sr.StatusCode)
+	}
+}
