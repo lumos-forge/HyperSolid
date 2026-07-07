@@ -47,6 +47,10 @@ export class TwapService {
    * All slice fills in [startMs, endMs], paginated via userTwapSliceFillsByTime and
    * grouped by twapId (deduped by tid). Pages forward until an empty page, no cursor
    * progress, or SLICE_FILLS_MAX_PAGES — no dependency on HL's exact per-call cap.
+   *
+   * Paging is oldest→newest, so under extreme volume (> SLICE_FILLS_MAX_PAGES × the
+   * per-call cap) the bound truncates the NEWEST fills; the live slice-fill WS
+   * subscription still surfaces the most recent ones, so the UI stays current.
    */
   async loadSliceFillsByTime(address: string, startMs: number, endMs = Date.now()): Promise<Map<number, Fill[]>> {
     const all: TwapSliceFill[] = [];
@@ -55,8 +59,13 @@ export class TwapService {
       const norm = normalizeSliceFills(await this.info.userTwapSliceFillsByTime(address, cursor, endMs));
       if (norm.length === 0) break;
       all.push(...norm);
+      // Advance strictly past the newest fill so pages don't overlap; using max()
+      // (not the last element) is correct regardless of the API's return ordering.
       const maxTime = Math.max(...norm.map((f) => f.fill.time));
-      if (maxTime + 1 <= cursor) break; // no progress (defensive: a full page all at one ms)
+      // Guarantee forward progress: if the newest fill is at/behind the cursor the
+      // window is exhausted (or a whole page shares one ms — see the oldest→newest
+      // note above), so stop rather than re-fetch the same window.
+      if (maxTime + 1 <= cursor) break;
       cursor = maxTime + 1;
     }
     return groupSliceFillsByTwapId(all);
