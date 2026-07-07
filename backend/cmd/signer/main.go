@@ -277,6 +277,9 @@ type config struct {
 // configFromEnv reads SIGNER_ADDR / DATABASE_URL / SIGNER_LEASE_NAME /
 // SIGNER_HOLDER_ID and fills sensible defaults. A non-empty DATABASE_URL selects
 // the Postgres cross-host backend; otherwise the signer runs single-instance.
+// If SIGNER_HOLDER_ID is set it MUST be unique per instance — two instances
+// sharing a holder id would each renew the other's lease (split-brain); the
+// default (hostname-pid-random) is unique.
 func configFromEnv() config {
 	cfg := config{
 		addr:        os.Getenv("SIGNER_ADDR"),
@@ -354,7 +357,13 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 	return h, cleanup, nil
 }
 
-func main() {
+func main() { os.Exit(run()) }
+
+// run wires and serves the signer, returning a process exit code. It is separate
+// from main so that deferred cleanup (which releases the lease and closes the
+// pool) always runs — even on a ListenAndServe error — instead of being skipped
+// by os.Exit inside a log.Fatal.
+func run() int {
 	cfg := configFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -363,7 +372,8 @@ func main() {
 	policies := policy.NewStore()
 	h, cleanup, err := buildHandler(ctx, cfg, ks, policies)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return 1
 	}
 	defer cleanup()
 
@@ -376,6 +386,8 @@ func main() {
 	}()
 	log.Printf("signer service listening on %s (db=%t)", cfg.addr, cfg.databaseURL != "")
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		log.Print(err)
+		return 1 // deferred cleanup() releases the lease + closes the pool
 	}
+	return 0
 }
