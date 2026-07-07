@@ -144,7 +144,7 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 // the reject-first policy passes. The server is the nonce single-writer: it
 // allocates a strictly-increasing nonce per key and returns it. Fail-closed:
 // an unknown keyId returns 404. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator) http.HandlerFunc {
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator, spend *policy.SpendTracker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -160,13 +160,19 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.A
 			writeErr(w, http.StatusNotFound, "unknown keyId")
 			return
 		}
-		if d := policy.Evaluate(intentFor(req.Kind, req.Params), policies.Get(req.KeyID)); !d.Allow {
+		intent := intentFor(req.Kind, req.Params)
+		cfg := policies.Get(req.KeyID)
+		if d := policy.Evaluate(intent, cfg); !d.Allow {
 			writeErr(w, http.StatusForbidden, d.Reason)
 			return
 		}
 		action, err := hl.ActionFromKind(req.Kind, req.Params)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !spend.Charge(req.KeyID, intent.NotionalUsdc, cfg.DailyMaxNotionalUsdc) {
+			writeErr(w, http.StatusForbidden, "daily cap exceeded")
 			return
 		}
 		n := nonces.Next(req.KeyID)
@@ -187,14 +193,14 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.A
 
 // newMux builds the service router (no side effects; testable).
 // The digest endpoints are keyless; /v1/sign/l1 uses the injected keystore.
-func newMux(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator) http.Handler {
+func newMux(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator, spend *policy.SpendTracker) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, nonces))
+	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, nonces, spend))
 	return mux
 }
 
@@ -206,8 +212,9 @@ func main() {
 	ks := keystore.New()
 	policies := policy.NewStore()
 	nonces := nonce.New(nil)
+	spend := policy.NewSpendTracker(nil)
 	log.Printf("signer service listening on %s (empty keystore + policy; fail-closed)", addr)
-	if err := http.ListenAndServe(addr, newMux(ks, policies, nonces)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(ks, policies, nonces, spend)); err != nil {
 		log.Fatal(err)
 	}
 }
