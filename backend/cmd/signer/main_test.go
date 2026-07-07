@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -496,5 +497,70 @@ func TestSignL1TwapOrderDeniedNoPrice(t *testing.T) {
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	if out.Error != "invalid notional" {
 		t.Fatalf("reason = %q, want %q", out.Error, "invalid notional")
+	}
+}
+
+func TestSignL1NonLeader503(t *testing.T) {
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	// A non-leader must refuse to sign (503) even for an otherwise-valid request.
+	srv := httptest.NewServer(newMux(ks, policies, singlewriter.NewMem(), constFencer{epoch: 1, leader: false}, nil))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 503 {
+		t.Fatalf("status = %d, want 503 (not leader)", res.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Error != "not leader" {
+		t.Fatalf("reason = %q, want %q", out.Error, "not leader")
+	}
+}
+
+func TestSignL1FencedConflict(t *testing.T) {
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	// A newer leader has already advanced this key's fence to 5 in the single-writer.
+	writer := singlewriter.NewMem()
+	if _, err := writer.Authorize(context.Background(), singlewriter.Request{
+		KeyID: "k1", Fence: 5, Notional: 0, DailyCap: 0, NowMs: 1700000000000,
+	}); err != nil {
+		t.Fatalf("seed fence: %v", err)
+	}
+	// This endpoint still believes it is the leader at the STALE epoch 1 → fenced (409).
+	srv := httptest.NewServer(newMux(ks, policies, writer, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 409 {
+		t.Fatalf("status = %d, want 409 (stale fence)", res.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Error != "fenced" {
+		t.Fatalf("reason = %q, want %q", out.Error, "fenced")
 	}
 }
