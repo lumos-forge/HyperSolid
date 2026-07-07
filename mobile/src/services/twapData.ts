@@ -11,6 +11,9 @@ import {
 } from "../lib/hyperliquid/twap";
 import type { Fill, Subscription } from "../lib/hyperliquid/types";
 
+/** HL caps *ByTime pages; we page forward until an empty page (cap-independent). */
+const SLICE_FILLS_MAX_PAGES = 25;
+
 /** Loads a user's TWAPs (active + history), slice fills, and live slice-fill updates. */
 export class TwapService {
   constructor(private info: TwapInfoLike, private subs?: TwapSubsLike) {}
@@ -38,6 +41,25 @@ export class TwapService {
   /** Slice fills for an address, grouped by twapId (newest first per group). */
   async loadSliceFills(address: string): Promise<Map<number, Fill[]>> {
     return groupSliceFillsByTwapId(normalizeSliceFills(await this.info.userTwapSliceFills(address)));
+  }
+
+  /**
+   * All slice fills in [startMs, endMs], paginated via userTwapSliceFillsByTime and
+   * grouped by twapId (deduped by tid). Pages forward until an empty page, no cursor
+   * progress, or SLICE_FILLS_MAX_PAGES — no dependency on HL's exact per-call cap.
+   */
+  async loadSliceFillsByTime(address: string, startMs: number, endMs = Date.now()): Promise<Map<number, Fill[]>> {
+    const all: TwapSliceFill[] = [];
+    let cursor = startMs;
+    for (let page = 0; page < SLICE_FILLS_MAX_PAGES; page++) {
+      const norm = normalizeSliceFills(await this.info.userTwapSliceFillsByTime(address, cursor, endMs));
+      if (norm.length === 0) break;
+      all.push(...norm);
+      const maxTime = Math.max(...norm.map((f) => f.fill.time));
+      if (maxTime + 1 <= cursor) break; // no progress (defensive: a full page all at one ms)
+      cursor = maxTime + 1;
+    }
+    return groupSliceFillsByTwapId(all);
   }
 
   /** Subscribe to live slice fills; the callback receives normalized `TwapSliceFill[]`. */

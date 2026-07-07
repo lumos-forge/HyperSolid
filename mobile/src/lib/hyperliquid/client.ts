@@ -94,10 +94,13 @@ export function createTwapInfoClient(network: Network): TwapInfoLike {
   }) as unknown as {
     twapHistory(args: { user: string }): Promise<unknown>;
     userTwapSliceFills(args: { user: string }): Promise<unknown>;
+    userTwapSliceFillsByTime(args: { user: string; startTime: number; endTime: number }): Promise<unknown>;
   };
   return {
     twapHistory: (address) => info.twapHistory({ user: address }) as never,
     userTwapSliceFills: (address) => info.userTwapSliceFills({ user: address }) as never,
+    userTwapSliceFillsByTime: (address, startTime, endTime) =>
+      info.userTwapSliceFillsByTime({ user: address, startTime, endTime }) as never,
   };
 }
 
