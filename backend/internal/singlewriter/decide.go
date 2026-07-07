@@ -14,23 +14,34 @@ func decide(s State, r Request) (State, Grant, error) {
 	if r.Fence < s.Fence {
 		return s, Grant{}, ErrFenced
 	}
-	// 2. invalid notional fails closed (mirrors policy.SpendTracker.Charge).
+	// 2. clock sanity: a non-positive NowMs is a corrupt/misconfigured caller
+	// clock. Fail closed, because uint64(negative) poisons the nonce high-water
+	// and the next LastNonce+1 wraps back to a lower nonce (regression).
+	if r.NowMs <= 0 {
+		return s, Grant{}, ErrInvalidClock
+	}
+	// 3. invalid notional fails closed (mirrors policy.SpendTracker.Charge).
 	if math.IsNaN(r.Notional) || math.IsInf(r.Notional, 0) || r.Notional < 0 {
 		return s, Grant{}, ErrInvalidNotional
 	}
-	// 3. daily cap check+reserve, UTC-day bucketed; rollover resets the total.
+	// 4. daily cap check+reserve. A negative cap is a misconfiguration → fail
+	// closed. Otherwise bucket by UTC day; a day rollover resets the running total.
+	if r.DailyCap < 0 {
+		return s, Grant{}, ErrDailyCap
+	}
 	day := r.NowMs / dayMs
 	total := s.SpendTotal
 	if s.SpendDay != day {
 		total = 0
 	}
-	if r.DailyCap < 0 { // misconfigured cap → fail closed
+	if r.DailyCap > 0 && total+r.Notional > r.DailyCap { // strict >, exactly-at-cap allowed
+		// Deny does NOT advance the nonce and returns the UNCHANGED state. Unlike
+		// SpendTracker.Charge we intentionally do not persist the day-reset on this
+		// path, so a Postgres impl can safely ROLLBACK; the next accepted call
+		// recomputes the day and resets anyway.
 		return s, Grant{}, ErrDailyCap
 	}
-	if r.DailyCap > 0 && total+r.Notional > r.DailyCap { // strict >, exactly-at-cap allowed
-		return s, Grant{}, ErrDailyCap // deny does NOT advance nonce
-	}
-	// 4. nonce high-water advance: n = max(now, last+1), strictly increasing.
+	// 5. nonce high-water advance: n = max(now, last+1), strictly increasing.
 	n := uint64(r.NowMs)
 	if n <= s.LastNonce {
 		n = s.LastNonce + 1

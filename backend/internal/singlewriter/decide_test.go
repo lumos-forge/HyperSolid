@@ -121,3 +121,16 @@ func TestDecideNegativeCapFailsClosed(t *testing.T) {
 		t.Fatalf("state mutated on negative-cap reject")
 	}
 }
+
+func TestDecideInvalidClockFailsClosed(t *testing.T) {
+	s := State{Fence: 1, LastNonce: uint64(fixedNow)}
+	for _, now := range []int64{0, -1, -1_700_000_000_000} {
+		next, _, err := decide(s, Request{KeyID: "k1", Fence: 1, Notional: 1, DailyCap: 1000, NowMs: now})
+		if err != ErrInvalidClock {
+			t.Fatalf("NowMs %d: err = %v, want ErrInvalidClock", now, err)
+		}
+		if next != s {
+			t.Fatalf("NowMs %d: state mutated on reject", now)
+		}
+	}
+}

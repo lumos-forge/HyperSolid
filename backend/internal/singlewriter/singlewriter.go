@@ -52,4 +52,5 @@ var (
 	ErrFenced          = errors.New("fenced: stale fencing token") // stale lease token → future 409
 	ErrDailyCap        = errors.New("daily cap exceeded")          // over/under (misconfig) daily cap → 403
 	ErrInvalidNotional = errors.New("invalid notional")           // NaN/Inf/negative notional → 403
+	ErrInvalidClock    = errors.New("invalid clock")             // non-positive NowMs → 400/500
 )

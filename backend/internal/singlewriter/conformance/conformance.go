@@ -134,4 +134,13 @@ func Run(t *testing.T, newWriter func() singlewriter.Writer) {
 			t.Fatalf("key b independent, err = %v", err)
 		}
 	})
+
+	t.Run("invalid clock fails closed", func(t *testing.T) {
+		w := newWriter()
+		for _, now := range []int64{0, -1} {
+			if _, err := w.Authorize(ctx, Request{KeyID: "k", Fence: 1, Notional: 1, DailyCap: 1000, NowMs: now}); err != singlewriter.ErrInvalidClock {
+				t.Fatalf("NowMs %d err = %v, want ErrInvalidClock", now, err)
+			}
+		}
+	})
 }
