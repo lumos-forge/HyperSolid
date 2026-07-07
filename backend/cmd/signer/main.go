@@ -16,6 +16,7 @@ import (
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
+	"github.com/lumos-forge/hypersolid/backend/internal/nonce"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 )
 
@@ -63,14 +64,14 @@ type signL1Request struct {
 	KeyID     string          `json:"keyId"`
 	Kind      string          `json:"kind"`
 	Params    json.RawMessage `json:"params"`
-	Nonce     uint64          `json:"nonce"`
 	IsTestnet bool            `json:"isTestnet"`
 }
 
 type signL1Response struct {
-	R string `json:"r"`
-	S string `json:"s"`
-	V int    `json:"v"`
+	R     string `json:"r"`
+	S     string `json:"s"`
+	V     int    `json:"v"`
+	Nonce uint64 `json:"nonce"`
 }
 
 // orderNotional computes px*sz from an order tuple's string fields; any parse
@@ -139,9 +140,11 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 	}
 }
 
-// handleSignL1 signs an L1 action with the keystore signer named by keyId.
-// Fail-closed: an unknown keyId returns 404. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store) http.HandlerFunc {
+// handleSignL1 signs an L1 action with the keystore signer named by keyId, after
+// the reject-first policy passes. The server is the nonce single-writer: it
+// allocates a strictly-increasing nonce per key and returns it. Fail-closed:
+// an unknown keyId returns 404. Never logs key material.
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -166,30 +169,32 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store) http.HandlerFun
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		sig, err := signer.SignL1Action(action, req.Nonce, req.IsTestnet)
+		n := nonces.Next(req.KeyID)
+		sig, err := signer.SignL1Action(action, n, req.IsTestnet)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "sign failed")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(signL1Response{
-			R: "0x" + hex.EncodeToString(sig.R[:]),
-			S: "0x" + hex.EncodeToString(sig.S[:]),
-			V: int(sig.V),
+			R:     "0x" + hex.EncodeToString(sig.R[:]),
+			S:     "0x" + hex.EncodeToString(sig.S[:]),
+			V:     int(sig.V),
+			Nonce: n,
 		})
 	}
 }
 
 // newMux builds the service router (no side effects; testable).
 // The digest endpoints are keyless; /v1/sign/l1 uses the injected keystore.
-func newMux(ks *keystore.Keystore, policies *policy.Store) http.Handler {
+func newMux(ks *keystore.Keystore, policies *policy.Store, nonces *nonce.Allocator) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies))
+	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, nonces))
 	return mux
 }
 
@@ -200,8 +205,9 @@ func main() {
 	}
 	ks := keystore.New()
 	policies := policy.NewStore()
+	nonces := nonce.New(nil)
 	log.Printf("signer service listening on %s (empty keystore + policy; fail-closed)", addr)
-	if err := http.ListenAndServe(addr, newMux(ks, policies)); err != nil {
+	if err := http.ListenAndServe(addr, newMux(ks, policies, nonces)); err != nil {
 		log.Fatal(err)
 	}
 }
