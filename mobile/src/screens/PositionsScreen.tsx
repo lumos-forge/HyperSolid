@@ -99,9 +99,14 @@ export function PositionsScreen({
       void services.orders.loadOpenOrders(addr).then(setOrders).catch((e) => setOrdersError(classifyFetchError(e)));
       void services.twap
         .loadActiveAndHistory(addr)
-        .then(({ active, history }) => { setActiveTwaps(active); setTwapHistory(history); })
+        .then(({ active, history }) => {
+          setActiveTwaps(active);
+          setTwapHistory(history);
+          const starts = [...active, ...history].map((t) => t.startedAt).filter((n) => n > 0);
+          const startMs = starts.length ? Math.min(...starts) - 60_000 : Date.now() - 7 * 24 * 3600 * 1000;
+          void services.twap.loadSliceFillsByTime(addr, startMs).then(setSliceFills).catch(() => {});
+        })
         .catch((e) => setTwapError(classifyFetchError(e)));
-      void services.twap.loadSliceFills(addr).then(setSliceFills).catch(() => {});
     },
     [load, services],
   );

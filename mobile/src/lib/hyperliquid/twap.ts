@@ -18,6 +18,7 @@ export interface ActiveTwap {
 export interface TwapInfoLike {
   twapHistory(address: string): Promise<unknown>;
   userTwapSliceFills(address: string): Promise<unknown>;
+  userTwapSliceFillsByTime(address: string, startTime: number, endTime: number): Promise<unknown>;
 }
 
 /** Minimal injectable WebSocket surface for live TWAP slice fills. */
