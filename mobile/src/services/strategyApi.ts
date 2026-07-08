@@ -17,6 +17,7 @@ export interface GridParams {
 }
 export interface GridLimitParams {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
+  mode?: "longOnly" | "symmetric";
 }
 export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
 

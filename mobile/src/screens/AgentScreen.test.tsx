@@ -210,7 +210,24 @@ describe("AgentScreen", () => {
     fireEvent.changeText(screen.getByTestId("grid-limit-per-level"), "50");
     fireEvent.press(screen.getByTestId("grid-limit-create"));
     await waitFor(() =>
-      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 }),
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "longOnly" }),
+    );
+  });
+
+  it("creates a symmetric limit grid when the symmetric mode is selected", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-gridLimit")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-gridLimit"));
+    fireEvent.changeText(screen.getByTestId("grid-limit-coin"), "BTC");
+    fireEvent.changeText(screen.getByTestId("grid-limit-lower"), "100");
+    fireEvent.changeText(screen.getByTestId("grid-limit-upper"), "200");
+    fireEvent.changeText(screen.getByTestId("grid-limit-levels"), "6");
+    fireEvent.changeText(screen.getByTestId("grid-limit-per-level"), "50");
+    fireEvent.press(screen.getByTestId("grid-limit-mode-symmetric"));
+    fireEvent.press(screen.getByTestId("grid-limit-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50, mode: "symmetric" }),
     );
   });
 
