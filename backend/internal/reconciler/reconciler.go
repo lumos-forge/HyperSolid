@@ -30,11 +30,25 @@ type Reconciler struct {
 	client   InfoClient
 	led      ledger.Reconciler
 	accounts []Account
+	isLeader func() bool // optional leader gate; nil = always run
+}
+
+// Option configures a Reconciler.
+type Option func(*Reconciler)
+
+// WithLeaderGate makes step a no-op unless isLeader() is true, so in a
+// multi-instance deployment only the current lease holder polls HL.
+func WithLeaderGate(isLeader func() bool) Option {
+	return func(r *Reconciler) { r.isLeader = isLeader }
 }
 
 // New returns a Reconciler over the given HL info client, ledger, and accounts.
-func New(client InfoClient, led ledger.Reconciler, accounts []Account) *Reconciler {
-	return &Reconciler{client: client, led: led, accounts: accounts}
+func New(client InfoClient, led ledger.Reconciler, accounts []Account, opts ...Option) *Reconciler {
+	r := &Reconciler{client: client, led: led, accounts: accounts}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
 }
 
 // targetFor returns the ledger status a cloid should advance toward given the open
@@ -64,6 +78,9 @@ func (r *Reconciler) reconcileOne(ctx context.Context, keyID, cloid string, targ
 // step runs one poll+reconcile pass over all accounts, returning the first
 // infrastructure error (HL query or ledger infra) encountered.
 func (r *Reconciler) step(ctx context.Context) error {
+	if r.isLeader != nil && !r.isLeader() {
+		return nil // not the leader; another instance polls
+	}
 	for _, a := range r.accounts {
 		open, err := r.client.OpenCloids(ctx, a.Address)
 		if err != nil {

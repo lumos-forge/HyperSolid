@@ -21,18 +21,21 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
+	"github.com/lumos-forge/hypersolid/backend/internal/hlinfo"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/leader"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
 
@@ -398,12 +401,38 @@ var _ Fencer = (*leader.Leader)(nil)
 
 // config is the signer's runtime configuration.
 type config struct {
-	addr        string
-	databaseURL string
-	leaseName   string
-	holderID    string
-	leaseTTL    time.Duration
-	renewEvery  time.Duration
+	addr              string
+	databaseURL       string
+	leaseName         string
+	holderID          string
+	leaseTTL          time.Duration
+	renewEvery        time.Duration
+	hlInfoURL         string
+	reconcileAccounts []reconciler.Account
+	reconcileInterval time.Duration
+	hlTimeout         time.Duration
+}
+
+// parseAccounts parses a comma-separated "keyID=address" list into reconcile
+// accounts, trimming whitespace and skipping malformed (missing/empty half) pairs.
+func parseAccounts(s string) []reconciler.Account {
+	var out []reconciler.Account
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		keyID, addr := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+		if keyID == "" || addr == "" {
+			continue
+		}
+		out = append(out, reconciler.Account{KeyID: keyID, Address: addr})
+	}
+	return out
 }
 
 // configFromEnv reads SIGNER_ADDR / DATABASE_URL / SIGNER_LEASE_NAME /
@@ -430,6 +459,16 @@ func configFromEnv() config {
 	if cfg.holderID == "" {
 		cfg.holderID = defaultHolderID()
 	}
+	cfg.hlInfoURL = os.Getenv("SIGNER_HL_INFO_URL")
+	cfg.reconcileAccounts = parseAccounts(os.Getenv("SIGNER_RECONCILE_ACCOUNTS"))
+	cfg.reconcileInterval = 15 * time.Second
+	if d, err := time.ParseDuration(os.Getenv("SIGNER_RECONCILE_INTERVAL")); err == nil && d > 0 {
+		cfg.reconcileInterval = d
+	}
+	cfg.hlTimeout = 10 * time.Second
+	if d, err := time.ParseDuration(os.Getenv("SIGNER_HL_TIMEOUT")); err == nil && d > 0 {
+		cfg.hlTimeout = d
+	}
 	return cfg
 }
 
@@ -445,47 +484,69 @@ func defaultHolderID() string {
 // policy store. With an empty DATABASE_URL it wires a single-instance in-memory
 // single-writer + an always-leader fencer. Otherwise it opens a pgxpool, ensures
 // both schemas, and wires the Postgres single-writer + a lease-backed leader
-// started in the background. The returned cleanup cancels the leader (releasing
-// the lease) and closes the pool; on any setup error the pool is closed and the
-// error returned.
+// started in the background. When configured (HL URL + accounts), it starts a
+// leader-gated auto-reconciler. The returned cleanup cancels the leader + reconciler
+// (releasing the lease) and closes the pool; on any setup error the pool is closed
+// and the error returned.
 func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, policies *policy.Store) (http.Handler, func(), error) {
 	nowMs := func() int64 { return time.Now().UnixMilli() }
 
+	var led ledger.Ledger
+	var fencer Fencer
+	cleanup := func() {}
+
 	if cfg.databaseURL == "" {
-		h := newMux(ks, policies, ledger.NewMem(), staticFencer{epoch: 1}, nowMs)
-		return h, func() {}, nil
+		led = ledger.NewMem()
+		fencer = staticFencer{epoch: 1}
+	} else {
+		pool, err := pgxpool.New(ctx, cfg.databaseURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("signer: pgxpool: %w", err)
+		}
+		if err := ledgerpg.EnsureSchema(ctx, pool); err != nil {
+			pool.Close()
+			return nil, nil, fmt.Errorf("signer: ledger schema: %w", err)
+		}
+		if err := leasepg.EnsureSchema(ctx, pool); err != nil {
+			pool.Close()
+			return nil, nil, fmt.Errorf("signer: lease schema: %w", err)
+		}
+		ld := leader.New(leasepg.New(pool), cfg.leaseName, cfg.holderID, cfg.leaseTTL)
+		leaderCtx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			ld.Run(leaderCtx, cfg.renewEvery)
+			close(done)
+		}()
+		led = ledgerpg.New(pool)
+		fencer = ld
+		cleanup = func() {
+			cancel() // leader.Run releases the lease on ctx cancel
+			<-done   // wait for Run to finish releasing before closing the pool
+			pool.Close()
+		}
 	}
 
-	pool, err := pgxpool.New(ctx, cfg.databaseURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("signer: pgxpool: %w", err)
-	}
-	if err := ledgerpg.EnsureSchema(ctx, pool); err != nil {
-		pool.Close()
-		return nil, nil, fmt.Errorf("signer: ledger schema: %w", err)
-	}
-	if err := leasepg.EnsureSchema(ctx, pool); err != nil {
-		pool.Close()
-		return nil, nil, fmt.Errorf("signer: lease schema: %w", err)
-	}
-
-	auth := ledgerpg.New(pool)
-	store := leasepg.New(pool)
-	ld := leader.New(store, cfg.leaseName, cfg.holderID, cfg.leaseTTL)
-
-	leaderCtx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		ld.Run(leaderCtx, cfg.renewEvery)
-		close(done)
-	}()
-	cleanup := func() {
-		cancel() // leader.Run releases the lease on ctx cancel
-		<-done   // wait for Run to finish releasing before closing the pool
-		pool.Close()
+	// Optionally start the leader-gated auto-reconciler when configured.
+	if cfg.hlInfoURL != "" && len(cfg.reconcileAccounts) > 0 {
+		client := hlinfo.New(cfg.hlInfoURL, &http.Client{Timeout: cfg.hlTimeout})
+		isLeader := func() bool { _, l := fencer.Fence(); return l }
+		rec := reconciler.New(client, led, cfg.reconcileAccounts, reconciler.WithLeaderGate(isLeader))
+		recCtx, recCancel := context.WithCancel(context.Background())
+		recDone := make(chan struct{})
+		go func() {
+			rec.Run(recCtx, cfg.reconcileInterval)
+			close(recDone)
+		}()
+		base := cleanup
+		cleanup = func() {
+			recCancel()
+			<-recDone
+			base()
+		}
 	}
 
-	h := newMux(ks, policies, auth, ld, nowMs)
+	h := newMux(ks, policies, led, fencer, nowMs)
 	return h, cleanup, nil
 }
 
