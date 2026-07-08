@@ -110,3 +110,20 @@ func TestEvaluate(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigRateFieldsDefaultZeroAndIgnoredByEvaluate(t *testing.T) {
+	// New rate fields default to 0 (disabled) and must NOT affect the pure Evaluate.
+	cfg := Config{
+		AllowedKinds: map[string]bool{"order": true},
+	}
+	if cfg.RatePerSec != 0 || cfg.RateBurst != 0 {
+		t.Fatalf("rate fields must default to 0, got rate=%v burst=%v", cfg.RatePerSec, cfg.RateBurst)
+	}
+	// Setting them does not change the allow decision (Evaluate ignores rate).
+	cfg.RatePerSec = 5
+	cfg.RateBurst = 10
+	d := Evaluate(Intent{Kind: "order", NotionalUsdc: 0}, cfg)
+	if !d.Allow {
+		t.Fatalf("Evaluate must ignore rate fields; got deny: %s", d.Reason)
+	}
+}

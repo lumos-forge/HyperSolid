@@ -972,3 +972,84 @@ func TestMetricsExposesReconcileLeaderGauge(t *testing.T) {
 		t.Fatalf("/metrics missing reconcile leader gauge:\n%s", string(body))
 	}
 }
+
+// signOrderBody builds a well-formed order sign request for key k1 with cloid.
+func signOrderBody(cloid string) string {
+	return `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+}
+
+func TestSignRateLimitReturns429(t *testing.T) {
+	ks := keystore.New()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add key: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:    map[string]bool{"order": true},
+		MaxNotionalUsdc: 1e12,
+		RatePerSec:      1,
+		RateBurst:       2, // burst 2 → under a fixed clock the 3rd request is 429
+	})
+	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+
+	post := func(cloid string) int {
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(signOrderBody(cloid)))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
+	}
+	if c := post("c1"); c == http.StatusTooManyRequests {
+		t.Fatalf("1st request unexpectedly 429")
+	}
+	if c := post("c2"); c == http.StatusTooManyRequests {
+		t.Fatalf("2nd request unexpectedly 429")
+	}
+	if c := post("c3"); c != http.StatusTooManyRequests {
+		t.Fatalf("3rd sign status = %d, want 429 (rate limit)", c)
+	}
+}
+
+func TestSignRateDisabledNotThrottled(t *testing.T) {
+	ks := keystore.New()
+	if err := ks.Add("k1", bytes.Repeat([]byte{0x11}, 32)); err != nil {
+		t.Fatalf("add key: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:    map[string]bool{"order": true},
+		MaxNotionalUsdc: 1e12,
+		// RatePerSec defaults to 0 → rate limiting disabled.
+	})
+	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+
+	for i := 0; i < 10; i++ {
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(signOrderBody("d"+string(rune('0'+i)))))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		code := res.StatusCode
+		res.Body.Close()
+		if code == http.StatusTooManyRequests {
+			t.Fatalf("request %d got 429 but rate limiting is disabled", i+1)
+		}
+	}
+}
+
+func TestSignUnknownKeyNotRateLimited(t *testing.T) {
+	// Unknown key → 404 before the limiter (no bucket allocation for random keyIDs).
+	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+	body := `{"keyId":"nope","cloid":"x","kind":"order","params":{"asset":0,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown key status = %d, want 404", res.StatusCode)
+	}
+}
