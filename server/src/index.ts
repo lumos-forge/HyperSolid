@@ -57,6 +57,7 @@ export async function main(): Promise<void> {
   const dailyMaxNotionalUsdc = process.env.DAILY_MAX_NOTIONAL_USDC
     ? Number(process.env.DAILY_MAX_NOTIONAL_USDC)
     : undefined;
+  const maxOpenOrders = process.env.MAX_OPEN_ORDERS ? Number(process.env.MAX_OPEN_ORDERS) : undefined;
   const tickMs = Number(process.env.TICK_MS ?? 60_000);
   const dbPath = process.env.DB_PATH ?? "strategies.db";
 
@@ -89,7 +90,7 @@ export async function main(): Promise<void> {
     void tick(
       store,
       placer,
-      { maxNotionalUsdc, perCoinMaxNotionalUsdc, dailyMaxNotionalUsdc },
+      { maxNotionalUsdc, perCoinMaxNotionalUsdc, dailyMaxNotionalUsdc, maxOpenOrders },
       killSwitch,
       now(),
       activity,

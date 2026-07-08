@@ -247,11 +247,20 @@ export async function tick(
   // --- gridLimit: resting limit grid reconcile (running strategies) ---
   if (restingExec && ordersReader && marks) {
     const openByOwner = new Map<string, Map<string, { side: "buy" | "sell"; px: number }>>();
+    const openCountByOwner = new Map<string, number>();
     const getOpen = async (owner: string) => {
       let m = openByOwner.get(owner);
-      if (!m) { m = await ordersReader.openCloids(owner); openByOwner.set(owner, m); }
+      if (!m) {
+        const r = await ordersReader.openOrders(owner);
+        m = r.byCloid;
+        openByOwner.set(owner, m);
+        openCountByOwner.set(owner, r.total);
+      }
       return m;
     };
+    const getOpenCount = async (owner: string) => { await getOpen(owner); return openCountByOwner.get(owner) ?? 0; };
+    const overOpenCap = async (owner: string) =>
+      limits.maxOpenOrders !== undefined && limits.maxOpenOrders > 0 && (await getOpenCount(owner)) >= limits.maxOpenOrders;
     const fillsByOwner = new Map<string, Map<string, CloidFill>>();
     const getFills = async (owner: string) => {
       let m = fillsByOwner.get(owner);
@@ -272,15 +281,17 @@ export async function tick(
         const open = await getOpen(s.owner);
         const drained = new Map(store.gridLimitRungs(s.id).map((r) => [r.rung, r]));
         let anyResting = false;
+        const toCancel: string[] = [];
         for (let i = 0; i < rungCount(p); i++) {
           const r: RungState = drained.get(i) ?? { rung: i, state: "idle", side: null, cloid: null, px: null, seq: 0 };
           const candidates = [r.cloid, cloidForKey(s.id, `gl:${i}:${r.seq + 1}`)].filter((c): c is string => !!c);
           let rungResting = false;
           for (const c of candidates) {
-            if (open.has(c)) { await restingExec.cancelCloid({ owner: s.owner, coin: p.coin, cloid: c }); rungResting = true; anyResting = true; }
+            if (open.has(c)) { toCancel.push(c); rungResting = true; anyResting = true; }
           }
           if (!rungResting && r.cloid) store.setGridLimitRung(s.id, { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq });
         }
+        if (toCancel.length > 0) await restingExec.cancelCloids({ owner: s.owner, coin: p.coin, cloids: toCancel });
         if (s.status === "canceling" && !anyResting) store.remove(s.id);
         continue;
       }
@@ -310,6 +321,7 @@ export async function tick(
         const cloid = cloidForKey(s.id, `gl:${i}:${seq}`);
         // Adopt a crash-orphaned resting buy (see placeSell) before spending a fresh caps allowance.
         if (open.has(cloid)) { store.setGridLimitRung(s.id, { rung: i, state: "armed", side: "buy", cloid, px: rungBuyPrice(p, i), seq }); return; }
+        if (await overOpenCap(s.owner)) return;
         if (!withinCaps({ notionalUsdc: p.perLevelUsdc, killSwitch, coin: p.coin }, limits).ok) return;
         if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
           if (activity.notionalSince(s.owner, dayStartUtcMs(now)) + p.perLevelUsdc > limits.dailyMaxNotionalUsdc) return;
@@ -321,6 +333,7 @@ export async function tick(
         const seq = prev.seq + 1;
         const cloid = cloidForKey(s.id, `gl:${i}:${seq}`);
         if (open.has(cloid)) { store.setGridLimitRung(s.id, { rung: i, state: "armed", side: "sell", cloid, px: rungSellPrice(p, i), seq }); return; }
+        if (await overOpenCap(s.owner)) return;
         if (!withinCaps({ notionalUsdc: p.perLevelUsdc, killSwitch, coin: p.coin }, limits).ok) return;
         if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
           if (activity.notionalSince(s.owner, dayStartUtcMs(now)) + p.perLevelUsdc > limits.dailyMaxNotionalUsdc) return;

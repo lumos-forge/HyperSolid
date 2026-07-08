@@ -9,6 +9,8 @@ export interface RiskLimits {
   perCoinMaxNotionalUsdc?: Record<string, number>;
   /** Optional per-owner daily spend (notional) cap; enforced by the scheduler (needs spend state). */
   dailyMaxNotionalUsdc?: number;
+  /** Optional per-owner open-order ceiling for NEW entries; undefined/<=0 = disabled (enforced by the scheduler). */
+  maxOpenOrders?: number;
 }
 
 /**

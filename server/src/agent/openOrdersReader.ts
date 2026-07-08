@@ -11,7 +11,7 @@ export interface OpenOrdersInfoLike {
 }
 
 export interface OpenOrdersReader {
-  openCloids(owner: string): Promise<Map<string, OpenOrderInfo>>;
+  openOrders(owner: string): Promise<{ byCloid: Map<string, OpenOrderInfo>; total: number }>;
 }
 
 interface RawOpenOrder {
@@ -22,23 +22,24 @@ interface RawOpenOrder {
   limitPx?: string;
 }
 
-/** Poll a user's open orders and index them by client order id (cloid). Null-cloid orders (not ours) are dropped. */
+/** Poll a user's open orders: index cloid-tagged ones by cloid, and report the TOTAL open-order
+ * count (including non-cloid manual orders) — the HL per-address quota measure. */
 export function makeOpenOrdersReader(info: OpenOrdersInfoLike): OpenOrdersReader {
   return {
-    async openCloids(owner: string): Promise<Map<string, OpenOrderInfo>> {
+    async openOrders(owner: string): Promise<{ byCloid: Map<string, OpenOrderInfo>; total: number }> {
       const raw = await info.frontendOpenOrders({ user: owner });
-      const out = new Map<string, OpenOrderInfo>();
-      if (!Array.isArray(raw)) return out;
+      const byCloid = new Map<string, OpenOrderInfo>();
+      if (!Array.isArray(raw)) return { byCloid, total: 0 };
       for (const o of raw as RawOpenOrder[]) {
         if (typeof o?.cloid !== "string") continue;
-        out.set(o.cloid, {
+        byCloid.set(o.cloid, {
           oid: Number(o.oid ?? 0),
           coin: o.coin ?? "",
           side: o.side === "A" ? "sell" : "buy",
           px: Number(o.limitPx ?? 0),
         });
       }
-      return out;
+      return { byCloid, total: raw.length };
     },
   };
 }
