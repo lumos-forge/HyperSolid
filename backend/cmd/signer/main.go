@@ -283,6 +283,18 @@ type reconcileResponse struct {
 	Status string `json:"status"`
 }
 
+type orphanDTO struct {
+	KeyID       string `json:"keyId"`
+	Cloid       string `json:"cloid"`
+	Nonce       uint64 `json:"nonce"`
+	Status      string `json:"status"`
+	UpdatedAtMs int64  `json:"updatedAtMs"`
+}
+
+type orphansResponse struct {
+	Orphans []orphanDTO `json:"orphans"`
+}
+
 // validStatus reports whether s is one of the six known lifecycle states.
 func validStatus(s string) bool {
 	switch ledger.Status(s) {
@@ -331,16 +343,37 @@ func handleReconcile(led ledger.Reconciler) http.HandlerFunc {
 	}
 }
 
-// handleOrphans is completed in a later task; this placeholder returns an empty
-// list so the mux compiles after newMux registers the route.
+// handleOrphans returns non-terminal intents whose last update predates the
+// olderThanMs (unix ms) cutoff — signed/submitted/open orders never confirmed to
+// a terminal state. Read-only; no fence gate. Missing/invalid cutoff → 400.
 func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
+		n, err := strconv.ParseInt(r.URL.Query().Get("olderThanMs"), 10, 64)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid olderThanMs")
+			return
+		}
+		orphs, err := led.Orphans(r.Context(), n)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "orphans failed")
+			return
+		}
+		out := orphansResponse{Orphans: []orphanDTO{}}
+		for _, o := range orphs {
+			out.Orphans = append(out.Orphans, orphanDTO{
+				KeyID:       o.KeyID,
+				Cloid:       o.Cloid,
+				Nonce:       o.Nonce,
+				Status:      string(o.Status),
+				UpdatedAtMs: o.UpdatedAtMs,
+			})
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"orphans":[]}`))
+		_ = json.NewEncoder(w).Encode(out)
 	}
 }
 

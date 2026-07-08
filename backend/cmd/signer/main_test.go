@@ -788,3 +788,82 @@ func TestReconcileBadJSONAndMethod(t *testing.T) {
 		t.Fatalf("GET status = %d, want 405", res2.StatusCode)
 	}
 }
+
+func TestOrphansEndpoint(t *testing.T) {
+	led := ledger.NewMem()
+	ctx := context.Background()
+	for _, c := range []string{"a", "b", "term"} {
+		if _, err := led.Authorize(ctx, ledger.Request{KeyID: "k", Cloid: c, Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000}); err != nil {
+			t.Fatalf("seed %s: %v", c, err)
+		}
+	}
+	if _, err := led.Reconcile(ctx, "k", "term", ledger.StatusSubmitted); err != nil {
+		t.Fatalf("term->submitted: %v", err)
+	}
+	if _, err := led.Reconcile(ctx, "k", "term", ledger.StatusFilled); err != nil {
+		t.Fatalf("term->filled: %v", err)
+	}
+	srv := httptest.NewServer(reconcileMux(led))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/v1/orphans?olderThanMs=4000000000000")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	var out struct {
+		Orphans []struct {
+			KeyID  string `json:"keyId"`
+			Cloid  string `json:"cloid"`
+			Status string `json:"status"`
+		} `json:"orphans"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got := map[string]string{}
+	for _, o := range out.Orphans {
+		got[o.Cloid] = o.Status
+	}
+	if len(got) != 2 || got["a"] != "signed" || got["b"] != "signed" {
+		t.Fatalf("orphans = %+v; want {a:signed, b:signed} (term excluded)", got)
+	}
+
+	res2, err := http.Get(srv.URL + "/v1/orphans?olderThanMs=1000000000")
+	if err != nil {
+		t.Fatalf("get2: %v", err)
+	}
+	defer res2.Body.Close()
+	var out2 struct {
+		Orphans []any `json:"orphans"`
+	}
+	if err := json.NewDecoder(res2.Body).Decode(&out2); err != nil {
+		t.Fatalf("decode2: %v", err)
+	}
+	if out2.Orphans == nil || len(out2.Orphans) != 0 {
+		t.Fatalf("orphans(past) = %+v; want empty non-nil array", out2.Orphans)
+	}
+}
+
+func TestOrphansBadParamAndMethod(t *testing.T) {
+	srv := httptest.NewServer(reconcileMux(ledger.NewMem()))
+	defer srv.Close()
+	res, _ := http.Get(srv.URL + "/v1/orphans")
+	res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("missing param status = %d, want 400", res.StatusCode)
+	}
+	res2, _ := http.Get(srv.URL + "/v1/orphans?olderThanMs=abc")
+	res2.Body.Close()
+	if res2.StatusCode != 400 {
+		t.Fatalf("bad param status = %d, want 400", res2.StatusCode)
+	}
+	res3, _ := http.Post(srv.URL+"/v1/orphans", "application/json", strings.NewReader(`{}`))
+	res3.Body.Close()
+	if res3.StatusCode != 405 {
+		t.Fatalf("POST status = %d, want 405", res3.StatusCode)
+	}
+}
