@@ -21,6 +21,11 @@ import (
 
 var testPool *pgxpool.Pool
 
+func newPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	return testPool
+}
+
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx, "postgres:17-alpine",
@@ -98,5 +103,48 @@ func TestConcurrentSameCloidGrantsOneNonce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("ledger_intents rows = %d, want 1", count)
+	}
+}
+
+func TestStoreReconcileConformance(t *testing.T) {
+	pool := newPool(t)
+	if err := pg.EnsureSchema(context.Background(), pool); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
+	conformance.RunReconcile(t, func() ledger.Ledger {
+		_, _ = pool.Exec(context.Background(), "TRUNCATE sw_state, ledger_intents")
+		return pg.New(pool)
+	})
+}
+
+func TestConcurrentReconcileSerializes(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	if err := pg.EnsureSchema(ctx, pool); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
+	store := pg.New(pool)
+	if _, err := store.Authorize(ctx, ledger.Request{KeyID: "k", Cloid: "c", Digest: [32]byte{1}, Fence: 1, Notional: 1, DailyCap: 1000, NowMs: 1_700_000_000_000}); err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) { defer wg.Done(); _, errs[i] = store.Reconcile(ctx, "k", "c", ledger.StatusSubmitted) }(i)
+	}
+	wg.Wait()
+	for i, e := range errs {
+		if e != nil { // signed->submitted valid; concurrent re-report is idempotent submitted->submitted
+			t.Fatalf("goroutine %d err = %v, want nil", i, e)
+		}
+	}
+	var final string
+	if err := pool.QueryRow(ctx, "SELECT status FROM ledger_intents WHERE key_id='k' AND cloid='c'").Scan(&final); err != nil {
+		t.Fatalf("final: %v", err)
+	}
+	if final != "submitted" {
+		t.Fatalf("final status = %s, want submitted", final)
 	}
 }
