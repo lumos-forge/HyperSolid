@@ -129,3 +129,111 @@ func Run(t *testing.T, newAuth func() ledger.Authorizer) {
 		}
 	})
 }
+
+// RunReconcile exercises a Ledger implementation against the reconciliation +
+// orphan-detection contract. newLedger must return a fresh, empty Ledger each call.
+func RunReconcile(t *testing.T, newLedger func() ledger.Ledger) {
+	t.Helper()
+	ctx := context.Background()
+	seed := func(l ledger.Ledger, key, cloid string, b byte) {
+		if _, err := l.Authorize(ctx, ledger.Request{KeyID: key, Cloid: cloid, Digest: dig(b), Fence: 1, NowMs: cfNow}); err != nil {
+			t.Fatalf("seed authorize(%s,%s): %v", key, cloid, err)
+		}
+	}
+
+	t.Run("forward chain signed->submitted->open->filled", func(t *testing.T) {
+		l := newLedger()
+		seed(l, "k", "c1", 1)
+		for _, tgt := range []ledger.Status{ledger.StatusSubmitted, ledger.StatusOpen, ledger.StatusFilled} {
+			got, err := l.Reconcile(ctx, "k", "c1", tgt)
+			if err != nil || got != tgt {
+				t.Fatalf("reconcile %s = %s,%v", tgt, got, err)
+			}
+		}
+	})
+
+	t.Run("idempotent re-report of terminal", func(t *testing.T) {
+		l := newLedger()
+		seed(l, "k", "c1", 1)
+		_, _ = l.Reconcile(ctx, "k", "c1", ledger.StatusSubmitted)
+		_, _ = l.Reconcile(ctx, "k", "c1", ledger.StatusFilled)
+		if got, err := l.Reconcile(ctx, "k", "c1", ledger.StatusFilled); err != nil || got != ledger.StatusFilled {
+			t.Fatalf("idempotent filled = %s,%v, want filled,nil", got, err)
+		}
+	})
+
+	t.Run("invalid transition leaves state intact", func(t *testing.T) {
+		l := newLedger()
+		seed(l, "k", "c1", 1)
+		_, _ = l.Reconcile(ctx, "k", "c1", ledger.StatusSubmitted)
+		_, _ = l.Reconcile(ctx, "k", "c1", ledger.StatusOpen)
+		if _, err := l.Reconcile(ctx, "k", "c1", ledger.StatusSigned); !errors.Is(err, ledger.ErrInvalidTransition) {
+			t.Fatalf("backward err = %v, want ErrInvalidTransition", err)
+		}
+		if got, err := l.Reconcile(ctx, "k", "c1", ledger.StatusFilled); err != nil || got != ledger.StatusFilled {
+			t.Fatalf("valid after invalid = %s,%v (state must be intact)", got, err)
+		}
+		if _, err := l.Reconcile(ctx, "k", "c1", ledger.StatusRejected); !errors.Is(err, ledger.ErrInvalidTransition) {
+			t.Fatalf("cross-terminal err = %v, want ErrInvalidTransition", err)
+		}
+	})
+
+	t.Run("unknown intent", func(t *testing.T) {
+		l := newLedger()
+		if _, err := l.Reconcile(ctx, "k", "nope", ledger.StatusSubmitted); !errors.Is(err, ledger.ErrUnknownIntent) {
+			t.Fatalf("unknown = %v, want ErrUnknownIntent", err)
+		}
+	})
+
+	t.Run("orphans: non-terminal within cutoff, terminal excluded", func(t *testing.T) {
+		l := newLedger()
+		seed(l, "k", "term", 1)
+		seed(l, "k", "open", 2)
+		seed(l, "k", "sign", 3)
+		// term reaches a terminal state via a valid edge (signed→submitted→filled).
+		if _, err := l.Reconcile(ctx, "k", "term", ledger.StatusSubmitted); err != nil {
+			t.Fatalf("term->submitted: %v", err)
+		}
+		if _, err := l.Reconcile(ctx, "k", "term", ledger.StatusFilled); err != nil {
+			t.Fatalf("term->filled: %v", err)
+		}
+		// open reaches the open state via a valid edge (signed→submitted→open).
+		if _, err := l.Reconcile(ctx, "k", "open", ledger.StatusSubmitted); err != nil {
+			t.Fatalf("open->submitted: %v", err)
+		}
+		if _, err := l.Reconcile(ctx, "k", "open", ledger.StatusOpen); err != nil {
+			t.Fatalf("open->open: %v", err)
+		}
+		orph, err := l.Orphans(ctx, 4_000_000_000_000)
+		if err != nil {
+			t.Fatalf("orphans: %v", err)
+		}
+		got := map[string]ledger.Status{}
+		for _, o := range orph {
+			got[o.Cloid] = o.Status
+		}
+		if len(got) != 2 || got["open"] != ledger.StatusOpen || got["sign"] != ledger.StatusSigned {
+			t.Fatalf("orphans = %+v; want {open:open, sign:signed} (term excluded)", got)
+		}
+		if past, _ := l.Orphans(ctx, 1_000_000_000); len(past) != 0 {
+			t.Fatalf("orphans(past) = %+v; want empty", past)
+		}
+	})
+
+	t.Run("orphans across keys", func(t *testing.T) {
+		l := newLedger()
+		seed(l, "a", "c", 1)
+		seed(l, "b", "c", 2)
+		orph, err := l.Orphans(ctx, 4_000_000_000_000)
+		if err != nil {
+			t.Fatalf("orphans: %v", err)
+		}
+		keys := map[string]bool{}
+		for _, o := range orph {
+			keys[o.KeyID] = true
+		}
+		if !keys["a"] || !keys["b"] {
+			t.Fatalf("orphans keys = %+v; want both a and b", keys)
+		}
+	})
+}

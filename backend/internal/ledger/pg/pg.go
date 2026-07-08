@@ -31,8 +31,11 @@ const (
 	swSelectSQL = `SELECT fence, last_nonce, spend_day, spend_total FROM sw_state WHERE key_id = $1 FOR UPDATE`
 	swUpdateSQL = `UPDATE sw_state SET fence = $2, last_nonce = $3, spend_day = $4, spend_total = $5 WHERE key_id = $1`
 
-	recSelectSQL = `SELECT nonce, digest, status FROM ledger_intents WHERE key_id = $1 AND cloid = $2`
-	recInsertSQL = `INSERT INTO ledger_intents (key_id, cloid, nonce, digest, status, notional) VALUES ($1, $2, $3, $4, $5, $6)`
+	recSelectSQL       = `SELECT nonce, digest, status FROM ledger_intents WHERE key_id = $1 AND cloid = $2`
+	recInsertSQL       = `INSERT INTO ledger_intents (key_id, cloid, nonce, digest, status, notional) VALUES ($1, $2, $3, $4, $5, $6)`
+	recStatusSelectSQL = `SELECT status FROM ledger_intents WHERE key_id = $1 AND cloid = $2 FOR UPDATE`
+	recStatusUpdateSQL = `UPDATE ledger_intents SET status = $3, updated_at = now() WHERE key_id = $1 AND cloid = $2`
+	orphansSQL         = `SELECT key_id, cloid, nonce, status, (EXTRACT(EPOCH FROM updated_at) * 1000)::bigint FROM ledger_intents WHERE status NOT IN ('filled','rejected','canceled') AND updated_at < to_timestamp($1 / 1000.0)`
 )
 
 // Authorize runs ledger.Decide inside one READ COMMITTED transaction: it seeds a
@@ -68,7 +71,7 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 	case err == nil:
 		var d [32]byte
 		copy(d[:], recDigest)
-		existing = &ledger.Record{Nonce: uint64(recNonce), Digest: d, Status: recStatus}
+		existing = &ledger.Record{Nonce: uint64(recNonce), Digest: d, Status: ledger.Status(recStatus)}
 	case errors.Is(err, pgx.ErrNoRows):
 		existing = nil
 	default:
@@ -95,5 +98,60 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 	return grant, nil
 }
 
-// compile-time assertion that Store satisfies the Authorizer interface.
-var _ ledger.Authorizer = (*Store)(nil)
+// Reconcile validates and persists the lifecycle transition for (keyID, cloid)
+// inside one row-locked transaction. Unknown intent → ErrUnknownIntent; a
+// disallowed edge → ErrInvalidTransition (rolled back); success updates status +
+// updated_at. Infra errors are wrapped (5xx) vs typed rejections (4xx).
+func (s *Store) Reconcile(ctx context.Context, keyID, cloid string, target ledger.Status) (ledger.Status, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return "", fmt.Errorf("pg ledger: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var cur string
+	switch err := tx.QueryRow(ctx, recStatusSelectSQL, keyID, cloid).Scan(&cur); {
+	case errors.Is(err, pgx.ErrNoRows):
+		return "", ledger.ErrUnknownIntent
+	case err != nil:
+		return "", fmt.Errorf("pg ledger: reconcile select: %w", err)
+	}
+
+	next, derr := ledger.Transition(ledger.Status(cur), target)
+	if derr != nil {
+		return ledger.Status(cur), derr // typed rejection; deferred Rollback
+	}
+	if _, err := tx.Exec(ctx, recStatusUpdateSQL, keyID, cloid, string(next)); err != nil {
+		return "", fmt.Errorf("pg ledger: reconcile update: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("pg ledger: reconcile commit: %w", err)
+	}
+	return next, nil
+}
+
+// Orphans returns every non-terminal record whose updated_at is older than the
+// olderThanMs cutoff (unix ms).
+func (s *Store) Orphans(ctx context.Context, olderThanMs int64) ([]ledger.Orphan, error) {
+	rows, err := s.pool.Query(ctx, orphansSQL, olderThanMs)
+	if err != nil {
+		return nil, fmt.Errorf("pg ledger: orphans query: %w", err)
+	}
+	defer rows.Close()
+	var out []ledger.Orphan
+	for rows.Next() {
+		var keyID, cloid, status string
+		var nonce, updatedAtMs int64
+		if err := rows.Scan(&keyID, &cloid, &nonce, &status, &updatedAtMs); err != nil {
+			return nil, fmt.Errorf("pg ledger: orphans scan: %w", err)
+		}
+		out = append(out, ledger.Orphan{KeyID: keyID, Cloid: cloid, Nonce: uint64(nonce), Status: ledger.Status(status), UpdatedAtMs: updatedAtMs})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("pg ledger: orphans rows: %w", err)
+	}
+	return out, nil
+}
+
+// compile-time assertion that Store satisfies the Ledger interface.
+var _ ledger.Ledger = (*Store)(nil)
