@@ -343,11 +343,12 @@ export async function tick(
         // fill detection: a tracked resting order that vanished from open orders filled.
         if ((r.state === "armed" || r.state === "holding") && r.cloid && !open.has(r.cloid)) {
           const fill = userFillsReader ? (await getFills(s.owner)).get(r.cloid) : undefined;
-          const sz = fill?.sz ?? rungSizeCoin(p, i);
           const px = fill?.px ?? r.px ?? rungBuyPrice(p, i);
           if (r.state === "armed") {
             // entry filled. direction from side: buy = long entry (TP sell), sell = short entry (TP buy).
             const entrySide = r.side ?? "buy";
+            // fallback size must match the entry direction: a short entry sells rungShortSizeCoin (perLevelUsdc/sellPrice).
+            const sz = fill?.sz ?? (entrySide === "sell" ? rungShortSizeCoin(p, i) : rungSizeCoin(p, i));
             if (activity) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: entrySide, sz, px });
             if (entrySide === "buy") await placeSell(i, r);
             else await placeTpBuy(i, r);
@@ -355,8 +356,10 @@ export async function tick(
           }
           // holding filled = TP closed. direction from side: sell = long TP, buy = short TP.
           const tpSide = r.side ?? "sell";
+          // fallback size must match the closed direction: a short TP buys back rungShortSizeCoin.
+          const sz = fill?.sz ?? (tpSide === "buy" ? rungShortSizeCoin(p, i) : rungSizeCoin(p, i));
           if (activity) activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: tpSide, sz, px });
-          store.addFilledUsdc(s.id, fill ? fill.closedPnl : Math.max(0, (rungSellPrice(p, i) - rungBuyPrice(p, i)) * rungSizeCoin(p, i)));
+          store.addFilledUsdc(s.id, fill ? fill.closedPnl : Math.max(0, (rungSellPrice(p, i) - rungBuyPrice(p, i)) * sz));
           store.setGridLimitRung(s.id, { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq });
           r = { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq };
         }

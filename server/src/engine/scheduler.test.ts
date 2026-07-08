@@ -688,6 +688,21 @@ describe("gridLimit tick (symmetric)", () => {
     expect(store.gridLimitRungs(s.id).find((r) => r.rung === 3)).toMatchObject({ state: "armed", side: "sell" });
   });
 
+  it("books a short TP close with short-sizing when userFills is unavailable", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const s = store.create("0xo", "gridLimit", symParams);
+    // holding short rung 3: sold @180, resting reduce-only TP buy @160. cloid vanished from open orders = filled.
+    store.setGridLimitRung(s.id, { rung: 3, state: "holding", side: "buy", cloid: "0xTP", px: 160, seq: 2 });
+    const activity = { record: jest.fn(), notionalSince: () => 0 };
+    const exec = fakeExec();
+    // No userFills reader passed -> fill is undefined, exercising the direction-aware fallback.
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, activity as any, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
+    // short rung 3: sell@180, buy@160 -> fallback size = perLevelUsdc/sellPrice = 50/180 (NOT 50/160).
+    expect(activity.record).toHaveBeenCalledWith(expect.objectContaining({ side: "buy", sz: 50 / 180 }));
+    // fallback pnl = (180 - 160) * (50/180) = 5.5556, not the long-sized (180-160)*(50/160) = 6.25.
+    expect(store.get(s.id)!.filledTotalUsdc).toBeCloseTo((180 - 160) * (50 / 180), 6);
+  });
+
   it("gates a short entry behind caps (does not place a sell when over cap)", async () => {
     const store = new MemoryStrategyStore(() => 0);
     store.create("0xo", "gridLimit", symParams);
