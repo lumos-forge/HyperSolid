@@ -743,7 +743,8 @@ func TestReconcileInvalidTransition(t *testing.T) {
 	_, _ = led.Authorize(context.Background(), ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000})
 	srv := httptest.NewServer(reconcileMux(led))
 	defer srv.Close()
-	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"open"}`))
+	// signed->canceled is not an allowed edge (signed may go to submitted/open/filled/rejected).
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"canceled"}`))
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}

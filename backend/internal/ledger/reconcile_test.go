@@ -9,6 +9,8 @@ import (
 func TestTransitionForwardChain(t *testing.T) {
 	for _, tc := range []struct{ cur, tgt, want Status }{
 		{StatusSigned, StatusSubmitted, StatusSubmitted},
+		{StatusSigned, StatusOpen, StatusOpen},
+		{StatusSigned, StatusFilled, StatusFilled},
 		{StatusSubmitted, StatusOpen, StatusOpen},
 		{StatusOpen, StatusFilled, StatusFilled},
 		{StatusSubmitted, StatusFilled, StatusFilled},
@@ -36,7 +38,6 @@ func TestTransitionInvalid(t *testing.T) {
 		{StatusOpen, StatusSigned},
 		{StatusFilled, StatusRejected},
 		{StatusRejected, StatusFilled},
-		{StatusSigned, StatusOpen},
 	} {
 		if _, err := Transition(tc.cur, tc.tgt); !errors.Is(err, ErrInvalidTransition) {
 			t.Fatalf("Transition(%s,%s) err = %v; want ErrInvalidTransition", tc.cur, tc.tgt, err)
