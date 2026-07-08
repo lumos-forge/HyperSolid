@@ -15,6 +15,8 @@ func TestTransitionForwardChain(t *testing.T) {
 		{StatusOpen, StatusFilled, StatusFilled},
 		{StatusSubmitted, StatusFilled, StatusFilled},
 		{StatusOpen, StatusCanceled, StatusCanceled},
+		{StatusSigned, StatusCanceled, StatusCanceled},
+		{StatusSubmitted, StatusCanceled, StatusCanceled},
 		{StatusSigned, StatusRejected, StatusRejected},
 	} {
 		got, err := Transition(tc.cur, tc.tgt)

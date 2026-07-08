@@ -742,11 +742,19 @@ func TestReconcileUnknownIntent(t *testing.T) {
 
 func TestReconcileInvalidTransition(t *testing.T) {
 	led := ledger.NewMem()
-	_, _ = led.Authorize(context.Background(), ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000})
+	ctx := context.Background()
+	_, _ = led.Authorize(ctx, ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000})
+	// drive c1 to a terminal state so a further transition is genuinely invalid.
+	if _, err := led.Reconcile(ctx, "k", "c1", ledger.StatusSubmitted); err != nil {
+		t.Fatalf("->submitted: %v", err)
+	}
+	if _, err := led.Reconcile(ctx, "k", "c1", ledger.StatusFilled); err != nil {
+		t.Fatalf("->filled: %v", err)
+	}
 	srv := httptest.NewServer(reconcileMux(led))
 	defer srv.Close()
-	// signed->canceled is not an allowed edge (signed may go to submitted/open/filled/rejected).
-	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"canceled"}`))
+	// filled->open is not an allowed edge (terminal → non-terminal).
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"open"}`))
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
