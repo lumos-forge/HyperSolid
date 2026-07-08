@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
 
@@ -398,12 +400,38 @@ var _ Fencer = (*leader.Leader)(nil)
 
 // config is the signer's runtime configuration.
 type config struct {
-	addr        string
-	databaseURL string
-	leaseName   string
-	holderID    string
-	leaseTTL    time.Duration
-	renewEvery  time.Duration
+	addr              string
+	databaseURL       string
+	leaseName         string
+	holderID          string
+	leaseTTL          time.Duration
+	renewEvery        time.Duration
+	hlInfoURL         string
+	reconcileAccounts []reconciler.Account
+	reconcileInterval time.Duration
+	hlTimeout         time.Duration
+}
+
+// parseAccounts parses a comma-separated "keyID=address" list into reconcile
+// accounts, trimming whitespace and skipping malformed (missing/empty half) pairs.
+func parseAccounts(s string) []reconciler.Account {
+	var out []reconciler.Account
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		keyID, addr := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+		if keyID == "" || addr == "" {
+			continue
+		}
+		out = append(out, reconciler.Account{KeyID: keyID, Address: addr})
+	}
+	return out
 }
 
 // configFromEnv reads SIGNER_ADDR / DATABASE_URL / SIGNER_LEASE_NAME /
@@ -429,6 +457,16 @@ func configFromEnv() config {
 	}
 	if cfg.holderID == "" {
 		cfg.holderID = defaultHolderID()
+	}
+	cfg.hlInfoURL = os.Getenv("SIGNER_HL_INFO_URL")
+	cfg.reconcileAccounts = parseAccounts(os.Getenv("SIGNER_RECONCILE_ACCOUNTS"))
+	cfg.reconcileInterval = 15 * time.Second
+	if d, err := time.ParseDuration(os.Getenv("SIGNER_RECONCILE_INTERVAL")); err == nil && d > 0 {
+		cfg.reconcileInterval = d
+	}
+	cfg.hlTimeout = 10 * time.Second
+	if d, err := time.ParseDuration(os.Getenv("SIGNER_HL_TIMEOUT")); err == nil && d > 0 {
+		cfg.hlTimeout = d
 	}
 	return cfg
 }

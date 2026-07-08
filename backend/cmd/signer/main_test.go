@@ -868,3 +868,23 @@ func TestOrphansBadParamAndMethod(t *testing.T) {
 		t.Fatalf("POST status = %d, want 405", res3.StatusCode)
 	}
 }
+
+func TestParseAccounts(t *testing.T) {
+	got := parseAccounts("k1=0xabc, k2 = 0xdef ")
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].KeyID != "k1" || got[0].Address != "0xabc" {
+		t.Fatalf("got[0] = %+v", got[0])
+	}
+	if got[1].KeyID != "k2" || got[1].Address != "0xdef" {
+		t.Fatalf("got[1] = %+v", got[1])
+	}
+	if a := parseAccounts(""); a != nil {
+		t.Fatalf("empty = %+v, want nil", a)
+	}
+	m := parseAccounts("bad,=x,y=,a=b")
+	if len(m) != 1 || m[0].KeyID != "a" || m[0].Address != "b" {
+		t.Fatalf("malformed-filter = %+v, want [a=b]", m)
+	}
+}
