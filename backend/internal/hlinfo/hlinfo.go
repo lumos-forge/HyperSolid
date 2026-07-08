@@ -205,3 +205,28 @@ func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int
 	}
 	return out, nil
 }
+
+// OrderStatusResult is an order's resolved status queried by cloid. Found=false
+// means HL returned "unknownOid" (it has no record of this order).
+type OrderStatusResult struct {
+	Status string // HL order status string (e.g. "filled"/"open"/"canceled"/"marginCanceled"/"rejected"); "" if not found
+	Found  bool
+}
+
+// OrderStatus queries orderStatus by cloid (passed as the oid field). A non-"order"
+// envelope (e.g. "unknownOid") yields Found=false.
+func (c *Client) OrderStatus(ctx context.Context, user, cloid string) (OrderStatusResult, error) {
+	var resp struct {
+		Status string `json:"status"`
+		Order  *struct {
+			Status string `json:"status"`
+		} `json:"order"`
+	}
+	if err := c.post(ctx, map[string]any{"type": "orderStatus", "user": user, "oid": cloid}, &resp); err != nil {
+		return OrderStatusResult{}, err
+	}
+	if resp.Status != "order" || resp.Order == nil {
+		return OrderStatusResult{Found: false}, nil
+	}
+	return OrderStatusResult{Status: resp.Order.Status, Found: true}, nil
+}

@@ -155,3 +155,46 @@ func TestFillsByCloidSinceCapsPages(t *testing.T) {
 		t.Fatalf("calls = %d, want fillsMaxPages=%d", calls, fillsMaxPages)
 	}
 }
+
+func TestOrderStatusFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["type"] != "orderStatus" || body["oid"] != "0xcloid" {
+			t.Fatalf("bad body: %+v", body)
+		}
+		_, _ = w.Write([]byte(`{"status":"order","order":{"order":{},"status":"canceled","statusTimestamp":123}}`))
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, nil).OrderStatus(context.Background(), "0xacc", "0xcloid")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !got.Found || got.Status != "canceled" {
+		t.Fatalf("got = %+v, want {canceled true}", got)
+	}
+}
+
+func TestOrderStatusUnknownOid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"unknownOid"}`))
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, nil).OrderStatus(context.Background(), "0xacc", "0xcloid")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got.Found {
+		t.Fatalf("got = %+v, want Found=false", got)
+	}
+}
+
+func TestOrderStatusErrorOnNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+	if _, err := New(srv.URL, nil).OrderStatus(context.Background(), "0xacc", "0xcloid"); err == nil {
+		t.Fatal("want error on 500")
+	}
+}
