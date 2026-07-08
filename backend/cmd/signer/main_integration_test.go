@@ -62,8 +62,8 @@ func TestBuildHandlerPostgresEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
-	sign := func() (int, uint64) {
+	sign := func(cloid string) (int, uint64) {
+		body := `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -82,7 +82,7 @@ func TestBuildHandlerPostgresEndToEnd(t *testing.T) {
 	var n1 uint64
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		code, n := sign()
+		code, n := sign("c1")
 		if code == 200 {
 			n1 = n
 			break
@@ -97,11 +97,20 @@ func TestBuildHandlerPostgresEndToEnd(t *testing.T) {
 	}
 
 	// A second sign advances the persisted nonce high-water strictly.
-	code, n2 := sign()
+	code, n2 := sign("c2")
 	if code != 200 {
 		t.Fatalf("second sign status = %d, want 200", code)
 	}
 	if n2 <= n1 {
 		t.Fatalf("nonce n2=%d not > n1=%d (single-writer must advance)", n2, n1)
+	}
+
+	// Re-signing the FIRST cloid replays the original nonce (end-to-end idempotency).
+	code3, n3 := sign("c1")
+	if code3 != 200 {
+		t.Fatalf("replay sign status = %d, want 200", code3)
+	}
+	if n3 != n1 {
+		t.Fatalf("replay nonce n3=%d, want original n1=%d", n3, n1)
 	}
 }

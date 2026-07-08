@@ -595,3 +595,104 @@ func TestBuildHandlerInMemory(t *testing.T) {
 		t.Fatalf("sign unknown key status = %d, want 404", sr.StatusCode)
 	}
 }
+
+func TestSignL1IdempotentReplay(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, err := hex.DecodeString(v.PrivKey[2:])
+	if err != nil {
+		t.Fatalf("decode key: %v", err)
+	}
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{v.Kind: true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+
+	type out struct {
+		R         string `json:"r"`
+		S         string `json:"s"`
+		V         int    `json:"v"`
+		Nonce     uint64 `json:"nonce"`
+		Duplicate bool   `json:"duplicate"`
+	}
+	post := func(cloid string) (int, out) {
+		body, _ := json.Marshal(map[string]any{"keyId": "k1", "cloid": cloid, "kind": v.Kind, "params": v.Params, "isTestnet": v.IsTestnet})
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		var o out
+		_ = json.NewDecoder(res.Body).Decode(&o)
+		return res.StatusCode, o
+	}
+
+	code1, o1 := post("c1")
+	if code1 != 200 || o1.Duplicate {
+		t.Fatalf("first: code=%d dup=%v, want 200 dup=false", code1, o1.Duplicate)
+	}
+	code2, o2 := post("c1")
+	if code2 != 200 || !o2.Duplicate {
+		t.Fatalf("replay: code=%d dup=%v, want 200 dup=true", code2, o2.Duplicate)
+	}
+	if o2.Nonce != o1.Nonce || o2.R != o1.R || o2.S != o1.S || o2.V != o1.V {
+		t.Fatalf("replay sig/nonce differ: o1=%+v o2=%+v", o1, o2)
+	}
+}
+
+func TestSignL1CloidReuseConflict(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, _ := hex.DecodeString(v.PrivKey[2:])
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+
+	post := func(px string) int {
+		body := `{"keyId":"k1","cloid":"cx","kind":"order","params":{"asset":0,"isBuy":true,"px":"` + px + `","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
+	}
+	if c := post("50000"); c != 200 {
+		t.Fatalf("first px status = %d, want 200", c)
+	}
+	if c := post("51000"); c != 409 {
+		t.Fatalf("reuse (same cloid, different intent) status = %d, want 409", c)
+	}
+}
+
+func TestSignL1MissingCloid(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, _ := hex.DecodeString(v.PrivKey[2:])
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("missing cloid status = %d, want 400", res.StatusCode)
+	}
+}
