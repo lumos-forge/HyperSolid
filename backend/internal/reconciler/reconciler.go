@@ -20,6 +20,30 @@ type Account struct {
 	Address string
 }
 
+// Observer receives reconciler telemetry. The default (nopObserver) discards all,
+// so the reconciler carries no hard dependency on any metrics backend.
+type Observer interface {
+	// ReconcileStep records one completed step by outcome: "ok", "error", or "skipped".
+	ReconcileStep(outcome string)
+	// Reap records one reap-pass transition actually applied, by target status.
+	Reap(target ledger.Status)
+	// LeaderState reports whether this instance currently holds reconciler leadership.
+	LeaderState(isLeader bool)
+}
+
+type nopObserver struct{}
+
+func (nopObserver) ReconcileStep(string) {}
+func (nopObserver) Reap(ledger.Status)   {}
+func (nopObserver) LeaderState(bool)     {}
+
+// step outcome labels.
+const (
+	outcomeOK      = "ok"
+	outcomeError   = "error"
+	outcomeSkipped = "skipped"
+)
+
 // allNonTerminalCutoffMs is a far-future cutoff (year ~2096) so Orphans returns
 // every currently non-terminal intent; their min updatedAt is the per-key fills anchor.
 const allNonTerminalCutoffMs int64 = 4_000_000_000_000
@@ -52,6 +76,7 @@ type Reconciler struct {
 	led      ledger.Reconciler
 	accounts []Account
 	isLeader func() bool // optional leader gate; nil = always run
+	obs      Observer    // telemetry sink; never nil (defaults to nopObserver)
 }
 
 // Option configures a Reconciler.
@@ -63,9 +88,18 @@ func WithLeaderGate(isLeader func() bool) Option {
 	return func(r *Reconciler) { r.isLeader = isLeader }
 }
 
+// WithObserver injects a telemetry sink. A nil observer keeps the no-op default.
+func WithObserver(obs Observer) Option {
+	return func(r *Reconciler) {
+		if obs != nil {
+			r.obs = obs
+		}
+	}
+}
+
 // New returns a Reconciler over the given HL info client, ledger, and accounts.
 func New(client InfoClient, led ledger.Reconciler, accounts []Account, opts ...Option) *Reconciler {
-	r := &Reconciler{client: client, led: led, accounts: accounts}
+	r := &Reconciler{client: client, led: led, accounts: accounts, obs: nopObserver{}}
 	for _, o := range opts {
 		o(r)
 	}
@@ -103,23 +137,36 @@ func reapTarget(hlStatus string) (ledger.Status, bool) {
 	}
 }
 
-// reconcileOne applies one transition, swallowing benign per-cloid rejections
-// (ErrUnknownIntent = not our order; ErrInvalidTransition = stale/idempotent) and
-// surfacing only infrastructure errors.
-func (r *Reconciler) reconcileOne(ctx context.Context, keyID, cloid string, target ledger.Status) error {
-	if _, err := r.led.Reconcile(ctx, keyID, cloid, target); err != nil &&
-		!errors.Is(err, ledger.ErrUnknownIntent) && !errors.Is(err, ledger.ErrInvalidTransition) {
-		return err
+// reconcileOne applies one transition. It reports applied=true when the ledger
+// accepted the transition, and swallows benign per-cloid rejections
+// (ErrUnknownIntent = not our order; ErrInvalidTransition = stale/idempotent)
+// as applied=false, surfacing only infrastructure errors.
+func (r *Reconciler) reconcileOne(ctx context.Context, keyID, cloid string, target ledger.Status) (bool, error) {
+	if _, err := r.led.Reconcile(ctx, keyID, cloid, target); err != nil {
+		if errors.Is(err, ledger.ErrUnknownIntent) || errors.Is(err, ledger.ErrInvalidTransition) {
+			return false, nil
+		}
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 // step runs one poll+reconcile pass over all accounts, returning the first
 // infrastructure error (HL query or ledger infra) encountered.
-func (r *Reconciler) step(ctx context.Context) error {
-	if r.isLeader != nil && !r.isLeader() {
+func (r *Reconciler) step(ctx context.Context) (err error) {
+	leader := r.isLeader == nil || r.isLeader()
+	r.obs.LeaderState(leader)
+	if r.isLeader != nil && !leader {
+		r.obs.ReconcileStep(outcomeSkipped)
 		return nil // not the leader; another instance polls
 	}
+	defer func() {
+		if err != nil {
+			r.obs.ReconcileStep(outcomeError)
+		} else {
+			r.obs.ReconcileStep(outcomeOK)
+		}
+	}()
 	orphs, err := r.led.Orphans(ctx, allNonTerminalCutoffMs)
 	if err != nil {
 		return err
@@ -159,7 +206,7 @@ func (r *Reconciler) step(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-			if err := r.reconcileOne(ctx, a.KeyID, cloid, target); err != nil {
+			if _, err := r.reconcileOne(ctx, a.KeyID, cloid, target); err != nil {
 				return err
 			}
 		}
@@ -183,8 +230,12 @@ func (r *Reconciler) step(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-			if err := r.reconcileOne(ctx, a.KeyID, o.Cloid, target); err != nil {
+			applied, err := r.reconcileOne(ctx, a.KeyID, o.Cloid, target)
+			if err != nil {
 				return err
+			}
+			if applied {
+				r.obs.Reap(target)
 			}
 		}
 	}

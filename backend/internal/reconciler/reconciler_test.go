@@ -331,3 +331,82 @@ func TestStepSkipsOrderStatusWhenOpenOrFilled(t *testing.T) {
 		t.Fatalf("orderStatus queried %v; want none (c1 in openOrders, c2 in fills)", fc.statusQueried)
 	}
 }
+
+// recObserver records Observer callbacks for assertions.
+type recObserver struct {
+	steps  []string
+	reaps  []ledger.Status
+	leader []bool
+}
+
+func (o *recObserver) ReconcileStep(outcome string) { o.steps = append(o.steps, outcome) }
+func (o *recObserver) Reap(target ledger.Status)    { o.reaps = append(o.reaps, target) }
+func (o *recObserver) LeaderState(isLeader bool)    { o.leader = append(o.leader, isLeader) }
+
+func TestObserverLeaderStepOK(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}},
+		WithLeaderGate(func() bool { return true }), WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(obs.leader) != 1 || obs.leader[0] != true {
+		t.Fatalf("leader = %v, want [true]", obs.leader)
+	}
+	if len(obs.steps) != 1 || obs.steps[0] != "ok" {
+		t.Fatalf("steps = %v, want [ok]", obs.steps)
+	}
+}
+
+func TestObserverSkippedWhenNotLeader(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}},
+		WithLeaderGate(func() bool { return false }), WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(obs.leader) != 1 || obs.leader[0] != false {
+		t.Fatalf("leader = %v, want [false]", obs.leader)
+	}
+	if len(obs.steps) != 1 || obs.steps[0] != "skipped" {
+		t.Fatalf("steps = %v, want [skipped]", obs.steps)
+	}
+	if len(fc.statusQueried) != 0 {
+		t.Fatalf("gated step must not query HL, got %v", fc.statusQueried)
+	}
+}
+
+func TestObserverStepError(t *testing.T) {
+	obs := &recObserver{}
+	r := New(&fakeClient{err: errors.New("boom")}, ledger.NewMem(),
+		[]Account{{KeyID: "k", Address: "0xacc"}}, WithObserver(obs))
+	if err := r.step(context.Background()); err == nil {
+		t.Fatalf("expected client error")
+	}
+	if len(obs.steps) != 1 || obs.steps[0] != "error" {
+		t.Fatalf("steps = %v, want [error]", obs.steps)
+	}
+}
+
+func TestObserverReapByTarget(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{
+		open:        map[string]map[string]hlinfo.OpenOrder{"0xacc": {}},
+		orderStatus: map[string]hlinfo.OrderStatusResult{"c1": {Status: "rejected", Found: true}},
+	}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}}, WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(obs.reaps) != 1 || obs.reaps[0] != ledger.StatusRejected {
+		t.Fatalf("reaps = %v, want [rejected]", obs.reaps)
+	}
+}
