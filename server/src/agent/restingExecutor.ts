@@ -102,19 +102,24 @@ export function makeRestingExecutor(deps: RestingExecutorDeps): RestingExecutor 
       const client = deps.clientFor(req.owner);
       if (!client) return false;
       const maxBatch = deps.maxCancelBatch && deps.maxCancelBatch > 0 ? deps.maxCancelBatch : 100;
-      const { assetIndex } = await deps.resolveAsset(req.coin);
-      for (let i = 0; i < req.cloids.length; i += maxBatch) {
-        const cancels = req.cloids.slice(i, i + maxBatch).map((cloid) => ({ asset: assetIndex, cloid }));
-        try {
-          deps.shadowVerify?.("cancelByCloid", { cancels });
-        } catch {
-          /* shadow must never affect cancellation */
+      try {
+        const { assetIndex } = await deps.resolveAsset(req.coin);
+        for (let i = 0; i < req.cloids.length; i += maxBatch) {
+          const cancels = req.cloids.slice(i, i + maxBatch).map((cloid) => ({ asset: assetIndex, cloid }));
+          try {
+            deps.shadowVerify?.("cancelByCloid", { cancels });
+          } catch {
+            /* shadow must never affect cancellation */
+          }
+          try {
+            await client.cancelByCloid({ cancels });
+          } catch {
+            /* already gone / filled — treat as cancelled (idempotent) */
+          }
         }
-        try {
-          await client.cancelByCloid({ cancels });
-        } catch {
-          /* already gone / filled — treat as cancelled (idempotent) */
-        }
+      } catch {
+        /* resolveAsset failure (unknown coin / cold meta): drain is best-effort and
+           must never abort the scheduler tick — the book is re-checked next tick. */
       }
       return true;
     },

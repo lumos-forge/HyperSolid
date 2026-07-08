@@ -78,6 +78,12 @@ describe("makeRestingExecutor.cancelCloids", () => {
     await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xa", "0xb"] });
     expect(shadow).toHaveBeenCalledWith("cancelByCloid", { cancels: [{ asset: 3, cloid: "0xa" }, { asset: 3, cloid: "0xb" }] });
   });
+  it("does not reject when resolveAsset throws (best-effort, idempotent)", async () => {
+    const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async () => ({}) };
+    const d = { clientFor: () => client, resolveAsset: async () => { throw new Error("unknown coin"); } };
+    const exec = makeRestingExecutor(d);
+    await expect(exec.cancelCloids({ owner: "0xo", coin: "WAT", cloids: ["0xc"] })).resolves.toBe(true);
+  });
 });
 
 describe("makeRestingExecutor shadow verify", () => {
