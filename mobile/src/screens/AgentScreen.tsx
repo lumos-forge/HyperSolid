@@ -165,6 +165,7 @@ function StrategyPanel({
   const [glUpper, setGlUpper] = useState("");
   const [glLevels, setGlLevels] = useState("6");
   const [glPerLevel, setGlPerLevel] = useState("");
+  const [glMode, setGlMode] = useState<"longOnly" | "symmetric">("longOnly");
 
   async function onApprove() {
     const res = await ctrl.approveAgentFlow();
@@ -220,7 +221,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidGrid"));
       return;
     }
-    await ctrl.createGridLimit({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel });
+    await ctrl.createGridLimit({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: glMode });
     setGlLower(""); setGlUpper(""); setGlPerLevel("");
   }
 
@@ -394,6 +395,24 @@ function StrategyPanel({
           <Field theme={theme} label={t("agent.gridUpper")} value={glUpper} onChangeText={setGlUpper} keyboard testID="grid-limit-upper" />
           <Field theme={theme} label={t("agent.gridLevels")} value={glLevels} onChangeText={setGlLevels} keyboard testID="grid-limit-levels" />
           <Field theme={theme} label={t("agent.gridPerLevel")} value={glPerLevel} onChangeText={setGlPerLevel} keyboard testID="grid-limit-per-level" />
+          <View style={styles.sideRow}>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.gridMode")}</Text>
+            <View style={styles.sideBtns}>
+              {(["longOnly", "symmetric"] as const).map((m) => (
+                <Pressable
+                  key={m}
+                  testID={`grid-limit-mode-${m}`}
+                  accessibilityRole="button"
+                  onPress={() => setGlMode(m)}
+                  style={[styles.sideBtn, { borderColor: theme.line }, glMode === m && { backgroundColor: theme.surface }]}
+                >
+                  <Text style={[styles.segmentText, { color: glMode === m ? theme.text : theme.muted }]}>
+                    {t(m === "longOnly" ? "agent.gridModeLongOnly" : "agent.gridModeSymmetric")}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           <Pressable onPress={onCreateGridLimit} accessibilityRole="button" testID="grid-limit-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
             <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createGridLimit")}</Text>
           </Pressable>
