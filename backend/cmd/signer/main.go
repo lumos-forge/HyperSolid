@@ -36,6 +36,7 @@ import (
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/ratelimit"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
@@ -197,7 +198,7 @@ var _ reconciler.Observer = metricsObserver{}
 // the single-writer atomically enforces the fencing token + daily notional cap and
 // allocates a strictly-increasing per-key nonce, which is returned. Fail-closed: an
 // unknown keyId → 404; a non-leader → 503; a stale fence → 409. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64) http.HandlerFunc {
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64, limiter *ratelimit.Limiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -213,8 +214,12 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			writeErr(w, http.StatusNotFound, "unknown keyId")
 			return
 		}
-		intent := intentFor(req.Kind, req.Params)
 		cfg := policies.Get(req.KeyID)
+		if !limiter.Allow(req.KeyID, cfg.RatePerSec, cfg.RateBurst) {
+			writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+		intent := intentFor(req.Kind, req.Params)
 		if d := policy.Evaluate(intent, cfg); !d.Allow {
 			writeErr(w, http.StatusForbidden, d.Reason)
 			return
@@ -402,7 +407,8 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	mux.HandleFunc("/v1/digest/l1", metrics.Middleware("digest_l1", handleDigestL1))
-	mux.HandleFunc("/v1/sign/l1", metrics.Middleware("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs)))
+	limiter := ratelimit.New(nowMs)
+	mux.HandleFunc("/v1/sign/l1", metrics.Middleware("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
 	mux.HandleFunc("/v1/reconcile", metrics.Middleware("reconcile", handleReconcile(led)))
 	mux.HandleFunc("/v1/orphans", metrics.Middleware("orphans", handleOrphans(led)))
 	mux.Handle("/metrics", metrics.Handler())
