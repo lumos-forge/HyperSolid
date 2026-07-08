@@ -7,6 +7,7 @@ package conformance
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
@@ -96,6 +97,9 @@ func Run(t *testing.T, newAuth func() ledger.Authorizer) {
 		}
 		if _, err := a.Authorize(ctx, Request{KeyID: "k", Cloid: "c3", Digest: dig(4), Fence: 5, Notional: 2000, DailyCap: 1000, NowMs: cfNow + 2}); !errors.Is(err, singlewriter.ErrDailyCap) {
 			t.Fatalf("over cap err = %v, want ErrDailyCap", err)
+		}
+		if _, err := a.Authorize(ctx, Request{KeyID: "k", Cloid: "c4", Digest: dig(5), Fence: 5, Notional: math.NaN(), DailyCap: 1000, NowMs: cfNow + 3}); !errors.Is(err, singlewriter.ErrInvalidNotional) {
+			t.Fatalf("NaN notional err = %v, want ErrInvalidNotional", err)
 		}
 	})
 
