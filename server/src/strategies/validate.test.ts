@@ -65,7 +65,7 @@ describe("validateParams grid", () => {
 describe("validateParams gridLimit", () => {
   const ok = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
   it("accepts a valid gridLimit", () => {
-    expect(validateParams("gridLimit", ok)).toEqual({ ok: true, params: ok });
+    expect(validateParams("gridLimit", ok)).toEqual({ ok: true, params: { ...ok, mode: "longOnly" } });
   });
   it("rejects upper <= lower", () => {
     expect(validateParams("gridLimit", { ...ok, upperPrice: 100 }).ok).toBe(false);
@@ -75,5 +75,23 @@ describe("validateParams gridLimit", () => {
   });
   it("rejects perLevelUsdc <= 0", () => {
     expect(validateParams("gridLimit", { ...ok, perLevelUsdc: 0 }).ok).toBe(false);
+  });
+});
+
+describe("validateParams gridLimit mode", () => {
+  const base = { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 };
+  it("defaults mode to longOnly when omitted", () => {
+    const r = validateParams("gridLimit", base);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.params as any).mode).toBe("longOnly");
+  });
+  it("accepts symmetric", () => {
+    const r = validateParams("gridLimit", { ...base, mode: "symmetric" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.params as any).mode).toBe("symmetric");
+  });
+  it("rejects an unknown mode", () => {
+    const r = validateParams("gridLimit", { ...base, mode: "wat" });
+    expect(r.ok).toBe(false);
   });
 });

@@ -45,3 +45,24 @@ export function rungSizeCoin(p: GridLimitParams, i: number): number {
 export function armable(p: GridLimitParams, i: number, mark: number): boolean {
   return rungBuyPrice(p, i) < mark;
 }
+
+/** Rung geometric center = midpoint of its buy/sell lines. */
+export function rungCenter(p: GridLimitParams, i: number): number {
+  return (rungBuyPrice(p, i) + rungSellPrice(p, i)) / 2;
+}
+
+/** In symmetric mode a rung whose center is at/above the mark runs SHORT (sell to open above, TP buy below). */
+export function rungIsShort(p: GridLimitParams, i: number, mark: number): boolean {
+  return rungCenter(p, i) >= mark;
+}
+
+/** A rung can rest a maker SELL-to-open only when its sell line is strictly above the mark. */
+export function armableShort(p: GridLimitParams, i: number, mark: number): boolean {
+  return rungSellPrice(p, i) > mark;
+}
+
+/** Coin size for a short rung `i` = perLevelUsdc valued at the sell (entry) line. */
+export function rungShortSizeCoin(p: GridLimitParams, i: number): number {
+  const px = rungSellPrice(p, i);
+  return px > 0 ? p.perLevelUsdc / px : 0;
+}
