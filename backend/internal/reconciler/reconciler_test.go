@@ -99,6 +99,24 @@ func TestStepSkipsUnknownCloid(t *testing.T) {
 	}
 }
 
+func TestStepAdvancesSubmittedToOpen(t *testing.T) {
+	// A record for which the caller DID report "submitted": the reconciler must
+	// still advance submitted->open when it observes the order resting.
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c3")
+	if _, err := led.Reconcile(context.Background(), "k", "c3", ledger.StatusSubmitted); err != nil {
+		t.Fatalf("seed submitted: %v", err)
+	}
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c3": {}}}}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if s, ok := statusOf(t, led, "c3"); !ok || s != ledger.StatusOpen {
+		t.Fatalf("c3 = %s,%v, want open", s, ok)
+	}
+}
+
 func TestStepReturnsClientError(t *testing.T) {
 	boom := errors.New("boom")
 	r := New(&fakeClient{err: boom}, ledger.NewMem(), []Account{{KeyID: "k", Address: "0xacc"}})
