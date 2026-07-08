@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hlinfo"
@@ -42,6 +43,7 @@ func clampAnchor(anchor, nowMs int64) int64 {
 type InfoClient interface {
 	OpenCloids(ctx context.Context, user string) (map[string]hlinfo.OpenOrder, error)
 	FillsByCloidSince(ctx context.Context, user string, startMs int64) (map[string]hlinfo.Fill, error)
+	OrderStatus(ctx context.Context, user, cloid string) (hlinfo.OrderStatusResult, error)
 }
 
 // Reconciler advances ledger intents from observed HL state, one poll at a time.
@@ -83,6 +85,24 @@ func targetFor(cloid string, open map[string]hlinfo.OpenOrder, fills map[string]
 	return "", false
 }
 
+// reapTarget maps an HL order status string to the ledger status to advance toward,
+// ok=false for statuses that don't imply a lifecycle change. Mirrors the mobile
+// normalizeOrderStatus classification.
+func reapTarget(hlStatus string) (ledger.Status, bool) {
+	switch {
+	case strings.HasSuffix(hlStatus, "Rejected"), hlStatus == "rejected":
+		return ledger.StatusRejected, true
+	case strings.HasSuffix(hlStatus, "Canceled"), hlStatus == "canceled", hlStatus == "scheduledCancel":
+		return ledger.StatusCanceled, true
+	case hlStatus == "filled":
+		return ledger.StatusFilled, true
+	case hlStatus == "open", hlStatus == "resting", hlStatus == "triggered":
+		return ledger.StatusOpen, true
+	default:
+		return "", false
+	}
+}
+
 // reconcileOne applies one transition, swallowing benign per-cloid rejections
 // (ErrUnknownIntent = not our order; ErrInvalidTransition = stale/idempotent) and
 // surfacing only infrastructure errors.
@@ -104,20 +124,20 @@ func (r *Reconciler) step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// oldest non-terminal intent's updatedAt per keyID = that key's fills anchor.
-	anchorByKey := make(map[string]int64)
+	byKey := make(map[string][]ledger.Orphan)
 	for _, o := range orphs {
-		if cur, ok := anchorByKey[o.KeyID]; !ok || o.UpdatedAtMs < cur {
-			anchorByKey[o.KeyID] = o.UpdatedAtMs
-		}
+		byKey[o.KeyID] = append(byKey[o.KeyID], o)
 	}
 	now := time.Now().UnixMilli()
 	for _, a := range r.accounts {
-		anchor, ok := anchorByKey[a.KeyID]
-		if !ok {
-			anchor = now // no pending intents → fills window from now (≈empty)
+		group := byKey[a.KeyID]
+		anchor := now
+		for _, o := range group {
+			if o.UpdatedAtMs < anchor {
+				anchor = o.UpdatedAtMs
+			}
 		}
-		anchor = clampAnchor(anchor, now) // stale stuck intents can't pin the window unbounded
+		anchor = clampAnchor(anchor, now)
 		open, err := r.client.OpenCloids(ctx, a.Address)
 		if err != nil {
 			return err
@@ -126,6 +146,7 @@ func (r *Reconciler) step(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// advance open/filled from the batch snapshots.
 		seen := make(map[string]struct{}, len(open)+len(fills))
 		for cloid := range open {
 			seen[cloid] = struct{}{}
@@ -139,6 +160,30 @@ func (r *Reconciler) step(ctx context.Context) error {
 				continue
 			}
 			if err := r.reconcileOne(ctx, a.KeyID, cloid, target); err != nil {
+				return err
+			}
+		}
+		// reap non-terminal intents HL no longer reports as open/filled: the
+		// authoritative orderStatus advances canceled/rejected (or filled) to terminal.
+		for _, o := range group {
+			if _, inOpen := open[o.Cloid]; inOpen {
+				continue
+			}
+			if _, inFills := fills[o.Cloid]; inFills {
+				continue
+			}
+			res, err := r.client.OrderStatus(ctx, a.Address, o.Cloid)
+			if err != nil {
+				return err
+			}
+			if !res.Found {
+				continue // unknownOid → HL has no record; leave (may be mid-submission)
+			}
+			target, ok := reapTarget(res.Status)
+			if !ok {
+				continue
+			}
+			if err := r.reconcileOne(ctx, a.KeyID, o.Cloid, target); err != nil {
 				return err
 			}
 		}

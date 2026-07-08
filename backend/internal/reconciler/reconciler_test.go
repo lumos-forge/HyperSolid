@@ -12,11 +12,13 @@ import (
 
 // fakeClient serves canned per-address snapshots and can inject an error.
 type fakeClient struct {
-	open      map[string]map[string]hlinfo.OpenOrder
-	fills     map[string]map[string]hlinfo.Fill
-	err       error
-	calls     chan struct{} // optional: signal each OpenCloids call
-	lastStart map[string]int64
+	open          map[string]map[string]hlinfo.OpenOrder
+	fills         map[string]map[string]hlinfo.Fill
+	orderStatus   map[string]hlinfo.OrderStatusResult
+	statusQueried []string
+	err           error
+	calls         chan struct{} // optional: signal each OpenCloids call
+	lastStart     map[string]int64
 }
 
 func (f *fakeClient) OpenCloids(_ context.Context, user string) (map[string]hlinfo.OpenOrder, error) {
@@ -41,6 +43,14 @@ func (f *fakeClient) FillsByCloidSince(_ context.Context, user string, startMs i
 		return nil, f.err
 	}
 	return f.fills[user], nil
+}
+
+func (f *fakeClient) OrderStatus(_ context.Context, _ string, cloid string) (hlinfo.OrderStatusResult, error) {
+	f.statusQueried = append(f.statusQueried, cloid)
+	if f.err != nil {
+		return hlinfo.OrderStatusResult{}, f.err
+	}
+	return f.orderStatus[cloid], nil // zero value = {Found:false}
 }
 
 func seedSigned(t *testing.T, led *ledger.Mem, keyID, cloid string) {
@@ -249,5 +259,71 @@ func TestClampAnchor(t *testing.T) {
 	old := now - 30*24*60*60*1000 // 30 days ago
 	if got := clampAnchor(old, now); got != now-maxAnchorLookbackMs {
 		t.Fatalf("stale anchor = %d, want floor %d", got, now-maxAnchorLookbackMs)
+	}
+}
+
+func TestReapTarget(t *testing.T) {
+	cases := map[string]struct {
+		want ledger.Status
+		ok   bool
+	}{
+		"canceled":        {ledger.StatusCanceled, true},
+		"marginCanceled":  {ledger.StatusCanceled, true},
+		"scheduledCancel": {ledger.StatusCanceled, true},
+		"rejected":        {ledger.StatusRejected, true},
+		"tickRejected":    {ledger.StatusRejected, true},
+		"filled":          {ledger.StatusFilled, true},
+		"open":            {ledger.StatusOpen, true},
+		"resting":         {ledger.StatusOpen, true},
+		"triggered":       {ledger.StatusOpen, true},
+		"weird":           {"", false},
+	}
+	for in, exp := range cases {
+		got, ok := reapTarget(in)
+		if ok != exp.ok || got != exp.want {
+			t.Fatalf("reapTarget(%q) = %s,%v; want %s,%v", in, got, ok, exp.want, exp.ok)
+		}
+	}
+}
+
+func TestStepReapsCanceled(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{
+		open:        map[string]map[string]hlinfo.OpenOrder{"0xacc": {}},
+		orderStatus: map[string]hlinfo.OrderStatusResult{"c1": {Status: "canceled", Found: true}},
+	}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if _, ok := statusOf(t, led, "c1"); ok {
+		t.Fatalf("c1 should be terminal (canceled) → absent from orphans")
+	}
+}
+
+func TestStepLeavesUnknownOid(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}} // orderStatus zero → Found=false
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if s, ok := statusOf(t, led, "c1"); !ok || s != ledger.StatusSigned {
+		t.Fatalf("c1 = %s,%v, want still signed (unknownOid → leave)", s, ok)
+	}
+}
+
+func TestStepSkipsOrderStatusWhenOpen(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(fc.statusQueried) != 0 {
+		t.Fatalf("orderStatus queried %v; want none (c1 is in openOrders)", fc.statusQueried)
 	}
 }
