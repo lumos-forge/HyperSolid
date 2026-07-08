@@ -121,8 +121,8 @@ func TestFillsByCloidSincePaginates(t *testing.T) {
 	if f.Sz != 4 {
 		t.Fatalf("c1 sz = %v, want 4 (tid-dedup across pages)", f.Sz)
 	}
-	if len(starts) != 3 || starts[0] != 100 || starts[1] != 201 || starts[2] != 301 {
-		t.Fatalf("startTimes = %v, want [100 201 301]", starts)
+	if len(starts) != 3 || starts[0] != 100 || starts[1] != 200 || starts[2] != 300 {
+		t.Fatalf("startTimes = %v, want [100 200 300] (cursor = maxTime, inclusive)", starts)
 	}
 }
 

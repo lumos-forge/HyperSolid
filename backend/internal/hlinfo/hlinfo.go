@@ -150,7 +150,10 @@ const fillsMaxPages = 50
 
 // FillsByCloidSince pages userFillsByTime forward from startMs (unix ms),
 // aggregating fills by cloid (dedup by trade id across page boundaries) until an
-// empty page, no forward progress, or fillsMaxPages. Null-cloid fills are dropped.
+// empty page, a page holding only already-seen fills, or fillsMaxPages. Null-cloid
+// fills are dropped. The cursor advances to the page's max fill time (inclusive
+// re-query next page) so fills sharing the boundary millisecond across a page split
+// are not skipped; tid-dedup absorbs the resulting overlap.
 func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int64) (map[string]Fill, error) {
 	type acc struct{ sz, closedPnl, pxSz float64 }
 	m := make(map[string]acc)
@@ -165,6 +168,7 @@ func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int
 			break
 		}
 		var maxTime int64
+		newInPage := 0
 		for _, f := range raw {
 			if f.Time > maxTime {
 				maxTime = f.Time
@@ -173,6 +177,7 @@ func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int
 				continue
 			}
 			seen[f.Tid] = struct{}{}
+			newInPage++
 			if f.Cloid == nil {
 				continue
 			}
@@ -185,11 +190,10 @@ func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int
 			a.pxSz += px * sz
 			m[*f.Cloid] = a
 		}
-		next := maxTime + 1
-		if next <= cursor { // window did not advance → stop (avoids an infinite loop)
-			break
+		if newInPage == 0 {
+			break // page held only already-seen fills → caught up
 		}
-		cursor = next
+		cursor = maxTime // inclusive re-query; tid-dedup handles the boundary overlap
 	}
 	out := make(map[string]Fill)
 	for cloid, a := range m {

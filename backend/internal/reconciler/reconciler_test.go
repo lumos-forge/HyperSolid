@@ -238,3 +238,16 @@ func mustOrphans(t *testing.T, led *ledger.Mem) []ledger.Orphan {
 	}
 	return o
 }
+
+func TestClampAnchor(t *testing.T) {
+	const now int64 = 1_700_000_000_000
+	// within the lookback window → unchanged.
+	if got := clampAnchor(now-1000, now); got != now-1000 {
+		t.Fatalf("recent anchor = %d, want %d (unchanged)", got, now-1000)
+	}
+	// older than the window → clamped to now - maxAnchorLookbackMs.
+	old := now - 30*24*60*60*1000 // 30 days ago
+	if got := clampAnchor(old, now); got != now-maxAnchorLookbackMs {
+		t.Fatalf("stale anchor = %d, want floor %d", got, now-maxAnchorLookbackMs)
+	}
+}
