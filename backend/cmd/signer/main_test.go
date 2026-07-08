@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
+	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
-	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
 )
 
 // constFencer is a test Fencer with a fixed epoch and leadership flag.
@@ -28,7 +28,7 @@ func (c constFencer) Fence() (uint64, bool) { return c.epoch, c.leader }
 // fencer (epoch 1), and the given clock (nil → real time). It reproduces the
 // pre-wiring in-memory nonce+cap behavior plus the fence gate.
 func leaderMux(ks *keystore.Keystore, policies *policy.Store, nowMs func() int64) http.Handler {
-	return newMux(ks, policies, singlewriter.NewMem(), constFencer{epoch: 1, leader: true}, nowMs)
+	return newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, nowMs)
 }
 
 func TestHealthz(t *testing.T) {
@@ -143,10 +143,11 @@ func TestSignL1Endpoint(t *testing.T) {
 	defer srv.Close()
 	body, _ := json.Marshal(struct {
 		KeyID     string          `json:"keyId"`
+		Cloid     string          `json:"cloid"`
 		Kind      string          `json:"kind"`
 		Params    json.RawMessage `json:"params"`
 		IsTestnet bool            `json:"isTestnet"`
-	}{"k1", v.Kind, v.Params, v.IsTestnet})
+	}{"k1", "golden-c1", v.Kind, v.Params, v.IsTestnet})
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -402,8 +403,8 @@ func TestSignL1GeneratesMonotonicNonce(t *testing.T) {
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
 	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
 	defer srv.Close()
-	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
-	sign := func() uint64 {
+	sign := func(cloid string) uint64 {
+		body := `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -420,8 +421,8 @@ func TestSignL1GeneratesMonotonicNonce(t *testing.T) {
 		}
 		return out.Nonce
 	}
-	n1 := sign()
-	n2 := sign()
+	n1 := sign("monotonic-c1")
+	n2 := sign("monotonic-c2")
 	if n1 != 1700000000000 {
 		t.Fatalf("n1 = %d, want 1700000000000", n1)
 	}
@@ -441,8 +442,8 @@ func TestSignL1DailyCapExceeded(t *testing.T) {
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 600})
 	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
 	defer srv.Close()
-	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
-	post := func() int {
+	post := func(cloid string) int {
+		body := `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -450,9 +451,10 @@ func TestSignL1DailyCapExceeded(t *testing.T) {
 		defer res.Body.Close()
 		return res.StatusCode
 	}
-	if s := post(); s != 200 {
+	if s := post("dailycap-c1"); s != 200 {
 		t.Fatalf("first sign status = %d, want 200 (500 <= daily cap 600)", s)
 	}
+	body := `{"keyId":"k1","cloid":"dailycap-c2","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -509,7 +511,7 @@ func TestSignL1NonLeader503(t *testing.T) {
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
 	// A non-leader must refuse to sign (503) even for an otherwise-valid request.
-	srv := httptest.NewServer(newMux(ks, policies, singlewriter.NewMem(), constFencer{epoch: 1, leader: false}, nil))
+	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: false}, nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -537,17 +539,17 @@ func TestSignL1FencedConflict(t *testing.T) {
 	}
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
-	// A newer leader has already advanced this key's fence to 5 in the single-writer.
-	writer := singlewriter.NewMem()
-	if _, err := writer.Authorize(context.Background(), singlewriter.Request{
-		KeyID: "k1", Fence: 5, Notional: 0, DailyCap: 0, NowMs: 1700000000000,
+	// A newer leader has already advanced this key's fence to 5 in the ledger's
+	// single-writer state.
+	auth := ledger.NewMem()
+	if _, err := auth.Authorize(context.Background(), ledger.Request{
+		KeyID: "k1", Cloid: "seed", Digest: [32]byte{9}, Fence: 5, Notional: 0, DailyCap: 0, NowMs: 1700000000000,
 	}); err != nil {
 		t.Fatalf("seed fence: %v", err)
 	}
-	// This endpoint still believes it is the leader at the STALE epoch 1 → fenced (409).
-	srv := httptest.NewServer(newMux(ks, policies, writer, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(ks, policies, auth, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
-	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	body := `{"keyId":"k1","cloid":"req-c1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -591,5 +593,106 @@ func TestBuildHandlerInMemory(t *testing.T) {
 	sr.Body.Close()
 	if sr.StatusCode != 404 {
 		t.Fatalf("sign unknown key status = %d, want 404", sr.StatusCode)
+	}
+}
+
+func TestSignL1IdempotentReplay(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, err := hex.DecodeString(v.PrivKey[2:])
+	if err != nil {
+		t.Fatalf("decode key: %v", err)
+	}
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{v.Kind: true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+
+	type out struct {
+		R         string `json:"r"`
+		S         string `json:"s"`
+		V         int    `json:"v"`
+		Nonce     uint64 `json:"nonce"`
+		Duplicate bool   `json:"duplicate"`
+	}
+	post := func(cloid string) (int, out) {
+		body, _ := json.Marshal(map[string]any{"keyId": "k1", "cloid": cloid, "kind": v.Kind, "params": v.Params, "isTestnet": v.IsTestnet})
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		var o out
+		_ = json.NewDecoder(res.Body).Decode(&o)
+		return res.StatusCode, o
+	}
+
+	code1, o1 := post("c1")
+	if code1 != 200 || o1.Duplicate {
+		t.Fatalf("first: code=%d dup=%v, want 200 dup=false", code1, o1.Duplicate)
+	}
+	code2, o2 := post("c1")
+	if code2 != 200 || !o2.Duplicate {
+		t.Fatalf("replay: code=%d dup=%v, want 200 dup=true", code2, o2.Duplicate)
+	}
+	if o2.Nonce != o1.Nonce || o2.R != o1.R || o2.S != o1.S || o2.V != o1.V {
+		t.Fatalf("replay sig/nonce differ: o1=%+v o2=%+v", o1, o2)
+	}
+}
+
+func TestSignL1CloidReuseConflict(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, _ := hex.DecodeString(v.PrivKey[2:])
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+
+	post := func(px string) int {
+		body := `{"keyId":"k1","cloid":"cx","kind":"order","params":{"asset":0,"isBuy":true,"px":"` + px + `","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
+	}
+	if c := post("50000"); c != 200 {
+		t.Fatalf("first px status = %d, want 200", c)
+	}
+	if c := post("51000"); c != 409 {
+		t.Fatalf("reuse (same cloid, different intent) status = %d, want 409", c)
+	}
+}
+
+func TestSignL1MissingCloid(t *testing.T) {
+	v := loadFirstGolden(t)
+	key, _ := hex.DecodeString(v.PrivKey[2:])
+	ks := keystore.New()
+	defer ks.Close()
+	if err := ks.Add("k1", key); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return int64(v.Nonce) }))
+	defer srv.Close()
+	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("missing cloid status = %d, want 400", res.StatusCode)
 	}
 }
