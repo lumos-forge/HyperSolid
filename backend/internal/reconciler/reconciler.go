@@ -19,10 +19,29 @@ type Account struct {
 	Address string
 }
 
+// allNonTerminalCutoffMs is a far-future cutoff (year ~2096) so Orphans returns
+// every currently non-terminal intent; their min updatedAt is the per-key fills anchor.
+const allNonTerminalCutoffMs int64 = 4_000_000_000_000
+
+// maxAnchorLookbackMs bounds how far back the fills anchor can reach. The auto-loop
+// only advances intents to open/filled — it cannot reap a canceled/rejected order —
+// so a stuck non-terminal intent would otherwise pin the anchor at an ever-older
+// timestamp, growing per-tick pagination without bound. Fills for intents within the
+// window are still caught; older stuck intents are surfaced via /v1/orphans.
+const maxAnchorLookbackMs int64 = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+// clampAnchor bounds anchor to at most maxAnchorLookbackMs before nowMs.
+func clampAnchor(anchor, nowMs int64) int64 {
+	if floor := nowMs - maxAnchorLookbackMs; anchor < floor {
+		return floor
+	}
+	return anchor
+}
+
 // InfoClient is the read-side HL surface the reconciler needs (hlinfo.Client satisfies it).
 type InfoClient interface {
 	OpenCloids(ctx context.Context, user string) (map[string]hlinfo.OpenOrder, error)
-	FillsByCloid(ctx context.Context, user string) (map[string]hlinfo.Fill, error)
+	FillsByCloidSince(ctx context.Context, user string, startMs int64) (map[string]hlinfo.Fill, error)
 }
 
 // Reconciler advances ledger intents from observed HL state, one poll at a time.
@@ -81,12 +100,29 @@ func (r *Reconciler) step(ctx context.Context) error {
 	if r.isLeader != nil && !r.isLeader() {
 		return nil // not the leader; another instance polls
 	}
+	orphs, err := r.led.Orphans(ctx, allNonTerminalCutoffMs)
+	if err != nil {
+		return err
+	}
+	// oldest non-terminal intent's updatedAt per keyID = that key's fills anchor.
+	anchorByKey := make(map[string]int64)
+	for _, o := range orphs {
+		if cur, ok := anchorByKey[o.KeyID]; !ok || o.UpdatedAtMs < cur {
+			anchorByKey[o.KeyID] = o.UpdatedAtMs
+		}
+	}
+	now := time.Now().UnixMilli()
 	for _, a := range r.accounts {
+		anchor, ok := anchorByKey[a.KeyID]
+		if !ok {
+			anchor = now // no pending intents → fills window from now (≈empty)
+		}
+		anchor = clampAnchor(anchor, now) // stale stuck intents can't pin the window unbounded
 		open, err := r.client.OpenCloids(ctx, a.Address)
 		if err != nil {
 			return err
 		}
-		fills, err := r.client.FillsByCloid(ctx, a.Address)
+		fills, err := r.client.FillsByCloidSince(ctx, a.Address, anchor)
 		if err != nil {
 			return err
 		}

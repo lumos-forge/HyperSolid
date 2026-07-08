@@ -106,6 +106,8 @@ type rawFill struct {
 	Px        string  `json:"px"`
 	Sz        string  `json:"sz"`
 	ClosedPnl string  `json:"closedPnl"`
+	Time      int64   `json:"time"`
+	Tid       int64   `json:"tid"`
 }
 
 // FillsByCloid returns the user's fills aggregated by cloid (partial fills summed;
@@ -129,6 +131,69 @@ func (c *Client) FillsByCloid(ctx context.Context, user string) (map[string]Fill
 		a.closedPnl += pnl
 		a.pxSz += px * sz
 		m[*f.Cloid] = a
+	}
+	out := make(map[string]Fill)
+	for cloid, a := range m {
+		px := 0.0
+		if a.sz > 0 {
+			px = a.pxSz / a.sz
+		}
+		out[cloid] = Fill{Sz: a.sz, Px: px, ClosedPnl: a.closedPnl}
+	}
+	return out, nil
+}
+
+// fillsMaxPages caps userFillsByTime pagination so a hot account can't spin the
+// loop unbounded; on hitting it FillsByCloidSince returns what it has (best-effort;
+// the ledger orphan detection backstops any gap).
+const fillsMaxPages = 50
+
+// FillsByCloidSince pages userFillsByTime forward from startMs (unix ms),
+// aggregating fills by cloid (dedup by trade id across page boundaries) until an
+// empty page, a page holding only already-seen fills, or fillsMaxPages. Null-cloid
+// fills are dropped. The cursor advances to the page's max fill time (inclusive
+// re-query next page) so fills sharing the boundary millisecond across a page split
+// are not skipped; tid-dedup absorbs the resulting overlap.
+func (c *Client) FillsByCloidSince(ctx context.Context, user string, startMs int64) (map[string]Fill, error) {
+	type acc struct{ sz, closedPnl, pxSz float64 }
+	m := make(map[string]acc)
+	seen := make(map[int64]struct{}) // dedup by tid across pages
+	cursor := startMs
+	for page := 0; page < fillsMaxPages; page++ {
+		var raw []rawFill
+		if err := c.post(ctx, map[string]any{"type": "userFillsByTime", "user": user, "startTime": cursor}, &raw); err != nil {
+			return nil, err
+		}
+		if len(raw) == 0 {
+			break
+		}
+		var maxTime int64
+		newInPage := 0
+		for _, f := range raw {
+			if f.Time > maxTime {
+				maxTime = f.Time
+			}
+			if _, dup := seen[f.Tid]; dup {
+				continue
+			}
+			seen[f.Tid] = struct{}{}
+			newInPage++
+			if f.Cloid == nil {
+				continue
+			}
+			sz, _ := strconv.ParseFloat(f.Sz, 64)
+			px, _ := strconv.ParseFloat(f.Px, 64)
+			pnl, _ := strconv.ParseFloat(f.ClosedPnl, 64)
+			a := m[*f.Cloid]
+			a.sz += sz
+			a.closedPnl += pnl
+			a.pxSz += px * sz
+			m[*f.Cloid] = a
+		}
+		if newInPage == 0 {
+			break // page held only already-seen fills → caught up
+		}
+		cursor = maxTime // inclusive re-query; tid-dedup handles the boundary overlap
 	}
 	out := make(map[string]Fill)
 	for cloid, a := range m {

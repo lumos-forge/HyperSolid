@@ -12,10 +12,11 @@ import (
 
 // fakeClient serves canned per-address snapshots and can inject an error.
 type fakeClient struct {
-	open  map[string]map[string]hlinfo.OpenOrder
-	fills map[string]map[string]hlinfo.Fill
-	err   error
-	calls chan struct{} // optional: signal each OpenCloids call
+	open      map[string]map[string]hlinfo.OpenOrder
+	fills     map[string]map[string]hlinfo.Fill
+	err       error
+	calls     chan struct{} // optional: signal each OpenCloids call
+	lastStart map[string]int64
 }
 
 func (f *fakeClient) OpenCloids(_ context.Context, user string) (map[string]hlinfo.OpenOrder, error) {
@@ -31,7 +32,11 @@ func (f *fakeClient) OpenCloids(_ context.Context, user string) (map[string]hlin
 	return f.open[user], nil
 }
 
-func (f *fakeClient) FillsByCloid(_ context.Context, user string) (map[string]hlinfo.Fill, error) {
+func (f *fakeClient) FillsByCloidSince(_ context.Context, user string, startMs int64) (map[string]hlinfo.Fill, error) {
+	if f.lastStart == nil {
+		f.lastStart = map[string]int64{}
+	}
+	f.lastStart[user] = startMs
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -188,5 +193,61 @@ func TestLeaderGateRunsWhenLeader(t *testing.T) {
 	}
 	if s, ok := statusOf(t, led, "c1"); !ok || s != ledger.StatusOpen {
 		t.Fatalf("c1 = %s,%v, want open (gate open → runs)", s, ok)
+	}
+}
+
+func TestStepAnchorsToNowWhenNoPending(t *testing.T) {
+	before := time.Now().UnixMilli()
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}}
+	r := New(fc, ledger.NewMem(), []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if fc.lastStart["0xacc"] < before {
+		t.Fatalf("anchor = %d, want >= now(%d) when no pending intents", fc.lastStart["0xacc"], before)
+	}
+}
+
+func TestStepAnchorsFillsToOldestNonTerminal(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1") // older
+	time.Sleep(2 * time.Millisecond)
+	seedSigned(t, led, "k", "c2") // newer
+	var oldest int64 = 1 << 62
+	for _, o := range mustOrphans(t, led) {
+		if o.UpdatedAtMs < oldest {
+			oldest = o.UpdatedAtMs
+		}
+	}
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if fc.lastStart["0xacc"] != oldest {
+		t.Fatalf("anchor = %d, want oldest updatedAt %d", fc.lastStart["0xacc"], oldest)
+	}
+}
+
+// mustOrphans returns all non-terminal records (far-future cutoff).
+func mustOrphans(t *testing.T, led *ledger.Mem) []ledger.Orphan {
+	t.Helper()
+	o, err := led.Orphans(context.Background(), 4_000_000_000_000)
+	if err != nil {
+		t.Fatalf("orphans: %v", err)
+	}
+	return o
+}
+
+func TestClampAnchor(t *testing.T) {
+	const now int64 = 1_700_000_000_000
+	// within the lookback window → unchanged.
+	if got := clampAnchor(now-1000, now); got != now-1000 {
+		t.Fatalf("recent anchor = %d, want %d (unchanged)", got, now-1000)
+	}
+	// older than the window → clamped to now - maxAnchorLookbackMs.
+	old := now - 30*24*60*60*1000 // 30 days ago
+	if got := clampAnchor(old, now); got != now-maxAnchorLookbackMs {
+		t.Fatalf("stale anchor = %d, want floor %d", got, now-maxAnchorLookbackMs)
 	}
 }
