@@ -8,9 +8,12 @@ func isTerminal(s Status) bool {
 
 // allowedTransitions maps each source state to its permitted forward targets
 // (excluding the always-allowed idempotent self-transition). Terminal states have
-// no entry, so only their self-report is accepted.
+// no entry, so only their self-report is accepted. The signed→open and signed→filled
+// edges are allowed because Hyperliquid's info API reports only open/filled (no
+// submitted intermediate), so the auto-reconciler can advance a signed record it
+// observes resting or filled.
 var allowedTransitions = map[Status]map[Status]bool{
-	StatusSigned:    {StatusSubmitted: true, StatusRejected: true},
+	StatusSigned:    {StatusSubmitted: true, StatusOpen: true, StatusFilled: true, StatusRejected: true},
 	StatusSubmitted: {StatusOpen: true, StatusFilled: true, StatusRejected: true},
 	StatusOpen:      {StatusFilled: true, StatusCanceled: true, StatusRejected: true},
 }
