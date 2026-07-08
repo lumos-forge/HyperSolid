@@ -20,6 +20,8 @@ type Config struct {
 	MaxNotionalUsdc      float64            // global per-order notional cap
 	PerCoinMaxUsdc       map[string]float64 // optional tighter per-coin cap (overrides global)
 	DailyMaxNotionalUsdc float64            // per-key daily notional cap; 0 = no daily limit (enforced by SpendTracker, not Evaluate)
+	RatePerSec           float64            // per-key sustained sign rate (tokens/sec); 0 = no rate limit (enforced by ratelimit.Limiter, not Evaluate)
+	RateBurst            float64            // token-bucket capacity (max burst); paired with RatePerSec
 }
 
 // Decision is the policy verdict. Allow is false unless every rule passes.
