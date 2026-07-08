@@ -34,22 +34,49 @@ describe("makeRestingExecutor.placeLimit", () => {
   });
 });
 
-describe("makeRestingExecutor.cancelCloid", () => {
-  it("cancels by cloid and returns true", async () => {
+describe("makeRestingExecutor.cancelCloids", () => {
+  it("coalesces multiple cloids into a single cancelByCloid with one asset resolve", async () => {
+    const calls: any[] = [];
+    let resolves = 0;
+    const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async (p) => { calls.push(p); return {}; } };
+    const d = { clientFor: () => client, resolveAsset: async () => { resolves++; return { assetIndex: 3, szDecimals: 2 }; } };
+    const exec = makeRestingExecutor(d);
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xa", "0xb", "0xc"] })).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ cancels: [{ asset: 3, cloid: "0xa" }, { asset: 3, cloid: "0xb" }, { asset: 3, cloid: "0xc" }] });
+    expect(resolves).toBe(1);
+  });
+  it("chunks by maxCancelBatch", async () => {
+    const calls: any[] = [];
+    const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async (p) => { calls.push(p); return {}; } };
+    const exec = makeRestingExecutor({ clientFor: () => client, resolveAsset: async () => ({ assetIndex: 3, szDecimals: 2 }), maxCancelBatch: 2 });
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xa", "0xb", "0xc"] })).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].cancels).toEqual([{ asset: 3, cloid: "0xa" }, { asset: 3, cloid: "0xb" }]);
+    expect(calls[1].cancels).toEqual([{ asset: 3, cloid: "0xc" }]);
+  });
+  it("no-ops on empty cloids without calling the client", async () => {
     const calls: any[] = [];
     const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async (p) => { calls.push(p); return {}; } };
     const exec = makeRestingExecutor(deps(client));
-    expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(true);
-    expect(calls[0]).toEqual({ cancels: [{ asset: 3, cloid: "0xc" }] });
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: [] })).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+  it("returns false with no client", async () => {
+    const exec = makeRestingExecutor(deps(undefined));
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xc"] })).toBe(false);
   });
   it("swallows a cancel error (already gone) and returns true", async () => {
     const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async () => { throw new Error("order not found"); } };
     const exec = makeRestingExecutor(deps(client));
-    expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(true);
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xc"] })).toBe(true);
   });
-  it("returns false with no client", async () => {
-    const exec = makeRestingExecutor(deps(undefined));
-    expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(false);
+  it("shadow-verifies the batched cancels, fire-and-forget", async () => {
+    const shadow = jest.fn();
+    const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async () => ({}) };
+    const exec = makeRestingExecutor(deps(client, shadow));
+    await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xa", "0xb"] });
+    expect(shadow).toHaveBeenCalledWith("cancelByCloid", { cancels: [{ asset: 3, cloid: "0xa" }, { asset: 3, cloid: "0xb" }] });
   });
 });
 
@@ -70,7 +97,7 @@ describe("makeRestingExecutor shadow verify", () => {
     const shadow = jest.fn();
     const client: RestingClientLike = { order: async () => ({}), cancelByCloid: async () => ({}) };
     const exec = makeRestingExecutor(deps(client, shadow));
-    const ok = await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" });
+    const ok = await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xc"] });
     expect(ok).toBe(true);
     expect(shadow).toHaveBeenCalledTimes(1);
     const [kind, params] = shadow.mock.calls[0];
@@ -78,13 +105,13 @@ describe("makeRestingExecutor shadow verify", () => {
     expect(params).toEqual({ cancels: [{ asset: 3, cloid: "0xc" }] });
   });
 
-  it("a throwing shadowVerify does not affect placeLimit/cancelCloid", async () => {
+  it("a throwing shadowVerify does not affect placeLimit/cancelCloids", async () => {
     const shadow = jest.fn(() => {
       throw new Error("boom");
     });
     const client: RestingClientLike = { order: async () => restingRes, cancelByCloid: async () => ({}) };
     const exec = makeRestingExecutor(deps(client, shadow));
     expect(await exec.placeLimit({ owner: "0xo", coin: "BTC", price: 140, sizeCoin: 0.5, side: "buy", reduceOnly: false, cloid: "0xc" })).toEqual({ ok: true, oid: 999 });
-    expect(await exec.cancelCloid({ owner: "0xo", coin: "BTC", cloid: "0xc" })).toBe(true);
+    expect(await exec.cancelCloids({ owner: "0xo", coin: "BTC", cloids: ["0xc"] })).toBe(true);
   });
 });

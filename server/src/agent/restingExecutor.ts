@@ -11,6 +11,8 @@ export interface RestingExecutorDeps {
   resolveAsset(coin: string): Promise<{ assetIndex: number; szDecimals: number }>;
   /** Optional fire-and-forget shadow verifier (compares Go signer digest); never affects execution. */
   shadowVerify?: (kind: string, params: unknown) => void;
+  /** Max cloids per cancelByCloid request; larger sets are chunked. Default 100. */
+  maxCancelBatch?: number;
 }
 
 export interface PlaceLimitRequest {
@@ -30,7 +32,7 @@ export type PlaceLimitResult =
 
 export interface RestingExecutor {
   placeLimit(req: PlaceLimitRequest): Promise<PlaceLimitResult>;
-  cancelCloid(req: { owner: string; coin: string; cloid: string }): Promise<boolean>;
+  cancelCloids(req: { owner: string; coin: string; cloids: string[] }): Promise<boolean>;
 }
 
 interface OrderStatus {
@@ -95,21 +97,26 @@ export function makeRestingExecutor(deps: RestingExecutorDeps): RestingExecutor 
       }
     },
 
-    async cancelCloid(req: { owner: string; coin: string; cloid: string }): Promise<boolean> {
+    async cancelCloids(req: { owner: string; coin: string; cloids: string[] }): Promise<boolean> {
+      if (req.cloids.length === 0) return true;
       const client = deps.clientFor(req.owner);
       if (!client) return false;
-      try {
-        const { assetIndex } = await deps.resolveAsset(req.coin);
+      const maxBatch = deps.maxCancelBatch && deps.maxCancelBatch > 0 ? deps.maxCancelBatch : 100;
+      const { assetIndex } = await deps.resolveAsset(req.coin);
+      for (let i = 0; i < req.cloids.length; i += maxBatch) {
+        const cancels = req.cloids.slice(i, i + maxBatch).map((cloid) => ({ asset: assetIndex, cloid }));
         try {
-          deps.shadowVerify?.("cancelByCloid", { cancels: [{ asset: assetIndex, cloid: req.cloid }] });
+          deps.shadowVerify?.("cancelByCloid", { cancels });
         } catch {
           /* shadow must never affect cancellation */
         }
-        await client.cancelByCloid({ cancels: [{ asset: assetIndex, cloid: req.cloid }] });
-        return true;
-      } catch {
-        return true; // already gone / filled — treat as cancelled (idempotent)
+        try {
+          await client.cancelByCloid({ cancels });
+        } catch {
+          /* already gone / filled — treat as cancelled (idempotent) */
+        }
       }
+      return true;
     },
   };
 }
