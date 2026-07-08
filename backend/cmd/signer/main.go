@@ -34,6 +34,7 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
+	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
@@ -385,14 +386,15 @@ func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 // single-writer, fencer, and clock.
 func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/healthz", metrics.Middleware("healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, led, fencer, nowMs))
-	mux.HandleFunc("/v1/reconcile", handleReconcile(led))
-	mux.HandleFunc("/v1/orphans", handleOrphans(led))
+	}))
+	mux.HandleFunc("/v1/digest/l1", metrics.Middleware("digest_l1", handleDigestL1))
+	mux.HandleFunc("/v1/sign/l1", metrics.Middleware("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs)))
+	mux.HandleFunc("/v1/reconcile", metrics.Middleware("reconcile", handleReconcile(led)))
+	mux.HandleFunc("/v1/orphans", metrics.Middleware("orphans", handleOrphans(led)))
+	mux.Handle("/metrics", metrics.Handler())
 	return mux
 }
 
