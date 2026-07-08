@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -927,5 +928,32 @@ func TestBuildHandlerStartsReconciler(t *testing.T) {
 	case <-polled:
 	case <-time.After(2 * time.Second):
 		t.Fatal("reconciler did not poll HL (loop not started or leader gate blocked)")
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+
+	// Drive one request through an instrumented route so a series exists.
+	if _, err := http.Get(srv.URL + "/healthz"); err != nil {
+		t.Fatalf("healthz: %v", err)
+	}
+
+	res, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("metrics get: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("/metrics status = %d, want 200", res.StatusCode)
+	}
+	body, _ := io.ReadAll(res.Body)
+	s := string(body)
+	if !strings.Contains(s, "hypersolid_http_requests_total") {
+		t.Fatalf("/metrics missing request counter:\n%s", s)
+	}
+	if !strings.Contains(s, `endpoint="healthz"`) {
+		t.Fatalf("/metrics missing healthz endpoint series:\n%s", s)
 	}
 }
