@@ -273,17 +273,123 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 	}
 }
 
+type reconcileRequest struct {
+	KeyID  string `json:"keyId"`
+	Cloid  string `json:"cloid"`
+	Status string `json:"status"`
+}
+
+type reconcileResponse struct {
+	Status string `json:"status"`
+}
+
+type orphanDTO struct {
+	KeyID       string `json:"keyId"`
+	Cloid       string `json:"cloid"`
+	Nonce       uint64 `json:"nonce"`
+	Status      string `json:"status"`
+	UpdatedAtMs int64  `json:"updatedAtMs"`
+}
+
+type orphansResponse struct {
+	Orphans []orphanDTO `json:"orphans"`
+}
+
+// validStatus reports whether s is one of the six known lifecycle states.
+func validStatus(s string) bool {
+	switch ledger.Status(s) {
+	case ledger.StatusSigned, ledger.StatusSubmitted, ledger.StatusOpen,
+		ledger.StatusFilled, ledger.StatusRejected, ledger.StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+// handleReconcile advances the lifecycle status of an existing (keyId, cloid)
+// intent via the ledger reconciliation state machine. It signs nothing and holds
+// no fence gate: transitions are serialized in the store and a stale report is
+// rejected as an invalid transition. Unknown intent → 404; invalid edge → 409;
+// unknown status string → 400.
+func handleReconcile(led ledger.Reconciler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var req reconcileRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		if !validStatus(req.Status) {
+			writeErr(w, http.StatusBadRequest, "invalid status")
+			return
+		}
+		st, err := led.Reconcile(r.Context(), req.KeyID, req.Cloid, ledger.Status(req.Status))
+		if err != nil {
+			switch {
+			case errors.Is(err, ledger.ErrUnknownIntent):
+				writeErr(w, http.StatusNotFound, "unknown intent")
+			case errors.Is(err, ledger.ErrInvalidTransition):
+				writeErr(w, http.StatusConflict, "invalid transition")
+			default:
+				writeErr(w, http.StatusInternalServerError, "reconcile failed")
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(reconcileResponse{Status: string(st)})
+	}
+}
+
+// handleOrphans returns non-terminal intents whose last update predates the
+// olderThanMs (unix ms) cutoff — signed/submitted/open orders never confirmed to
+// a terminal state. Read-only; no fence gate. Missing/invalid cutoff → 400.
+func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		n, err := strconv.ParseInt(r.URL.Query().Get("olderThanMs"), 10, 64)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid olderThanMs")
+			return
+		}
+		orphs, err := led.Orphans(r.Context(), n)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "orphans failed")
+			return
+		}
+		out := orphansResponse{Orphans: []orphanDTO{}}
+		for _, o := range orphs {
+			out.Orphans = append(out.Orphans, orphanDTO{
+				KeyID:       o.KeyID,
+				Cloid:       o.Cloid,
+				Nonce:       o.Nonce,
+				Status:      string(o.Status),
+				UpdatedAtMs: o.UpdatedAtMs,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
 // newMux builds the service router (no side effects; testable). The digest
 // endpoints are keyless; /v1/sign/l1 uses the injected keystore, policy,
 // single-writer, fencer, and clock.
-func newMux(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64) http.Handler {
+func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, auth, fencer, nowMs))
+	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, led, fencer, nowMs))
+	mux.HandleFunc("/v1/reconcile", handleReconcile(led))
+	mux.HandleFunc("/v1/orphans", handleOrphans(led))
 	return mux
 }
 
