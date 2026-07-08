@@ -56,12 +56,22 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 // Middleware wraps next, recording request count (by status code) and latency
 // under the given endpoint label. It is transparent — it does not alter the
-// response.
+// response. If next panics, the request is recorded with status 500 and the
+// panic is re-raised so the server's per-connection recovery still applies.
 func Middleware(endpoint string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		defer func() {
+			p := recover()
+			if p != nil {
+				rec.code = http.StatusInternalServerError
+			}
+			ObserveHTTP(endpoint, rec.code, time.Since(start).Seconds())
+			if p != nil {
+				panic(p)
+			}
+		}()
 		next(rec, r)
-		ObserveHTTP(endpoint, rec.code, time.Since(start).Seconds())
 	}
 }
