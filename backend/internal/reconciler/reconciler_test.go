@@ -164,3 +164,29 @@ func TestRunStepsUntilCanceled(t *testing.T) {
 		t.Fatal("Run did not return after cancel")
 	}
 }
+
+func TestLeaderGateSkipsWhenNotLeader(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}}, WithLeaderGate(func() bool { return false }))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if s, _ := statusOf(t, led, "c1"); s != ledger.StatusSigned {
+		t.Fatalf("c1 = %s, want signed (gate must skip when not leader)", s)
+	}
+}
+
+func TestLeaderGateRunsWhenLeader(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}}, WithLeaderGate(func() bool { return true }))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if s, ok := statusOf(t, led, "c1"); !ok || s != ledger.StatusOpen {
+		t.Fatalf("c1 = %s,%v, want open (gate open → runs)", s, ok)
+	}
+}
