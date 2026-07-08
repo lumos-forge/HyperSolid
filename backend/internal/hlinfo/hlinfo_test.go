@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 )
 
@@ -83,5 +84,74 @@ func TestErrorsOnNon2xxAndBadJSON(t *testing.T) {
 	defer garbage.Close()
 	if _, err := New(garbage.URL, nil).FillsByCloid(context.Background(), "0xacc"); err == nil {
 		t.Fatal("want error on bad json")
+	}
+}
+
+func TestFillsByCloidSincePaginates(t *testing.T) {
+	var starts []int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["type"] != "userFillsByTime" {
+			t.Fatalf("bad type: %v", body["type"])
+		}
+		st := int64(body["startTime"].(float64))
+		starts = append(starts, st)
+		switch {
+		case st <= 100:
+			_, _ = w.Write([]byte(`[
+				{"cloid":"c1","px":"100","sz":"2","closedPnl":"1","time":150,"tid":1},
+				{"cloid":"c1","px":"110","sz":"1","closedPnl":"1","time":200,"tid":2}
+			]`))
+		case st <= 201:
+			_, _ = w.Write([]byte(`[
+				{"cloid":"c1","px":"120","sz":"1","closedPnl":"1","time":250,"tid":2},
+				{"cloid":"c1","px":"130","sz":"1","closedPnl":"1","time":300,"tid":3}
+			]`))
+		default:
+			_, _ = w.Write([]byte(`[]`))
+		}
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, nil).FillsByCloidSince(context.Background(), "0xacc", 100)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	f := got["c1"]
+	if f.Sz != 4 {
+		t.Fatalf("c1 sz = %v, want 4 (tid-dedup across pages)", f.Sz)
+	}
+	if len(starts) != 3 || starts[0] != 100 || starts[1] != 201 || starts[2] != 301 {
+		t.Fatalf("startTimes = %v, want [100 201 301]", starts)
+	}
+}
+
+func TestFillsByCloidSinceEmptyFirstPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, nil).FillsByCloidSince(context.Background(), "0xacc", 0)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v, err %v; want empty", got, err)
+	}
+}
+
+func TestFillsByCloidSinceCapsPages(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		st := int64(body["startTime"].(float64))
+		calls++
+		_, _ = w.Write([]byte(`[{"cloid":"c1","px":"1","sz":"1","closedPnl":"0","time":` +
+			strconv.FormatInt(st+1, 10) + `,"tid":` + strconv.FormatInt(st+1, 10) + `}]`))
+	}))
+	defer srv.Close()
+	if _, err := New(srv.URL, nil).FillsByCloidSince(context.Background(), "0xacc", 0); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if calls != fillsMaxPages {
+		t.Fatalf("calls = %d, want fillsMaxPages=%d", calls, fillsMaxPages)
 	}
 }
