@@ -27,7 +27,7 @@
 | **M3** | 私有数据分片订阅器 | 仅为离线 agentic 用户按「≤10 用户/IP」分片订阅私有流 + 准入控制 + 超限回退轮询（§4.8）| 否 | 离线策略数据滞后 | **Go** |
 | **M4** | Agentic 执行引擎 | L1 规则（TP/SL、移动止损、DCA、网格、条件/定时单）、护栏网关、kill-switch、scheduleCancel 心跳、策略健康（§6.x）| 否（调用 M5）| 策略误触发（受 M5 policy 边界兜底）| **Go**（Temporal）|
 | **M5** | **签名器（拒绝优先策略引擎）** | 持 agent key、policy 绑定签名边界、msgpack+EIP-712 签名、按用户隔离 nonce（§5.1a/§5.2）| **是（唯一）** | **资金被恶意成交耗尽（最高危）** | **Go → KMS/Enclave（见 §5）** |
-| **M6** | 意图账本 / nonce 单写者 | cloid 先于签名持久化、租约 fencing 单写 nonce、按 cloid 对账状态机（§6.2）**【状态：跨主机单写者已落地 #28–#33（core/pg-writer/lease/leader/endpoint/main，Postgres + `DATABASE_URL` 切换）；cloid 意图账本对账、多 AZ/指标 待做】** | 否 | 重复单 / 孤儿单 / nonce 冲突 | **Go**（Temporal + Postgres）|
+| **M6** | 意图账本 / nonce 单写者 | cloid 先于签名持久化、租约 fencing 单写 nonce、按 cloid 对账状态机（§6.2）**【状态：端到端落地 —— 跨主机单写者 #28–#33（core/pg-writer/lease/leader/endpoint/main）+ cloid 幂等意图账本 #39 + 签名接线 #40 + 对账状态机+孤儿侦测 #41 + 对账端点 `/v1/reconcile`·`/v1/orphans` #42 + HL 回执源自动对账循环（leader-gated）#43–#44（`internal/{ledger,hlinfo,reconciler}`，`SIGNER_HL_INFO_URL`/`SIGNER_RECONCILE_ACCOUNTS` 起停）；多 AZ/指标 待做】** | 否 | 重复单 / 孤儿单 / nonce 冲突 | **Go**（Temporal + Postgres）|
 | **M7** | 推送服务 | APNs/FCM；自动交易/触发/熔断、授权健康告警（§5.3/§6）| 否 | 通知缺失 | **Go** |
 | **M8** | 中国智能路由代理 | 20+ 出口 IP 池、流量分离、429 降级（§4.1 / `docs/CHINA-ACCESS-ANALYSIS.md`）| 否 | 中国用户行情可达性下降 | **JS（Cloudflare Workers，保留）** |
 | **M9** | 存储层 | Postgres（**绝不存私钥**）+ Redis 缓存（§3）| 否 | 数据泄露（无私钥）| Go 接入 |
