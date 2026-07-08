@@ -31,6 +31,6 @@ func Decide(sw singlewriter.State, existing *Record, r Request) (singlewriter.St
 	if err != nil {
 		return sw, Record{}, Grant{}, err
 	}
-	rec := Record{Nonce: swg.Nonce, Digest: r.Digest, Status: "signed"}
+	rec := Record{Nonce: swg.Nonce, Digest: r.Digest, Status: StatusSigned}
 	return nextSW, rec, Grant{Nonce: swg.Nonce, Duplicate: false}, nil
 }
