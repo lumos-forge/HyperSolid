@@ -89,3 +89,44 @@ func TestMiddlewareRecordsPanicAs500(t *testing.T) {
 	}()
 	h(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/x", nil))
 }
+
+func TestObserveReconcileStep(t *testing.T) {
+	before := testutil.ToFloat64(reconcileSteps.WithLabelValues("ok"))
+	ObserveReconcileStep("ok")
+	ObserveReconcileStep("ok")
+	if got := testutil.ToFloat64(reconcileSteps.WithLabelValues("ok")) - before; got != 2 {
+		t.Fatalf("ok step delta = %v, want 2", got)
+	}
+	beforeErr := testutil.ToFloat64(reconcileSteps.WithLabelValues("error"))
+	ObserveReconcileStep("error")
+	if got := testutil.ToFloat64(reconcileSteps.WithLabelValues("error")) - beforeErr; got != 1 {
+		t.Fatalf("error step delta = %v, want 1", got)
+	}
+}
+
+func TestObserveReap(t *testing.T) {
+	before := testutil.ToFloat64(reconcileReaps.WithLabelValues("canceled"))
+	ObserveReap("canceled")
+	ObserveReap("canceled")
+	ObserveReap("rejected")
+	if got := testutil.ToFloat64(reconcileReaps.WithLabelValues("canceled")) - before; got != 2 {
+		t.Fatalf("canceled reap delta = %v, want 2", got)
+	}
+	if got := testutil.ToFloat64(reconcileReaps.WithLabelValues("rejected")); got < 1 {
+		t.Fatalf("rejected reap = %v, want >= 1", got)
+	}
+}
+
+func TestSetReconcileLeader(t *testing.T) {
+	SetReconcileLeader(true)
+	if got := testutil.ToFloat64(reconcileLeader); got != 1 {
+		t.Fatalf("leader gauge = %v, want 1", got)
+	}
+	SetReconcileLeader(false)
+	if got := testutil.ToFloat64(reconcileLeader); got != 0 {
+		t.Fatalf("leader gauge = %v, want 0", got)
+	}
+	if !strings.Contains(scrape(t), "hypersolid_reconcile_leader") {
+		t.Fatalf("exposition missing reconcile_leader gauge")
+	}
+}

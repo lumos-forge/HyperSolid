@@ -26,8 +26,23 @@ var httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets: prometheus.DefBuckets,
 }, []string{"endpoint"})
 
+var reconcileSteps = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "hypersolid_reconcile_steps_total",
+	Help: "auto-reconciler step outcomes.",
+}, []string{"outcome"})
+
+var reconcileReaps = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "hypersolid_reconcile_reaps_total",
+	Help: "reap-pass ledger transitions applied by target status.",
+}, []string{"target"})
+
+var reconcileLeader = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "hypersolid_reconcile_leader",
+	Help: "1 when this instance's auto-reconciler holds leadership and polls HL, else 0.",
+})
+
 func init() {
-	reg.MustRegister(httpRequests, httpDuration)
+	reg.MustRegister(httpRequests, httpDuration, reconcileSteps, reconcileReaps, reconcileLeader)
 }
 
 // ObserveHTTP records one served request: endpoint label, HTTP status code, and
@@ -74,4 +89,26 @@ func Middleware(endpoint string, next http.HandlerFunc) http.HandlerFunc {
 		}()
 		next(rec, r)
 	}
+}
+
+// ObserveReconcileStep counts one auto-reconciler step by outcome:
+// "ok", "error", or "skipped".
+func ObserveReconcileStep(outcome string) {
+	reconcileSteps.WithLabelValues(outcome).Inc()
+}
+
+// ObserveReap counts one reap-pass ledger transition actually applied, by target
+// status (e.g. "canceled", "rejected", "filled", "open").
+func ObserveReap(target string) {
+	reconcileReaps.WithLabelValues(target).Inc()
+}
+
+// SetReconcileLeader sets the reconciler leadership gauge (1 when this instance
+// polls HL, 0 otherwise).
+func SetReconcileLeader(isLeader bool) {
+	if isLeader {
+		reconcileLeader.Set(1)
+		return
+	}
+	reconcileLeader.Set(0)
 }
