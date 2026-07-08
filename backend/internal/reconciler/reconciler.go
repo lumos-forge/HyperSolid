@@ -19,10 +19,14 @@ type Account struct {
 	Address string
 }
 
+// allNonTerminalCutoffMs is a far-future cutoff (year ~2096) so Orphans returns
+// every currently non-terminal intent; their min updatedAt is the per-key fills anchor.
+const allNonTerminalCutoffMs int64 = 4_000_000_000_000
+
 // InfoClient is the read-side HL surface the reconciler needs (hlinfo.Client satisfies it).
 type InfoClient interface {
 	OpenCloids(ctx context.Context, user string) (map[string]hlinfo.OpenOrder, error)
-	FillsByCloid(ctx context.Context, user string) (map[string]hlinfo.Fill, error)
+	FillsByCloidSince(ctx context.Context, user string, startMs int64) (map[string]hlinfo.Fill, error)
 }
 
 // Reconciler advances ledger intents from observed HL state, one poll at a time.
@@ -81,12 +85,28 @@ func (r *Reconciler) step(ctx context.Context) error {
 	if r.isLeader != nil && !r.isLeader() {
 		return nil // not the leader; another instance polls
 	}
+	orphs, err := r.led.Orphans(ctx, allNonTerminalCutoffMs)
+	if err != nil {
+		return err
+	}
+	// oldest non-terminal intent's updatedAt per keyID = that key's fills anchor.
+	anchorByKey := make(map[string]int64)
+	for _, o := range orphs {
+		if cur, ok := anchorByKey[o.KeyID]; !ok || o.UpdatedAtMs < cur {
+			anchorByKey[o.KeyID] = o.UpdatedAtMs
+		}
+	}
+	now := time.Now().UnixMilli()
 	for _, a := range r.accounts {
+		anchor, ok := anchorByKey[a.KeyID]
+		if !ok {
+			anchor = now // no pending intents → fills window from now (≈empty)
+		}
 		open, err := r.client.OpenCloids(ctx, a.Address)
 		if err != nil {
 			return err
 		}
-		fills, err := r.client.FillsByCloid(ctx, a.Address)
+		fills, err := r.client.FillsByCloidSince(ctx, a.Address, anchor)
 		if err != nil {
 			return err
 		}
