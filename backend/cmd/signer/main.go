@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -28,10 +29,11 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/leader"
+	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
+	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
-	swpg "github.com/lumos-forge/hypersolid/backend/internal/singlewriter/pg"
 )
 
 type digestL1Request struct {
@@ -76,16 +78,18 @@ func handleDigestL1(w http.ResponseWriter, r *http.Request) {
 
 type signL1Request struct {
 	KeyID     string          `json:"keyId"`
+	Cloid     string          `json:"cloid"`
 	Kind      string          `json:"kind"`
 	Params    json.RawMessage `json:"params"`
 	IsTestnet bool            `json:"isTestnet"`
 }
 
 type signL1Response struct {
-	R     string `json:"r"`
-	S     string `json:"s"`
-	V     int    `json:"v"`
-	Nonce uint64 `json:"nonce"`
+	R         string `json:"r"`
+	S         string `json:"s"`
+	V         int    `json:"v"`
+	Nonce     uint64 `json:"nonce"`
+	Duplicate bool   `json:"duplicate"`
 }
 
 // orderNotional computes px*sz from an order tuple's string fields; any parse
@@ -178,7 +182,7 @@ func (s staticFencer) Fence() (uint64, bool) { return s.epoch, true }
 // the single-writer atomically enforces the fencing token + daily notional cap and
 // allocates a strictly-increasing per-key nonce, which is returned. Fail-closed: an
 // unknown keyId → 404; a non-leader → 503; a stale fence → 409. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewriter.Writer, fencer Fencer, nowMs func() int64) http.HandlerFunc {
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -205,13 +209,30 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewr
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		enc, err := hl.Encode(action)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "encode action: "+err.Error())
+			return
+		}
+		hsh := sha256.New()
+		hsh.Write(enc)
+		if req.IsTestnet {
+			hsh.Write([]byte{1})
+		} else {
+			hsh.Write([]byte{0})
+		}
+		var digest [32]byte
+		copy(digest[:], hsh.Sum(nil))
+
 		fence, isLeader := fencer.Fence()
 		if !isLeader {
 			writeErr(w, http.StatusServiceUnavailable, "not leader")
 			return
 		}
-		grant, err := writer.Authorize(r.Context(), singlewriter.Request{
+		grant, err := auth.Authorize(r.Context(), ledger.Request{
 			KeyID:    req.KeyID,
+			Cloid:    req.Cloid,
+			Digest:   digest,
 			Fence:    fence,
 			Notional: intent.NotionalUsdc,
 			DailyCap: cfg.DailyMaxNotionalUsdc,
@@ -219,6 +240,10 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewr
 		})
 		if err != nil {
 			switch {
+			case errors.Is(err, ledger.ErrMissingCloid):
+				writeErr(w, http.StatusBadRequest, "missing cloid")
+			case errors.Is(err, ledger.ErrCloidReuse):
+				writeErr(w, http.StatusConflict, "cloid reuse mismatch")
 			case errors.Is(err, singlewriter.ErrFenced):
 				writeErr(w, http.StatusConflict, "fenced")
 			case errors.Is(err, singlewriter.ErrDailyCap):
@@ -239,10 +264,11 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewr
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(signL1Response{
-			R:     "0x" + hex.EncodeToString(sig.R[:]),
-			S:     "0x" + hex.EncodeToString(sig.S[:]),
-			V:     int(sig.V),
-			Nonce: grant.Nonce,
+			R:         "0x" + hex.EncodeToString(sig.R[:]),
+			S:         "0x" + hex.EncodeToString(sig.S[:]),
+			V:         int(sig.V),
+			Nonce:     grant.Nonce,
+			Duplicate: grant.Duplicate,
 		})
 	}
 }
@@ -250,14 +276,14 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, writer singlewr
 // newMux builds the service router (no side effects; testable). The digest
 // endpoints are keyless; /v1/sign/l1 uses the injected keystore, policy,
 // single-writer, fencer, and clock.
-func newMux(ks *keystore.Keystore, policies *policy.Store, writer singlewriter.Writer, fencer Fencer, nowMs func() int64) http.Handler {
+func newMux(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("/v1/digest/l1", handleDigestL1)
-	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, writer, fencer, nowMs))
+	mux.HandleFunc("/v1/sign/l1", handleSignL1(ks, policies, auth, fencer, nowMs))
 	return mux
 }
 
@@ -320,7 +346,7 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 	nowMs := func() int64 { return time.Now().UnixMilli() }
 
 	if cfg.databaseURL == "" {
-		h := newMux(ks, policies, singlewriter.NewMem(), staticFencer{epoch: 1}, nowMs)
+		h := newMux(ks, policies, ledger.NewMem(), staticFencer{epoch: 1}, nowMs)
 		return h, func() {}, nil
 	}
 
@@ -328,16 +354,16 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 	if err != nil {
 		return nil, nil, fmt.Errorf("signer: pgxpool: %w", err)
 	}
-	if err := swpg.EnsureSchema(ctx, pool); err != nil {
+	if err := ledgerpg.EnsureSchema(ctx, pool); err != nil {
 		pool.Close()
-		return nil, nil, fmt.Errorf("signer: singlewriter schema: %w", err)
+		return nil, nil, fmt.Errorf("signer: ledger schema: %w", err)
 	}
 	if err := leasepg.EnsureSchema(ctx, pool); err != nil {
 		pool.Close()
 		return nil, nil, fmt.Errorf("signer: lease schema: %w", err)
 	}
 
-	writer := swpg.New(pool)
+	auth := ledgerpg.New(pool)
 	store := leasepg.New(pool)
 	ld := leader.New(store, cfg.leaseName, cfg.holderID, cfg.leaseTTL)
 
@@ -353,7 +379,7 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 		pool.Close()
 	}
 
-	h := newMux(ks, policies, writer, ld, nowMs)
+	h := newMux(ks, policies, auth, ld, nowMs)
 	return h, cleanup, nil
 }
 
