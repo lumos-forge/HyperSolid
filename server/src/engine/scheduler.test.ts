@@ -444,11 +444,16 @@ function fakeExec(outcome?: (req: any) => any) {
   return {
     calls, cancels,
     placeLimit: jest.fn(async (req: any) => { calls.push(req); return outcome ? outcome(req) : { ok: true, oid: oid++ }; }),
-    cancelCloid: jest.fn(async (req: any) => { cancels.push(req); return true; }),
+    cancelCloids: jest.fn(async (req: any) => { cancels.push(req); return true; }),
   };
 }
-function fakeReader(cloids: string[]) {
-  return { openCloids: jest.fn(async () => new Map(cloids.map((c) => [c, { oid: 1, coin: "BTC", side: "buy" as const, px: 100 }]))) };
+function fakeReader(cloids: string[], total?: number) {
+  return {
+    openOrders: jest.fn(async () => ({
+      byCloid: new Map(cloids.map((c) => [c, { oid: 1, coin: "BTC", side: "buy" as const, px: 100 }])),
+      total: total ?? cloids.length,
+    })),
+  };
 }
 
 function fakeFills(map: Record<string, { sz: number; px: number; closedPnl: number }>) {
@@ -602,7 +607,8 @@ describe("gridLimit tick (draining)", () => {
     const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
     // Tick 1: both still open -> cancel both, keep rungs tracked (cancel not yet confirmed).
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, fakeReader(["0xB0", "0xS2"]) as any);
-    expect(exec.cancels.map((c) => c.cloid).sort()).toEqual(["0xB0", "0xS2"]);
+    expect(exec.cancels).toHaveLength(1); // both rungs coalesced into one cancelCloids call
+    expect(exec.cancels[0].cloids.sort()).toEqual(["0xB0", "0xS2"]);
     expect(store.gridLimitRungs(s.id).some((r) => r.cloid !== null)).toBe(true);
     expect(store.get(s.id)!.status).toBe("paused");
     // Tick 2: book empty -> rungs cleared to idle, still paused.
@@ -619,7 +625,7 @@ describe("gridLimit tick (draining)", () => {
     const reader = fakeReader(["0xB0"]);
     const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, marks, exec as any, reader as any);
-    expect(exec.cancels.map((c) => c.cloid)).toEqual(["0xB0"]);
+    expect(exec.cancels.flatMap((c: any) => c.cloids)).toEqual(["0xB0"]);
     expect(exec.placeLimit).not.toHaveBeenCalled();
   });
 
@@ -642,10 +648,31 @@ describe("gridLimit tick (draining)", () => {
     const orphan = cloidForKey(s.id, "gl:0:1"); // rung 0 default seq 0 -> next-seq crash orphan
     const exec = fakeExec();
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([orphan]) as any);
-    expect(exec.cancels.map((c) => c.cloid)).toContain(orphan);
+    expect(exec.cancels.flatMap((c: any) => c.cloids)).toContain(orphan);
     expect(store.get(s.id)).toBeDefined();
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
     expect(store.get(s.id)).toBeUndefined();
+  });
+});
+
+describe("gridLimit tick (open-order cap)", () => {
+  it("skips new entry placements when the owner is at the open-order cap", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "gridLimit", glParams);
+    const exec = fakeExec();
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9, maxOpenOrders: 5 }, false, 0, undefined, marks, exec as any, fakeReader([], 5) as any);
+    const entries = exec.calls.filter((c: any) => !c.reduceOnly);
+    expect(entries).toHaveLength(0); // entries blocked at cap
+  });
+  it("places entries when below the open-order cap", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    store.create("0xo", "gridLimit", glParams);
+    const exec = fakeExec();
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9, maxOpenOrders: 100 }, false, 0, undefined, marks, exec as any, fakeReader([], 0) as any);
+    const entries = exec.calls.filter((c: any) => !c.reduceOnly);
+    expect(entries.length).toBeGreaterThan(0); // entries flow below cap
   });
 });
 
