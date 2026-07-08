@@ -696,3 +696,95 @@ func TestSignL1MissingCloid(t *testing.T) {
 		t.Fatalf("missing cloid status = %d, want 400", res.StatusCode)
 	}
 }
+
+func reconcileMux(led ledger.Ledger) http.Handler {
+	return newMux(keystore.New(), policy.NewStore(), led, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 })
+}
+
+func TestReconcileHappyPath(t *testing.T) {
+	led := ledger.NewMem()
+	if _, err := led.Authorize(context.Background(), ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	srv := httptest.NewServer(reconcileMux(led))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"submitted"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	var out struct {
+		Status string `json:"status"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	if out.Status != "submitted" {
+		t.Fatalf("status = %q, want submitted", out.Status)
+	}
+}
+
+func TestReconcileUnknownIntent(t *testing.T) {
+	srv := httptest.NewServer(reconcileMux(ledger.NewMem()))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"nope","status":"submitted"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 404 {
+		t.Fatalf("status = %d, want 404", res.StatusCode)
+	}
+}
+
+func TestReconcileInvalidTransition(t *testing.T) {
+	led := ledger.NewMem()
+	_, _ = led.Authorize(context.Background(), ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000})
+	srv := httptest.NewServer(reconcileMux(led))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"open"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 409 {
+		t.Fatalf("status = %d, want 409", res.StatusCode)
+	}
+}
+
+func TestReconcileBadStatus(t *testing.T) {
+	led := ledger.NewMem()
+	_, _ = led.Authorize(context.Background(), ledger.Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: 1700000000000})
+	srv := httptest.NewServer(reconcileMux(led))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{"keyId":"k","cloid":"c1","status":"bogus"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400 (bad status)", res.StatusCode)
+	}
+}
+
+func TestReconcileBadJSONAndMethod(t *testing.T) {
+	srv := httptest.NewServer(reconcileMux(ledger.NewMem()))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/v1/reconcile", "application/json", strings.NewReader(`{bad`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("bad json status = %d, want 400", res.StatusCode)
+	}
+	res2, err := http.Get(srv.URL + "/v1/reconcile")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	res2.Body.Close()
+	if res2.StatusCode != 405 {
+		t.Fatalf("GET status = %d, want 405", res2.StatusCode)
+	}
+}
