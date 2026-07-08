@@ -181,6 +181,17 @@ type staticFencer struct{ epoch uint64 }
 
 func (s staticFencer) Fence() (uint64, bool) { return s.epoch, true }
 
+// metricsObserver adapts reconciler telemetry onto the metrics package, keeping
+// the reconciler free of any Prometheus dependency.
+type metricsObserver struct{}
+
+func (metricsObserver) ReconcileStep(outcome string) { metrics.ObserveReconcileStep(outcome) }
+func (metricsObserver) Reap(target ledger.Status)    { metrics.ObserveReap(string(target)) }
+func (metricsObserver) LeaderState(isLeader bool)    { metrics.SetReconcileLeader(isLeader) }
+
+// Compile-time check that metricsObserver satisfies reconciler.Observer.
+var _ reconciler.Observer = metricsObserver{}
+
 // handleSignL1 signs an L1 action with the keystore signer named by keyId. The
 // reject-first policy (Evaluate) runs first; then, if this instance is the leader,
 // the single-writer atomically enforces the fencing token + daily notional cap and
@@ -533,7 +544,9 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 	if cfg.hlInfoURL != "" && len(cfg.reconcileAccounts) > 0 {
 		client := hlinfo.New(cfg.hlInfoURL, &http.Client{Timeout: cfg.hlTimeout})
 		isLeader := func() bool { _, l := fencer.Fence(); return l }
-		rec := reconciler.New(client, led, cfg.reconcileAccounts, reconciler.WithLeaderGate(isLeader))
+		rec := reconciler.New(client, led, cfg.reconcileAccounts,
+			reconciler.WithLeaderGate(isLeader),
+			reconciler.WithObserver(metricsObserver{}))
 		recCtx, recCancel := context.WithCancel(context.Background())
 		recDone := make(chan struct{})
 		go func() {

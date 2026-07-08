@@ -957,3 +957,18 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Fatalf("/metrics missing healthz endpoint series:\n%s", s)
 	}
 }
+
+func TestMetricsExposesReconcileLeaderGauge(t *testing.T) {
+	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("metrics get: %v", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(body), "hypersolid_reconcile_leader") {
+		t.Fatalf("/metrics missing reconcile leader gauge:\n%s", string(body))
+	}
+}
