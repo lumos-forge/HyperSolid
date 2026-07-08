@@ -315,15 +315,19 @@ func TestStepLeavesUnknownOid(t *testing.T) {
 	}
 }
 
-func TestStepSkipsOrderStatusWhenOpen(t *testing.T) {
+func TestStepSkipsOrderStatusWhenOpenOrFilled(t *testing.T) {
 	led := ledger.NewMem()
-	seedSigned(t, led, "k", "c1")
-	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	seedSigned(t, led, "k", "c1") // will be seen in openOrders
+	seedSigned(t, led, "k", "c2") // will be seen in fills
+	fc := &fakeClient{
+		open:  map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}},
+		fills: map[string]map[string]hlinfo.Fill{"0xacc": {"c2": {Sz: 1}}},
+	}
 	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}})
 	if err := r.step(context.Background()); err != nil {
 		t.Fatalf("step: %v", err)
 	}
 	if len(fc.statusQueried) != 0 {
-		t.Fatalf("orderStatus queried %v; want none (c1 is in openOrders)", fc.statusQueried)
+		t.Fatalf("orderStatus queried %v; want none (c1 in openOrders, c2 in fills)", fc.statusQueried)
 	}
 }
