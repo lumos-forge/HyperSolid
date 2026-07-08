@@ -39,6 +39,8 @@ export interface GridLimitParams {
   levels: number;
   /** Notional (USDC) rested as a buy per rung. */
   perLevelUsdc: number;
+  /** longOnly (default): resting long grid. symmetric: two-sided long/short resting grid. */
+  mode?: "longOnly" | "symmetric";
 }
 export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
 
