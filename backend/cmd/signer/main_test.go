@@ -10,10 +10,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
+	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 )
 
 // constFencer is a test Fencer with a fixed epoch and leadership flag.
@@ -886,5 +888,36 @@ func TestParseAccounts(t *testing.T) {
 	m := parseAccounts("bad,=x,y=,a=b")
 	if len(m) != 1 || m[0].KeyID != "a" || m[0].Address != "b" {
 		t.Fatalf("malformed-filter = %+v, want [a=b]", m)
+	}
+}
+
+func TestBuildHandlerStartsReconciler(t *testing.T) {
+	polled := make(chan struct{}, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		select {
+		case polled <- struct{}{}:
+		default:
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	cfg := config{
+		hlInfoURL:         srv.URL,
+		reconcileAccounts: []reconciler.Account{{KeyID: "k", Address: "0xacc"}},
+		reconcileInterval: time.Millisecond,
+		hlTimeout:         time.Second,
+	}
+	h, cleanup, err := buildHandler(context.Background(), cfg, keystore.New(), policy.NewStore())
+	if err != nil {
+		t.Fatalf("buildHandler: %v", err)
+	}
+	defer cleanup()
+	if h == nil {
+		t.Fatal("nil handler")
+	}
+	select {
+	case <-polled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reconciler did not poll HL (loop not started or leader gate blocked)")
 	}
 }
