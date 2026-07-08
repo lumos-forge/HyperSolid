@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // Client posts to a Hyperliquid /info endpoint.
@@ -19,10 +20,11 @@ type Client struct {
 }
 
 // New returns a Client that POSTs to baseURL+"/info" (baseURL has no trailing
-// /info, e.g. https://api.hyperliquid.xyz). A nil hc uses http.DefaultClient.
+// /info, e.g. https://api.hyperliquid.xyz). A nil hc uses a client with a 10s
+// timeout so a hung connection can't stall a polling caller indefinitely.
 func New(baseURL string, hc *http.Client) *Client {
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = &http.Client{Timeout: 10 * time.Second}
 	}
 	return &Client{baseURL: baseURL, http: hc}
 }
