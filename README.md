@@ -2,7 +2,7 @@
 
 在手机上直接、流畅、安全地使用 **Hyperliquid** 交易永续合约的**非托管**移动 App，并提供"离线也能跑策略"的 **agentic 钱包**。
 
-> 状态：实施中（spec 定稿 v2.1；**S1 导航 + S2 行情板块 + S3 合规/CI + S4 钱包(密钥核心+onboarding UI) + S5 交易(执行/签名层+下单UI)** 已完成；**UI 重构：单线示波器图标系统 + 7 屏对齐设计稿（行情/详情/交易/持仓/策略/钱包）已完成**、795 单测通过（mobile）、tsc 零错、模拟器实时渲染无运行时错误；**server/ 策略引擎 + Go M5 签名核 + M6 跨主机单写者（#28–#33）已落地**；最终真机部署(需 Apple 签名)与真实 testnet 下单(需充值钱包+生物识别确认)为人工交互步骤）。
+> 状态：实施中（spec 定稿 v2.1；**S1 导航 + S2 行情板块 + S3 合规/CI + S4 钱包(密钥核心+onboarding UI) + S5 交易(执行/签名层+下单UI)** 已完成；**UI 重构：单线示波器图标系统 + 7 屏对齐设计稿（行情/详情/交易/持仓/策略/钱包）已完成**、796 单测通过（mobile）、tsc 零错、模拟器实时渲染无运行时错误；**server/ 策略引擎（237 单测）+ Go M5 签名核 + M6 跨主机单写者（#28–#33 完成）已落地**；**策略增强：TWAP 成交时间窗分页、grid/gridLimit 对称双边模式（#34、#36–#37）**；最终真机部署(需 Apple 签名)与真实 testnet 下单(需充值钱包+生物识别确认)为人工交互步骤）。
 
 ---
 
@@ -23,11 +23,11 @@
 | Phase | 内容 | 状态 |
 |---|---|---|
 | 0 | 脚手架（Expo+TS、CI、geo-block、Sentry） | **✅**（Expo+TS+Jest、GitHub Actions CI、geo-block 门禁屏、Sentry+日志脱敏 均已实现） |
-| 1 | 只读行情（市场列表/详情/view-only 持仓） | **✅**（Markets/Detail/Positions 屏对齐设计稿；mobile 795 单测通过） |
+| 1 | 只读行情（市场列表/详情/view-only 持仓） | **✅**（Markets/Detail/Positions 屏对齐设计稿；mobile 796 单测通过） |
 | 2 | 钱包与鉴权（Passkey 本地/Privy onboarding、approveAgent、approveBuilderFee、入金引导） | **✅**（本地密钥核心 + 生物识别 onboarding + approveAgent + Arbitrum 入金桥；Passkey 作解锁门禁、真签名 secp256k1，ADR-011） |
 | 3 | 交易核心（下单/撤改/TP-SL/杠杆；精度·asset-id·状态码三件套） | **✅**（Trade 屏 6 种订单类型 + TIF + 杠杆 + 提交预览 + 精度/asset-id/状态码校验） |
 | 4 | 持仓与历史 | **✅**（Positions 屏 + fills/funding/TWAP 历史；TWAP slice fills 时间窗分页） |
-| 5 | Agentic 执行引擎（L1 规则自动化 + 护栏 + 签名器） | **大部分完成**（server/ 策略引擎 DCA/TWAP/TPSL/grid/gridLimit + scheduler + SQLite 持久化；Go **M5 签名核** policy/keystore/nonce/digest+sign + TS 影子校验。生产密钥托管/下发待做） |
+| 5 | Agentic 执行引擎（L1 规则自动化 + 护栏 + 签名器） | **大部分完成**（server/ 策略引擎 DCA/TWAP/TPSL/grid/gridLimit + scheduler + SQLite 持久化，237 单测；**grid 与 gridLimit 均支持 longOnly/对称双边（symmetric）模式**；TWAP 成交时间窗分页；Go **M5 签名核** policy/keystore/nonce/digest+sign + TS 影子校验。生产密钥托管/下发待做） |
 | 6 | 后端 HA 化 + 上架 | **进行中**（**M6 跨主机单写者**已落地：core / pg-writer / lease / leader / endpoint / main 接线，#28–#33；意图账本 cloid 对账、多 AZ/指标、公开上架 待做） |
 
 > ⚠️ **合规硬闸门**：perps/agentic **公开发布**需法律意见先行（Apple §3.1.5(iv) 视永续为 futures 是存在性风险），否则公开发布只到 Phase 1 只读或现货优先（ADR-006）。**近期评估走 TestFlight**（非公开发布，不触发该闸门，ADR-014）；公开上架前仍须回到 ADR-006 流程。
