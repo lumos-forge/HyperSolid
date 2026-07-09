@@ -13,7 +13,9 @@ import { makeShadowVerifier } from "./agent/signerShadow";
 import { makeRestingExecutor } from "./agent/restingExecutor";
 import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
+import { makeDeadManExecutor, type DeadManClientLike } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
+import { makeDeadManBudget, deadManHeartbeat } from "./engine/deadMan";
 import { buildApp } from "./http/app";
 
 export const VERSION = "0.1.0";
@@ -86,6 +88,28 @@ export async function main(): Promise<void> {
   const userFillsReader = makeUserFillsReader(info as unknown as { userFills(a: { user: string }): Promise<unknown> });
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
+  const deadManTtlMs = process.env.DEADMAN_TTL_MS ? Number(process.env.DEADMAN_TTL_MS) : undefined;
+  // The dead-man TTL must be comfortably larger than the tick interval: the heartbeat only refreshes
+  // the scheduled cancel every tick, so a TTL <= tickMs would let the switch fire during healthy
+  // operation (cancelling all orders and burning the HL 10/day trigger budget). Require >= 3x tick
+  // and >= 10s (HL's 5s minimum with margin).
+  const deadManEnabled =
+    deadManTtlMs !== undefined &&
+    Number.isFinite(deadManTtlMs) &&
+    deadManTtlMs >= 10_000 &&
+    deadManTtlMs >= 3 * tickMs;
+  if (deadManTtlMs !== undefined && !deadManEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `dead-man switch disabled: DEADMAN_TTL_MS=${deadManTtlMs} must be finite, >= 10000, and >= 3x TICK_MS (${tickMs})`,
+    );
+  }
+  const deadManExecutor = makeDeadManExecutor({
+    clientFor: clientFor as unknown as (owner: string) => DeadManClientLike | undefined,
+    shadowVerify,
+  });
+  const deadManBudget = makeDeadManBudget();
+  const activeOwners = () => [...new Set(store.listAll().filter((s) => s.status === "running").map((s) => s.owner))];
   const timer = setInterval(() => {
     void tick(
       store,
@@ -102,6 +126,18 @@ export async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
     );
+    if (deadManEnabled) {
+      void deadManHeartbeat({
+        activeOwners,
+        budget: deadManBudget,
+        executor: deadManExecutor,
+        now,
+        ttlMs: deadManTtlMs as number,
+      }).catch((e) =>
+        // eslint-disable-next-line no-console
+        console.error("dead-man heartbeat failed", e),
+      );
+    }
   }, tickMs);
   timer.unref?.();
 
