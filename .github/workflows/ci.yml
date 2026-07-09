@@ -65,3 +65,19 @@ jobs:
       - name: Test
         run: go test -tags=integration ./...
 
+  slo:
+    name: slo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install promtool
+        run: |
+          PROM_VERSION=3.13.0
+          curl --retry 3 --retry-all-errors -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz" -o /tmp/prom.tgz
+          tar -xzf /tmp/prom.tgz -C /tmp
+          echo "/tmp/prometheus-${PROM_VERSION}.linux-amd64" >> "$GITHUB_PATH"
+      - name: Check SLO rules
+        run: promtool check rules backend/ops/slo/recording.yml backend/ops/slo/alerts.yml
+      - name: Test SLO rules
+        working-directory: backend/ops/slo/tests
+        run: promtool test rules recording_test.yml alerts_test.yml
