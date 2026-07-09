@@ -17,6 +17,10 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // constFencer is a test Fencer with a fixed epoch and leadership flag.
@@ -1051,5 +1055,70 @@ func TestSignUnknownKeyNotRateLimited(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown key status = %d, want 404", res.StatusCode)
+	}
+}
+
+func TestNewMuxEmitsServerSpan(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prev)
+
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	found := false
+	for _, s := range sr.Ended() {
+		if s.Name() == "healthz" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a 'healthz' server span from newMux, got %d spans", len(sr.Ended()))
+	}
+}
+
+func TestNewMuxLinksRemoteParent(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	defer otel.SetTracerProvider(prevTP)
+	defer otel.SetTextMapPropagator(prevProp)
+
+	// Construct the mux AFTER the propagator is installed (otelhttp captures the
+	// propagator at construction time).
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/healthz", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	var got *tracetest.SpanRecorder = sr
+	linked := false
+	for _, s := range got.Ended() {
+		if s.Name() == "healthz" && s.SpanContext().TraceID().String() == "0af7651916cd43dd8448eb211c80319c" {
+			linked = true
+		}
+	}
+	if !linked {
+		t.Fatal("healthz server span should inherit the remote traceparent trace id (propagation wired)")
 	}
 }
