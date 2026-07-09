@@ -13,7 +13,9 @@ import { makeShadowVerifier } from "./agent/signerShadow";
 import { makeRestingExecutor } from "./agent/restingExecutor";
 import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
+import { makeDeadManExecutor } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
+import { makeDeadManBudget, deadManHeartbeat } from "./engine/deadMan";
 import { buildApp } from "./http/app";
 
 export const VERSION = "0.1.0";
@@ -86,6 +88,11 @@ export async function main(): Promise<void> {
   const userFillsReader = makeUserFillsReader(info as unknown as { userFills(a: { user: string }): Promise<unknown> });
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
+  const deadManTtlMs = process.env.DEADMAN_TTL_MS ? Number(process.env.DEADMAN_TTL_MS) : undefined;
+  const deadManEnabled = deadManTtlMs !== undefined && Number.isFinite(deadManTtlMs) && deadManTtlMs >= 10_000;
+  const deadManExecutor = makeDeadManExecutor({ clientFor: clientFor as any, shadowVerify });
+  const deadManBudget = makeDeadManBudget();
+  const activeOwners = () => [...new Set(store.listAll().filter((s) => s.status === "running").map((s) => s.owner))];
   const timer = setInterval(() => {
     void tick(
       store,
@@ -102,6 +109,18 @@ export async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.error("scheduler tick failed", e),
     );
+    if (deadManEnabled) {
+      void deadManHeartbeat({
+        activeOwners,
+        budget: deadManBudget,
+        executor: deadManExecutor,
+        now,
+        ttlMs: deadManTtlMs as number,
+      }).catch((e) =>
+        // eslint-disable-next-line no-console
+        console.error("dead-man heartbeat failed", e),
+      );
+    }
   }, tickMs);
   timer.unref?.();
 

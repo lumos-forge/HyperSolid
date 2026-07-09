@@ -1,3 +1,5 @@
+import type { DeadManExecutor } from "../agent/deadManExecutor";
+
 /** Max counting scheduleCancel arms per UTC day (HL dead-man limit). Refreshing a still-future
  *  armed schedule is free and does not count. */
 export const DEADMAN_MAX_PER_DAY = 10;
@@ -39,4 +41,24 @@ export function makeDeadManBudget(): DeadManBudget {
       state.set(owner, { day, count: base + (counts ? 1 : 0), armedUntil: time });
     },
   };
+}
+
+export interface DeadManHeartbeatDeps {
+  /** Owners with >=1 running strategy. Duplicates are de-duped internally. */
+  activeOwners(): string[];
+  budget: DeadManBudget;
+  executor: DeadManExecutor;
+  now(): number;
+  ttlMs: number;
+}
+
+/** One heartbeat pass: for each active owner, arm/refresh scheduleCancel per the budget, recording
+ *  only on a successful send. Sequential (no concurrency). */
+export async function deadManHeartbeat(deps: DeadManHeartbeatDeps): Promise<void> {
+  const now = deps.now();
+  for (const owner of new Set(deps.activeOwners())) {
+    const d = deps.budget.decide(owner, now, deps.ttlMs);
+    if (d.skip) continue;
+    if (await deps.executor.arm(owner, d.time)) deps.budget.record(owner, now, d.time, d.counts);
+  }
 }
