@@ -41,8 +41,20 @@ var reconcileLeader = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help: "1 when this instance's auto-reconciler holds leadership and polls HL, else 0.",
 })
 
+var reconcileStepDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	Name:    "hypersolid_reconcile_step_duration_seconds",
+	Help:    "auto-reconciler full step latency.",
+	Buckets: prometheus.DefBuckets,
+})
+
+var reconcileHLDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "hypersolid_reconcile_hl_request_duration_seconds",
+	Help:    "auto-reconciler HL info request latency by call.",
+	Buckets: prometheus.DefBuckets,
+}, []string{"call"})
+
 func init() {
-	reg.MustRegister(httpRequests, httpDuration, reconcileSteps, reconcileReaps, reconcileLeader)
+	reg.MustRegister(httpRequests, httpDuration, reconcileSteps, reconcileReaps, reconcileLeader, reconcileStepDuration, reconcileHLDuration)
 }
 
 // ObserveHTTP records one served request: endpoint label, HTTP status code, and
@@ -111,4 +123,14 @@ func SetReconcileLeader(isLeader bool) {
 		return
 	}
 	reconcileLeader.Set(0)
+}
+
+// ObserveReconcileStepDuration records one full reconciler step's latency in seconds.
+func ObserveReconcileStepDuration(seconds float64) {
+	reconcileStepDuration.Observe(seconds)
+}
+
+// ObserveReconcileHL records one HL info request's latency by call ("open"/"fills"/"status").
+func ObserveReconcileHL(call string, seconds float64) {
+	reconcileHLDuration.WithLabelValues(call).Observe(seconds)
 }

@@ -130,3 +130,23 @@ func TestSetReconcileLeader(t *testing.T) {
 		t.Fatalf("exposition missing reconcile_leader gauge")
 	}
 }
+
+func TestObserveReconcileStepDuration(t *testing.T) {
+	ObserveReconcileStepDuration(0.02)
+	ObserveReconcileStepDuration(0.05)
+	if !strings.Contains(scrape(t), "hypersolid_reconcile_step_duration_seconds_count") {
+		t.Fatalf("exposition missing reconcile step duration histogram")
+	}
+}
+
+func TestObserveReconcileHL(t *testing.T) {
+	ObserveReconcileHL("open", 0.01)
+	ObserveReconcileHL("fills", 0.03)
+	ObserveReconcileHL("status", 0.02)
+	body := scrape(t)
+	for _, call := range []string{"open", "fills", "status"} {
+		if !strings.Contains(body, `hypersolid_reconcile_hl_request_duration_seconds_count{call="`+call+`"}`) {
+			t.Fatalf("exposition missing hl duration for call=%s:\n%s", call, body)
+		}
+	}
+}
