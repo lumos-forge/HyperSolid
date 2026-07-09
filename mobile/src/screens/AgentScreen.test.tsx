@@ -261,4 +261,17 @@ describe("AgentScreen", () => {
     expect(await screen.findByTestId("gl-rungs-gl1")).toBeTruthy();
     expect(await screen.findByTestId("gl-rung-gl1-0")).toBeTruthy();
   });
+
+  it("includes deadMan:true in the created strategy when the dead-man toggle is on", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("new-dca")).toBeTruthy());
+    fireEvent.press(screen.getByRole("switch")); // the account-wide dead-man toggle (no strategy rows in this mock)
+    fireEvent.changeText(screen.getByTestId("dca-amount"), "50");
+    fireEvent.changeText(screen.getByTestId("dca-interval"), "24");
+    fireEvent.press(screen.getByTestId("dca-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24, deadMan: true }),
+    );
+  });
 });

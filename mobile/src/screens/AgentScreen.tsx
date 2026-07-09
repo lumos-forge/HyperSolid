@@ -149,6 +149,7 @@ function StrategyPanel({
   const [amount, setAmount] = useState("");
   const [intervalHours, setIntervalHours] = useState("24");
   const [template, setTemplate] = useState<Template>("dca");
+  const [deadMan, setDeadMan] = useState(false);
   const [twapSide, setTwapSide] = useState<"buy" | "sell">("buy");
   const [twapTotal, setTwapTotal] = useState("");
   const [twapSlices, setTwapSlices] = useState("6");
@@ -178,7 +179,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidParamsBody"));
       return;
     }
-    await ctrl.createDca({ coin: coin.toUpperCase(), side: "buy", quoteAmountUsdc: q, intervalHours: iv });
+    await ctrl.createDca({ coin: coin.toUpperCase(), side: "buy", quoteAmountUsdc: q, intervalHours: iv, ...(deadMan ? { deadMan: true } : {}) });
     setAmount("");
   }
   async function onCreateTwap() {
@@ -187,7 +188,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidParamsBody"));
       return;
     }
-    await ctrl.createTwap({ coin: coin.toUpperCase(), side: twapSide, totalUsdc: total, slices, durationHours: dur });
+    await ctrl.createTwap({ coin: coin.toUpperCase(), side: twapSide, totalUsdc: total, slices, durationHours: dur, ...(deadMan ? { deadMan: true } : {}) });
     setTwapTotal("");
   }
   async function onCreateTpsl() {
@@ -202,6 +203,7 @@ function StrategyPanel({
       coin: coin.toUpperCase(),
       ...(tpN !== undefined ? { takeProfitPrice: tpN } : {}),
       ...(slN !== undefined ? { stopLossPrice: slN } : {}),
+      ...(deadMan ? { deadMan: true } : {}),
     });
     setTp(""); setSl("");
   }
@@ -211,7 +213,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidGrid"));
       return;
     }
-    await ctrl.createGrid({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: gridMode });
+    await ctrl.createGrid({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: gridMode, ...(deadMan ? { deadMan: true } : {}) });
     setGridLower(""); setGridUpper(""); setGridPerLevel("");
   }
 
@@ -221,7 +223,7 @@ function StrategyPanel({
       Alert.alert(t("agent.invalidParams"), t("agent.invalidGrid"));
       return;
     }
-    await ctrl.createGridLimit({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: glMode });
+    await ctrl.createGridLimit({ coin: coin.toUpperCase(), lowerPrice: lower, upperPrice: upper, levels, perLevelUsdc: perLevel, mode: glMode, ...(deadMan ? { deadMan: true } : {}) });
     setGlLower(""); setGlUpper(""); setGlPerLevel("");
   }
 
@@ -300,6 +302,14 @@ function StrategyPanel({
             </Text>
           </Pressable>
         ))}
+      </View>
+
+      <View style={styles.deadManRow} testID="deadman-row">
+        <View style={styles.deadManText}>
+          <Text style={[styles.fieldLabel, { color: theme.text }]}>{t("agent.deadManLabel")}</Text>
+          <Text style={[styles.deadManHint, { color: theme.muted }]}>{t("agent.deadManHint")}</Text>
+        </View>
+        <Toggle theme={theme} value={deadMan} onValueChange={setDeadMan} accessibilityLabel={t("agent.deadManLabel")} />
       </View>
 
       {template === "dca" ? (
@@ -600,4 +610,7 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: "row", alignItems: "center" },
   rungBox: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "transparent", paddingTop: 8 },
   rungLine: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
+  deadManRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 },
+  deadManText: { flex: 1 },
+  deadManHint: { fontSize: 12, marginTop: 2 },
 });
