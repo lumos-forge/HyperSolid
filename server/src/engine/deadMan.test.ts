@@ -1,4 +1,4 @@
-import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth, deadManClearAll } from "./deadMan";
+import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth, deadManClearAll, staleDeadManOwners } from "./deadMan";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -213,5 +213,14 @@ describe("deadManClearAll", () => {
     const executor = { clear: jest.fn(async (owner: string) => { cleared.push(owner); return owner !== "0xa"; }) };
     await deadManClearAll({ activeOwners: () => ["0xa", "0xb"], executor });
     expect(cleared).toEqual(["0xa", "0xb"]);
+  });
+});
+
+describe("staleDeadManOwners", () => {
+  it("returns deduped running owners that are not opted in", () => {
+    expect(staleDeadManOwners(["0xa", "0xb", "0xa", "0xc"], ["0xb"])).toEqual(["0xa", "0xc"]);
+  });
+  it("returns empty when all running owners are opted in", () => {
+    expect(staleDeadManOwners(["0xa", "0xb"], ["0xa", "0xb"])).toEqual([]);
   });
 });

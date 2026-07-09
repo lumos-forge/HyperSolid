@@ -124,3 +124,11 @@ export async function deadManClearAll(deps: {
     await deps.executor.clear(owner);
   }
 }
+
+/** Owners with a running strategy that are NOT opted in. Their dead-man may have been armed by a
+ *  prior always-on version; since this version won't refresh them, they must be cleared once on
+ *  startup so an orphaned schedule doesn't fire unrefreshed. Deduped. */
+export function staleDeadManOwners(runningOwners: string[], optedInOwners: string[]): string[] {
+  const optedIn = new Set(optedInOwners);
+  return [...new Set(runningOwners)].filter((o) => !optedIn.has(o));
+}
