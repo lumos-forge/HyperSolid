@@ -43,6 +43,47 @@ export function makeDeadManBudget(): DeadManBudget {
   };
 }
 
+/** Consecutive unprotected heartbeats before raising an alert (~alertAfter × tick of no protection). */
+export const DEADMAN_ALERT_AFTER = 3;
+
+export type DeadManHealthEvent =
+  | { kind: "none" }
+  | { kind: "alert"; consecutiveFailures: number }
+  | { kind: "recovered" };
+
+export interface DeadManHealth {
+  /** Record one heartbeat outcome for owner (armed = did we successfully arm/refresh this tick).
+   *  Returns a transition event (alert on crossing the threshold, recovered on first success after an
+   *  alert) or { kind: "none" } in steady state. */
+  record(owner: string, armed: boolean): DeadManHealthEvent;
+}
+
+interface HealthState {
+  failures: number;
+  alerting: boolean;
+}
+
+export function makeDeadManHealth(alertAfter: number = DEADMAN_ALERT_AFTER): DeadManHealth {
+  const state = new Map<string, HealthState>();
+  return {
+    record(owner: string, armed: boolean): DeadManHealthEvent {
+      const s = state.get(owner) ?? { failures: 0, alerting: false };
+      if (armed) {
+        const wasAlerting = s.alerting;
+        state.set(owner, { failures: 0, alerting: false });
+        return wasAlerting ? { kind: "recovered" } : { kind: "none" };
+      }
+      const failures = s.failures + 1;
+      if (!s.alerting && failures >= alertAfter) {
+        state.set(owner, { failures, alerting: true });
+        return { kind: "alert", consecutiveFailures: failures };
+      }
+      state.set(owner, { failures, alerting: s.alerting });
+      return { kind: "none" };
+    },
+  };
+}
+
 export interface DeadManHeartbeatDeps {
   /** Owners with >=1 running strategy. Duplicates are de-duped internally. */
   activeOwners(): string[];

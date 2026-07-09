@@ -1,4 +1,4 @@
-import { makeDeadManBudget, deadManHeartbeat } from "./deadMan";
+import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth } from "./deadMan";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -90,5 +90,63 @@ describe("deadManHeartbeat", () => {
     await deadManHeartbeat({ activeOwners: () => ["0xa"], budget, executor, now: () => now, ttlMs: ttl });
     expect(executor.arm).toHaveBeenCalledWith("0xa", now + ttl);
     expect(record).not.toHaveBeenCalled();
+  });
+});
+
+describe("makeDeadManHealth", () => {
+  it("alerts only when consecutive failures reach the threshold", () => {
+    const h = makeDeadManHealth(3);
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 3 });
+  });
+
+  it("does not repeat the alert while it stays failing", () => {
+    const h = makeDeadManHealth(2);
+    h.record("0xo", false);
+    expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 2 });
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+  });
+
+  it("emits recovered once after an alert, then stays quiet", () => {
+    const h = makeDeadManHealth(2);
+    h.record("0xo", false);
+    h.record("0xo", false);
+    expect(h.record("0xo", true)).toEqual({ kind: "recovered" });
+    expect(h.record("0xo", true)).toEqual({ kind: "none" });
+  });
+
+  it("resets the streak on a success below the threshold (no alert)", () => {
+    const h = makeDeadManHealth(3);
+    h.record("0xo", false);
+    h.record("0xo", false);
+    expect(h.record("0xo", true)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "none" });
+    expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 3 });
+  });
+
+  it("can alert again after recovering", () => {
+    const h = makeDeadManHealth(2);
+    h.record("0xo", false);
+    h.record("0xo", false);
+    h.record("0xo", true);
+    h.record("0xo", false);
+    expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 2 });
+  });
+
+  it("tracks owners independently", () => {
+    const h = makeDeadManHealth(2);
+    h.record("0xa", false);
+    expect(h.record("0xb", false)).toEqual({ kind: "none" });
+    expect(h.record("0xa", false)).toEqual({ kind: "alert", consecutiveFailures: 2 });
+  });
+
+  it("defaults the threshold to 3", () => {
+    const h = makeDeadManHealth();
+    h.record("0xo", false);
+    h.record("0xo", false);
+    expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 3 });
   });
 });
