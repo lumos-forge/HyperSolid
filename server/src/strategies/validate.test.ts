@@ -95,3 +95,26 @@ describe("validateParams gridLimit mode", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("validateParams deadMan opt-in", () => {
+  it("threads deadMan:true into dca params", () => {
+    const r = validateParams("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24, deadMan: true });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.params as { deadMan?: boolean }).deadMan).toBe(true);
+  });
+  it("threads deadMan:true into gridLimit params", () => {
+    const r = validateParams("gridLimit", { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 4, perLevelUsdc: 50, deadMan: true });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.params as { deadMan?: boolean }).deadMan).toBe(true);
+  });
+  it("omits deadMan when absent or false (default off)", () => {
+    const a = validateParams("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 });
+    const b = validateParams("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24, deadMan: false });
+    expect(a.ok && !("deadMan" in a.params)).toBe(true);
+    expect(b.ok && !("deadMan" in b.params)).toBe(true);
+  });
+  it("rejects a non-boolean deadMan", () => {
+    const r = validateParams("dca", { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24, deadMan: "yes" });
+    expect(r.ok).toBe(false);
+  });
+});

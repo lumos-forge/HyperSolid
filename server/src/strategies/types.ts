@@ -1,26 +1,32 @@
 export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
 export type StrategyStatus = "running" | "paused" | "completed" | "canceling";
 
-export interface DcaParams {
+/** Fields common to every strategy's params. */
+export interface StrategyParamsCommon {
+  /** Opt-in: while this strategy runs, arm the account-level scheduleCancel dead-man switch. */
+  deadMan?: boolean;
+}
+
+export interface DcaParams extends StrategyParamsCommon {
   coin: string;
   side: "buy";
   quoteAmountUsdc: number;
   intervalHours: number;
   maxTotalUsdc?: number;
 }
-export interface TwapParams {
+export interface TwapParams extends StrategyParamsCommon {
   coin: string;
   side: "buy" | "sell";
   totalUsdc: number;
   slices: number;
   durationHours: number;
 }
-export interface TpslParams {
+export interface TpslParams extends StrategyParamsCommon {
   coin: string;
   takeProfitPrice?: number;
   stopLossPrice?: number;
 }
-export interface GridParams {
+export interface GridParams extends StrategyParamsCommon {
   coin: string;
   lowerPrice: number;
   upperPrice: number;
@@ -31,7 +37,7 @@ export interface GridParams {
   /** longOnly (default): inventory-bounded long grid. symmetric: two-sided long/short grid. */
   mode?: "longOnly" | "symmetric";
 }
-export interface GridLimitParams {
+export interface GridLimitParams extends StrategyParamsCommon {
   coin: string;
   lowerPrice: number;
   upperPrice: number;
