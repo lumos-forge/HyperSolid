@@ -65,3 +65,39 @@ tests:
             exp_annotations:
               summary: "SLO slow burn for sign_availability"
               description: "sign_availability error budget burning: 6h and 30m burn rate both exceed 6x (about 5% of the 30d budget per 6h). Open a ticket."
+
+  # Fast burn on sign_latency: 50% of requests slow → burn 50 → SLOFastBurn fires for sign_latency.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}'
+        values: '0+100x90'
+      - series: 'hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}'
+        values: '0+50x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              slo: sign_latency
+              severity: page
+            exp_annotations:
+              summary: "SLO fast burn for sign_latency"
+              description: "sign_latency error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
+
+  # Fast burn on reconciler_success: 50% error steps → burn 50 → SLOFastBurn fires for reconciler_success.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_reconcile_steps_total{outcome="ok"}'
+        values: '0+50x90'
+      - series: 'hypersolid_reconcile_steps_total{outcome="error"}'
+        values: '0+50x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              slo: reconciler_success
+              severity: page
+            exp_annotations:
+              summary: "SLO fast burn for reconciler_success"
+              description: "reconciler_success error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
