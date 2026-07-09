@@ -6,7 +6,7 @@ package reconciler
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -198,6 +198,7 @@ func (r *Reconciler) step(ctx context.Context) (err error) {
 		r.obs.StepDuration(time.Since(start).Seconds())
 		if err != nil {
 			r.obs.ReconcileStep(outcomeError)
+			slog.ErrorContext(ctx, "reconcile step failed", "error", err)
 		} else {
 			r.obs.ReconcileStep(outcomeOK)
 		}
@@ -293,9 +294,7 @@ func (r *Reconciler) Run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if err := r.step(ctx); err != nil {
-				log.Printf("reconciler step: %v", err)
-			}
+			_ = r.step(ctx) // errors are transient (logged in step, retried next tick)
 		}
 	}
 }
