@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
+	"github.com/lumos-forge/hypersolid/backend/internal/logging"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"go.opentelemetry.io/otel"
@@ -1191,5 +1193,46 @@ func TestServeReturnsServeError(t *testing.T) {
 
 	if err := serve(ctx, srv, ln, time.Second); err == nil {
 		t.Fatal("expected serve to surface the listener error")
+	}
+}
+
+func TestBusinessRouteEmitsAccessLog(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(logging.New(&buf, slog.LevelInfo))
+	defer slog.SetDefault(prev)
+
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/v1/digest/l1") // GET → 405, still an access log
+	if err != nil {
+		t.Fatalf("GET /v1/digest/l1: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	out := buf.String()
+	if !strings.Contains(out, `"msg":"http request"`) || !strings.Contains(out, `"route":"digest_l1"`) {
+		t.Fatalf("expected a digest_l1 access log, got %q", out)
+	}
+}
+
+func TestHealthzEmitsNoAccessLog(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(logging.New(&buf, slog.LevelInfo))
+	defer slog.SetDefault(prev)
+
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if strings.Contains(buf.String(), `"msg":"http request"`) {
+		t.Fatalf("healthz must not emit an access log, got %q", buf.String())
 	}
 }

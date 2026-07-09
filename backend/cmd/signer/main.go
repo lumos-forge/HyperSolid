@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -35,6 +35,7 @@ import (
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
+	"github.com/lumos-forge/hypersolid/backend/internal/logging"
 	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/ratelimit"
@@ -410,15 +411,18 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
 		return tracing.Middleware(name, metrics.Middleware(name, h))
 	}
+	loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
+		return tracing.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h)))
+	}
 	mux.HandleFunc("/healthz", route("healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
-	mux.HandleFunc("/v1/digest/l1", route("digest_l1", handleDigestL1))
+	mux.HandleFunc("/v1/digest/l1", loggedRoute("digest_l1", handleDigestL1))
 	limiter := ratelimit.New(nowMs)
-	mux.HandleFunc("/v1/sign/l1", route("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
-	mux.HandleFunc("/v1/reconcile", route("reconcile", handleReconcile(led)))
-	mux.HandleFunc("/v1/orphans", route("orphans", handleOrphans(led)))
+	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
+	mux.HandleFunc("/v1/reconcile", loggedRoute("reconcile", handleReconcile(led)))
+	mux.HandleFunc("/v1/orphans", loggedRoute("orphans", handleOrphans(led)))
 	mux.Handle("/metrics", metrics.Handler())
 	return mux
 }
@@ -621,6 +625,8 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	logging.Setup()
+
 	// Setup must precede buildHandler: otelhttp captures the propagator at
 	// construction time, so the mux + HL transport built in buildHandler need the
 	// propagator already installed.
@@ -635,20 +641,20 @@ func run() int {
 	policies := policy.NewStore()
 	h, cleanup, err := buildHandler(ctx, cfg, ks, policies)
 	if err != nil {
-		log.Print(err)
+		slog.Error("build handler", "error", err)
 		return 1
 	}
 	defer cleanup()
 
 	ln, err := net.Listen("tcp", cfg.addr)
 	if err != nil {
-		log.Print(err)
+		slog.Error("listen", "error", err)
 		return 1 // deferred cleanup() releases the lease + closes the pool
 	}
 	srv := &http.Server{Handler: h}
-	log.Printf("signer service listening on %s (db=%t)", cfg.addr, cfg.databaseURL != "")
+	slog.Info("signer listening", "addr", cfg.addr, "db", cfg.databaseURL != "")
 	if err := serve(ctx, srv, ln, 5*time.Second); err != nil {
-		log.Print(err)
+		slog.Error("serve", "error", err)
 		return 1 // deferred cleanup() releases the lease + closes the pool
 	}
 	return 0
