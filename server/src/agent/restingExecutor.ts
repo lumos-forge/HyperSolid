@@ -32,7 +32,7 @@ export type PlaceLimitResult =
 
 export interface RestingExecutor {
   placeLimit(req: PlaceLimitRequest): Promise<PlaceLimitResult>;
-  cancelCloids(req: { owner: string; coin: string; cloids: string[] }): Promise<boolean>;
+  cancelMany(req: { owner: string; cancels: Array<{ coin: string; cloid: string }> }): Promise<boolean>;
 }
 
 interface OrderStatus {
@@ -97,29 +97,37 @@ export function makeRestingExecutor(deps: RestingExecutorDeps): RestingExecutor 
       }
     },
 
-    async cancelCloids(req: { owner: string; coin: string; cloids: string[] }): Promise<boolean> {
-      if (req.cloids.length === 0) return true;
+    async cancelMany(req: { owner: string; cancels: Array<{ coin: string; cloid: string }> }): Promise<boolean> {
+      if (req.cancels.length === 0) return true;
       const client = deps.clientFor(req.owner);
       if (!client) return false;
       const maxBatch = deps.maxCancelBatch && deps.maxCancelBatch > 0 ? deps.maxCancelBatch : 100;
-      try {
-        const { assetIndex } = await deps.resolveAsset(req.coin);
-        for (let i = 0; i < req.cloids.length; i += maxBatch) {
-          const cancels = req.cloids.slice(i, i + maxBatch).map((cloid) => ({ asset: assetIndex, cloid }));
-          try {
-            deps.shadowVerify?.("cancelByCloid", { cancels });
-          } catch {
-            /* shadow must never affect cancellation */
-          }
-          try {
-            await client.cancelByCloid({ cancels });
-          } catch {
-            /* already gone / filled — treat as cancelled (idempotent) */
-          }
+      // Resolve each distinct coin once; a coin that fails to resolve is skipped (best-effort — its
+      // cancels are re-checked next tick), so one bad coin can't strand the others.
+      const assetByCoin = new Map<string, number>();
+      for (const coin of new Set(req.cancels.map((c) => c.coin))) {
+        try {
+          const { assetIndex } = await deps.resolveAsset(coin);
+          assetByCoin.set(coin, assetIndex);
+        } catch {
+          /* unknown coin / cold meta: skip this coin's cancels */
         }
-      } catch {
-        /* resolveAsset failure (unknown coin / cold meta): drain is best-effort and
-           must never abort the scheduler tick — the book is re-checked next tick. */
+      }
+      const all = req.cancels
+        .filter((c) => assetByCoin.has(c.coin))
+        .map((c) => ({ asset: assetByCoin.get(c.coin) as number, cloid: c.cloid }));
+      for (let i = 0; i < all.length; i += maxBatch) {
+        const cancels = all.slice(i, i + maxBatch);
+        try {
+          deps.shadowVerify?.("cancelByCloid", { cancels });
+        } catch {
+          /* shadow must never affect cancellation */
+        }
+        try {
+          await client.cancelByCloid({ cancels });
+        } catch {
+          /* already gone / filled — treat as cancelled (idempotent) */
+        }
       }
       return true;
     },

@@ -268,6 +268,8 @@ export async function tick(
       return m;
     };
 
+    const cancelsByOwner = new Map<string, Array<{ coin: string; cloid: string }>>();
+
     for (const s of all) {
       if (s.kind !== "gridLimit") continue;
       const p = s.params as GridLimitParams;
@@ -291,7 +293,11 @@ export async function tick(
           }
           if (!rungResting && r.cloid) store.setGridLimitRung(s.id, { rung: i, state: "idle", side: null, cloid: null, px: null, seq: r.seq });
         }
-        if (toCancel.length > 0) await restingExec.cancelCloids({ owner: s.owner, coin: p.coin, cloids: toCancel });
+        if (toCancel.length > 0) {
+          const acc = cancelsByOwner.get(s.owner) ?? [];
+          for (const cloid of toCancel) acc.push({ coin: p.coin, cloid });
+          cancelsByOwner.set(s.owner, acc);
+        }
         if (s.status === "canceling" && !anyResting) store.remove(s.id);
         continue;
       }
@@ -389,6 +395,10 @@ export async function tick(
           if (armable(p, i, mark)) await placeBuy(i, r);
         }
       }
+    }
+
+    for (const [owner, cancels] of cancelsByOwner) {
+      await restingExec.cancelMany({ owner, cancels });
     }
   }
 }
