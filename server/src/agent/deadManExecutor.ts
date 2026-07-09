@@ -12,6 +12,8 @@ export interface DeadManExecutorDeps {
 export interface DeadManExecutor {
   /** Arm (or refresh) the owner's scheduleCancel to fire at timeMs. Returns false on no client or error. */
   arm(owner: string, timeMs: number): Promise<boolean>;
+  /** Clear the owner's scheduled cancel (omit time). Returns false on no client or error. */
+  clear(owner: string): Promise<boolean>;
 }
 
 /**
@@ -34,6 +36,21 @@ export function makeDeadManExecutor(deps: DeadManExecutorDeps): DeadManExecutor 
         return true;
       } catch {
         return false; // fail-closed: not armed this tick; heartbeat retries
+      }
+    },
+    async clear(owner: string): Promise<boolean> {
+      const client = deps.clientFor(owner);
+      if (!client) return false;
+      try {
+        deps.shadowVerify?.("scheduleCancel", {});
+      } catch {
+        /* shadow must never affect execution */
+      }
+      try {
+        await client.scheduleCancel({});
+        return true;
+      } catch {
+        return false; // best-effort clear
       }
     },
   };

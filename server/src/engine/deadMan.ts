@@ -113,3 +113,22 @@ export async function deadManHeartbeat(deps: DeadManHeartbeatDeps): Promise<void
     if (ev && ev.kind !== "none") deps.onHealthEvent?.(owner, ev);
   }
 }
+
+/** Best-effort clear of the dead-man for every (deduped) owner, e.g. on graceful shutdown. A single
+ *  owner's failure does not stop the rest (executor.clear is itself never-throwing). Sequential. */
+export async function deadManClearAll(deps: {
+  activeOwners(): string[];
+  executor: Pick<DeadManExecutor, "clear">;
+}): Promise<void> {
+  for (const owner of new Set(deps.activeOwners())) {
+    await deps.executor.clear(owner);
+  }
+}
+
+/** Owners with a running strategy that are NOT opted in. Their dead-man may have been armed by a
+ *  prior always-on version; since this version won't refresh them, they must be cleared once on
+ *  startup so an orphaned schedule doesn't fire unrefreshed. Deduped. */
+export function staleDeadManOwners(runningOwners: string[], optedInOwners: string[]): string[] {
+  const optedIn = new Set(optedInOwners);
+  return [...new Set(runningOwners)].filter((o) => !optedIn.has(o));
+}

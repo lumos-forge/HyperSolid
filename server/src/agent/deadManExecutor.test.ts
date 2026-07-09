@@ -34,3 +34,29 @@ describe("makeDeadManExecutor.arm", () => {
     expect(await exec.arm("0xo", 1_700_000_060_000)).toBe(true);
   });
 });
+
+describe("makeDeadManExecutor.clear", () => {
+  it("sends scheduleCancel with no time (clear) and returns true", async () => {
+    const calls: any[] = [];
+    const client: DeadManClientLike = { scheduleCancel: async (p) => { calls.push(p); return {}; } };
+    const exec = makeDeadManExecutor(deps(client));
+    expect(await exec.clear("0xo")).toBe(true);
+    expect(calls[0]).toEqual({});
+  });
+  it("returns false with no client (fail-closed)", async () => {
+    const exec = makeDeadManExecutor(deps(undefined));
+    expect(await exec.clear("0xo")).toBe(false);
+  });
+  it("returns false when scheduleCancel throws", async () => {
+    const client: DeadManClientLike = { scheduleCancel: async () => { throw new Error("boom"); } };
+    const exec = makeDeadManExecutor(deps(client));
+    expect(await exec.clear("0xo")).toBe(false);
+  });
+  it("shadow-verifies the clear (empty payload), fire-and-forget", async () => {
+    const shadow = jest.fn();
+    const client: DeadManClientLike = { scheduleCancel: async () => ({}) };
+    const exec = makeDeadManExecutor(deps(client, shadow));
+    await exec.clear("0xo");
+    expect(shadow).toHaveBeenCalledWith("scheduleCancel", {});
+  });
+});

@@ -15,7 +15,7 @@ import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
 import { makeDeadManExecutor, type DeadManClientLike } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
-import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth } from "./engine/deadMan";
+import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth, deadManClearAll, staleDeadManOwners } from "./engine/deadMan";
 import { buildApp } from "./http/app";
 
 export const VERSION = "0.1.0";
@@ -110,7 +110,16 @@ export async function main(): Promise<void> {
   });
   const deadManBudget = makeDeadManBudget();
   const deadManHealth = makeDeadManHealth();
-  const activeOwners = () => [...new Set(store.listAll().filter((s) => s.status === "running").map((s) => s.owner))];
+  const activeOwners = () => [...new Set(
+    store.listAll()
+      .filter((s) => s.status === "running" && (s.params as { deadMan?: boolean }).deadMan === true)
+      .map((s) => s.owner),
+  )];
+  if (deadManEnabled) {
+    const runningOwners = store.listAll().filter((s) => s.status === "running").map((s) => s.owner);
+    const stale = staleDeadManOwners(runningOwners, activeOwners());
+    await deadManClearAll({ activeOwners: () => stale, executor: deadManExecutor });
+  }
   const timer = setInterval(() => {
     void tick(
       store,
@@ -156,6 +165,17 @@ export async function main(): Promise<void> {
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);
+
+  const shutdown = async () => {
+    clearInterval(timer);
+    if (deadManEnabled) {
+      await deadManClearAll({ activeOwners, executor: deadManExecutor });
+    }
+    await app.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 if (require.main === module) {
