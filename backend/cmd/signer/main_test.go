@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1120,5 +1121,75 @@ func TestNewMuxLinksRemoteParent(t *testing.T) {
 	}
 	if !linked {
 		t.Fatal("healthz server span should inherit the remote traceparent trace id (propagation wired)")
+	}
+}
+
+func TestServeWaitsForInflightDrain(t *testing.T) {
+	reqStarted := make(chan struct{})
+	releaseHandler := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, _ *http.Request) {
+		close(reqStarted)
+		<-releaseHandler
+		w.WriteHeader(http.StatusOK)
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: mux}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serveReturned := make(chan error, 1)
+	go func() { serveReturned <- serve(ctx, srv, ln, 5*time.Second) }()
+
+	addr := ln.Addr().String()
+	reqDone := make(chan struct{})
+	go func() {
+		resp, err := http.Get("http://" + addr + "/slow")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		close(reqDone)
+	}()
+
+	<-reqStarted // handler is now in-flight
+	cancel()     // trigger graceful shutdown mid-request
+
+	// serve must NOT return while the request is still in-flight (draining).
+	select {
+	case <-serveReturned:
+		t.Fatal("serve returned before the in-flight request drained")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(releaseHandler) // let the handler finish
+
+	select {
+	case err := <-serveReturned:
+		if err != nil {
+			t.Fatalf("serve: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("serve did not return after the in-flight request drained")
+	}
+	<-reqDone
+}
+
+func TestServeReturnsServeError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ln.Close() // closed listener → Serve fails immediately (not ErrServerClosed)
+
+	srv := &http.Server{Handler: http.NewServeMux()}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := serve(ctx, srv, ln, time.Second); err == nil {
+		t.Fatal("expected serve to surface the listener error")
 	}
 }

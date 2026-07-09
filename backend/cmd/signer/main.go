@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -584,10 +585,37 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 
 func main() { os.Exit(run()) }
 
+// serve runs srv on ln until ctx is canceled, then gracefully shuts it down and
+// blocks until in-flight requests finish draining (bounded by drainTimeout) before
+// returning. Waiting for the drain to complete is what makes the caller's deferred
+// teardown safe: srv.Serve returns ErrServerClosed the instant Shutdown closes the
+// listener — well before in-flight handlers finish — so without this barrier the
+// deferred cleanup (lease release, pool close) and tracing flush could run while a
+// handler is still executing, dropping its DB pool or its span mid-request. It
+// returns a non-nil error only on an unexpected Serve failure. The caller must
+// ensure ctx is eventually canceled (e.g. via a deferred signal-context stop) so
+// the internal shutdown goroutine is reaped even when Serve fails with a
+// non-ErrServerClosed error and serve returns without awaiting the drain.
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, drainTimeout time.Duration) error {
+	shutdownDone := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		sc, cancel := context.WithTimeout(context.Background(), drainTimeout)
+		defer cancel()
+		_ = srv.Shutdown(sc)
+		close(shutdownDone)
+	}()
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	<-shutdownDone
+	return nil
+}
+
 // run wires and serves the signer, returning a process exit code. It is separate
 // from main so that deferred cleanup (which releases the lease and closes the
-// pool) always runs — even on a ListenAndServe error — instead of being skipped
-// by os.Exit inside a log.Fatal.
+// pool) always runs — even on a serve error — instead of being skipped by os.Exit
+// inside a log.Fatal.
 func run() int {
 	cfg := configFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -612,15 +640,14 @@ func run() int {
 	}
 	defer cleanup()
 
-	srv := &http.Server{Addr: cfg.addr, Handler: h}
-	go func() {
-		<-ctx.Done()
-		sc, c := context.WithTimeout(context.Background(), 5*time.Second)
-		defer c()
-		_ = srv.Shutdown(sc)
-	}()
+	ln, err := net.Listen("tcp", cfg.addr)
+	if err != nil {
+		log.Print(err)
+		return 1 // deferred cleanup() releases the lease + closes the pool
+	}
+	srv := &http.Server{Handler: h}
 	log.Printf("signer service listening on %s (db=%t)", cfg.addr, cfg.databaseURL != "")
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := serve(ctx, srv, ln, 5*time.Second); err != nil {
 		log.Print(err)
 		return 1 // deferred cleanup() releases the lease + closes the pool
 	}
