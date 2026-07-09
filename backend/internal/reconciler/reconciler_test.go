@@ -343,10 +343,12 @@ type recObserver struct {
 	hlCalls       []string
 }
 
-func (o *recObserver) ReconcileStep(outcome string)     { o.steps = append(o.steps, outcome) }
-func (o *recObserver) Reap(target ledger.Status)        { o.reaps = append(o.reaps, target) }
-func (o *recObserver) LeaderState(isLeader bool)        { o.leader = append(o.leader, isLeader) }
-func (o *recObserver) StepDuration(seconds float64)     { o.stepDurations = append(o.stepDurations, seconds) }
+func (o *recObserver) ReconcileStep(outcome string) { o.steps = append(o.steps, outcome) }
+func (o *recObserver) Reap(target ledger.Status)    { o.reaps = append(o.reaps, target) }
+func (o *recObserver) LeaderState(isLeader bool)    { o.leader = append(o.leader, isLeader) }
+func (o *recObserver) StepDuration(seconds float64) {
+	o.stepDurations = append(o.stepDurations, seconds)
+}
 func (o *recObserver) HLRequest(call string, _ float64) { o.hlCalls = append(o.hlCalls, call) }
 
 func TestObserverLeaderStepOK(t *testing.T) {
@@ -464,5 +466,51 @@ func TestObserverNoLatencyWhenSkipped(t *testing.T) {
 	}
 	if len(obs.stepDurations) != 0 || len(obs.hlCalls) != 0 {
 		t.Fatalf("skipped step must record no latency: durations=%v hlCalls=%v", obs.stepDurations, obs.hlCalls)
+	}
+}
+
+// fakeTracer records StartStep/end-func invocations for assertions.
+type fakeTracer struct {
+	starts int
+	ends   int
+}
+
+func (f *fakeTracer) StartStep(ctx context.Context) (context.Context, func()) {
+	f.starts++
+	return ctx, func() { f.ends++ }
+}
+
+func TestStepStartsAndEndsSpan(t *testing.T) {
+	led := ledger.NewMem()
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}}
+	ft := &fakeTracer{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}}, WithTracer(ft))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if ft.starts != 1 || ft.ends != 1 {
+		t.Fatalf("want 1 start / 1 end, got %d / %d", ft.starts, ft.ends)
+	}
+}
+
+func TestStepSkippedDoesNotStartSpan(t *testing.T) {
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}}
+	ft := &fakeTracer{}
+	r := New(fc, ledger.NewMem(), []Account{{KeyID: "k", Address: "0xacc"}},
+		WithLeaderGate(func() bool { return false }), WithTracer(ft))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if ft.starts != 0 {
+		t.Fatalf("skipped step must not start a span, got %d", ft.starts)
+	}
+}
+
+func TestNilTracerKeepsNopDefault(t *testing.T) {
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {}}}
+	// WithTracer(nil) must not override the nop default nor panic at step time.
+	r := New(fc, ledger.NewMem(), []Account{{KeyID: "k", Address: "0xacc"}}, WithTracer(nil))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
 	}
 }

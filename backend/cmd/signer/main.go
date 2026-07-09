@@ -31,14 +31,15 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/hlinfo"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/leader"
+	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
-	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/ratelimit"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
+	"github.com/lumos-forge/hypersolid/backend/internal/tracing"
 )
 
 type digestL1Request struct {
@@ -186,14 +187,15 @@ func (s staticFencer) Fence() (uint64, bool) { return s.epoch, true }
 // the reconciler free of any Prometheus dependency.
 type metricsObserver struct{}
 
-func (metricsObserver) ReconcileStep(outcome string) { metrics.ObserveReconcileStep(outcome) }
-func (metricsObserver) Reap(target ledger.Status)    { metrics.ObserveReap(string(target)) }
-func (metricsObserver) LeaderState(isLeader bool)    { metrics.SetReconcileLeader(isLeader) }
+func (metricsObserver) ReconcileStep(outcome string)     { metrics.ObserveReconcileStep(outcome) }
+func (metricsObserver) Reap(target ledger.Status)        { metrics.ObserveReap(string(target)) }
+func (metricsObserver) LeaderState(isLeader bool)        { metrics.SetReconcileLeader(isLeader) }
 func (metricsObserver) StepDuration(s float64)           { metrics.ObserveReconcileStepDuration(s) }
 func (metricsObserver) HLRequest(call string, s float64) { metrics.ObserveReconcileHL(call, s) }
 
 // Compile-time check that metricsObserver satisfies reconciler.Observer.
 var _ reconciler.Observer = metricsObserver{}
+var _ reconciler.Tracer = tracing.StepTracer{}
 
 // handleSignL1 signs an L1 action with the keystore signer named by keyId. The
 // reject-first policy (Evaluate) runs first; then, if this instance is the leader,
@@ -404,15 +406,18 @@ func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 // single-writer, fencer, and clock.
 func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", metrics.Middleware("healthz", func(w http.ResponseWriter, _ *http.Request) {
+	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
+		return tracing.Middleware(name, metrics.Middleware(name, h))
+	}
+	mux.HandleFunc("/healthz", route("healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
-	mux.HandleFunc("/v1/digest/l1", metrics.Middleware("digest_l1", handleDigestL1))
+	mux.HandleFunc("/v1/digest/l1", route("digest_l1", handleDigestL1))
 	limiter := ratelimit.New(nowMs)
-	mux.HandleFunc("/v1/sign/l1", metrics.Middleware("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
-	mux.HandleFunc("/v1/reconcile", metrics.Middleware("reconcile", handleReconcile(led)))
-	mux.HandleFunc("/v1/orphans", metrics.Middleware("orphans", handleOrphans(led)))
+	mux.HandleFunc("/v1/sign/l1", route("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
+	mux.HandleFunc("/v1/reconcile", route("reconcile", handleReconcile(led)))
+	mux.HandleFunc("/v1/orphans", route("orphans", handleOrphans(led)))
 	mux.Handle("/metrics", metrics.Handler())
 	return mux
 }
@@ -550,11 +555,15 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 
 	// Optionally start the leader-gated auto-reconciler when configured.
 	if cfg.hlInfoURL != "" && len(cfg.reconcileAccounts) > 0 {
-		client := hlinfo.New(cfg.hlInfoURL, &http.Client{Timeout: cfg.hlTimeout})
+		client := hlinfo.New(cfg.hlInfoURL, &http.Client{
+			Timeout:   cfg.hlTimeout,
+			Transport: tracing.HLTransport(http.DefaultTransport),
+		})
 		isLeader := func() bool { _, l := fencer.Fence(); return l }
 		rec := reconciler.New(client, led, cfg.reconcileAccounts,
 			reconciler.WithLeaderGate(isLeader),
-			reconciler.WithObserver(metricsObserver{}))
+			reconciler.WithObserver(metricsObserver{}),
+			reconciler.WithTracer(tracing.NewStepTracer()))
 		recCtx, recCancel := context.WithCancel(context.Background())
 		recDone := make(chan struct{})
 		go func() {
@@ -583,6 +592,16 @@ func run() int {
 	cfg := configFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Setup must precede buildHandler: otelhttp captures the propagator at
+	// construction time, so the mux + HL transport built in buildHandler need the
+	// propagator already installed.
+	shutdownTracing, _ := tracing.Setup(ctx)
+	defer func() {
+		sc, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sc)
+	}()
 
 	ks := keystore.New()
 	policies := policy.NewStore()
