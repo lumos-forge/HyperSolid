@@ -28,7 +28,7 @@
 | 3 | 交易核心（下单/撤改/TP-SL/杠杆；精度·asset-id·状态码三件套） | **✅**（Trade 屏 6 种订单类型 + TIF + 杠杆 + 提交预览 + 精度/asset-id/状态码校验） |
 | 4 | 持仓与历史 | **✅**（Positions 屏 + fills/funding/TWAP 历史；TWAP slice fills 时间窗分页） |
 | 5 | Agentic 执行引擎（L1 规则自动化 + 护栏 + 签名器） | **大部分完成**（server/ 策略引擎 DCA/TWAP/TPSL/grid/gridLimit + scheduler + SQLite 持久化，237 单测；**grid 与 gridLimit 均支持 longOnly/对称双边（symmetric）模式**；TWAP 成交时间窗分页；Go **M5 签名核** policy/keystore/nonce/digest+sign + TS 影子校验。生产密钥托管/下发待做） |
-| 6 | 后端 HA 化 + 上架 | **进行中**（**M6 意图账本端到端落地**：跨主机单写者(#28–#33) + cloid 幂等核心(#39) + 签名接线(#40) + 对账状态机+孤儿侦测(#41) + 对账端点 `/v1/reconcile`·`/v1/orphans`(#42) + HL 回执源自动对账循环 leader-gated(#43–#44)；多 AZ/指标、公开上架 待做） |
+| 6 | 后端 HA 化 + 上架 | **进行中**（**M6 意图账本端到端落地**：跨主机单写者(#28–#33) + cloid 幂等核心(#39) + 签名接线(#40) + 对账状态机+孤儿侦测(#41) + 对账端点 `/v1/reconcile`·`/v1/orphans`(#42) + HL 回执源自动对账循环 leader-gated(#43–#44)；**M10 可观测/限频/agentic 安全骨架落地**：signer(Go) Prometheus 指标+`/metrics`(#48)·reconciler 领域指标(#49)·按 key 令牌桶限流(#50)；agentic 引擎(server/ TS) 撤单合并+挂单上限(#51)·scheduleCancel 死手开关(心跳+≤10/日预算 #52 + 失败告警 #53)；多 AZ、OTel 追踪/日志·SLO、公开上架 待做） |
 
 > ⚠️ **合规硬闸门**：perps/agentic **公开发布**需法律意见先行（Apple §3.1.5(iv) 视永续为 futures 是存在性风险），否则公开发布只到 Phase 1 只读或现货优先（ADR-006）。**近期评估走 TestFlight**（非公开发布，不触发该闸门，ADR-014）；公开上架前仍须回到 ADR-006 流程。
 
