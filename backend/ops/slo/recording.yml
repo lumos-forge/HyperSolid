@@ -1,0 +1,71 @@
+# SLO error-budget burn-rate recording rules for the signer.
+# burn_rate = error_ratio / error_budget  (1.0 = budget consumed at the sustainable rate;
+# 14.4 = it would be exhausted in ~1/14.4 of the 30-day window).
+# SLO definitions & budgets: see backend/ops/slo/README.md.
+groups:
+  - name: slo_sign_availability
+    rules:
+      - record: slo:burn_rate:rate5m
+        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[5m])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[5m]))) / 0.001
+        labels:
+          slo: sign_availability
+      - record: slo:burn_rate:rate30m
+        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30m])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30m]))) / 0.001
+        labels:
+          slo: sign_availability
+      - record: slo:burn_rate:rate1h
+        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[1h])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[1h]))) / 0.001
+        labels:
+          slo: sign_availability
+      - record: slo:burn_rate:rate6h
+        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[6h])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[6h]))) / 0.001
+        labels:
+          slo: sign_availability
+      - record: slo:error_ratio:rate30d
+        expr: sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30d])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30d]))
+        labels:
+          slo: sign_availability
+  - name: slo_sign_latency
+    rules:
+      - record: slo:burn_rate:rate5m
+        expr: (1 - (sum(rate(hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}[5m])) / sum(rate(hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}[5m])))) / 0.01
+        labels:
+          slo: sign_latency
+      - record: slo:burn_rate:rate30m
+        expr: (1 - (sum(rate(hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}[30m])) / sum(rate(hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}[30m])))) / 0.01
+        labels:
+          slo: sign_latency
+      - record: slo:burn_rate:rate1h
+        expr: (1 - (sum(rate(hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}[1h])) / sum(rate(hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}[1h])))) / 0.01
+        labels:
+          slo: sign_latency
+      - record: slo:burn_rate:rate6h
+        expr: (1 - (sum(rate(hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}[6h])) / sum(rate(hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}[6h])))) / 0.01
+        labels:
+          slo: sign_latency
+      - record: slo:error_ratio:rate30d
+        expr: 1 - (sum(rate(hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}[30d])) / sum(rate(hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}[30d])))
+        labels:
+          slo: sign_latency
+  - name: slo_reconciler_success
+    rules:
+      - record: slo:burn_rate:rate5m
+        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[5m])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[5m]))) / 0.01
+        labels:
+          slo: reconciler_success
+      - record: slo:burn_rate:rate30m
+        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30m])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30m]))) / 0.01
+        labels:
+          slo: reconciler_success
+      - record: slo:burn_rate:rate1h
+        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[1h])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[1h]))) / 0.01
+        labels:
+          slo: reconciler_success
+      - record: slo:burn_rate:rate6h
+        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[6h])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[6h]))) / 0.01
+        labels:
+          slo: reconciler_success
+      - record: slo:error_ratio:rate30d
+        expr: sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30d])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30d]))
+        labels:
+          slo: reconciler_success
