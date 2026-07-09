@@ -91,6 +91,51 @@ describe("deadManHeartbeat", () => {
     expect(executor.arm).toHaveBeenCalledWith("0xa", now + ttl);
     expect(record).not.toHaveBeenCalled();
   });
+
+  it("records a health failure and emits the event when arm fails", async () => {
+    const events: Array<{ owner: string; kind: string }> = [];
+    const executor = { arm: jest.fn(async () => false) };
+    const health = makeDeadManHealth(1);
+    await deadManHeartbeat({
+      activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor,
+      now: () => now, ttlMs: ttl, health,
+      onHealthEvent: (owner, ev) => events.push({ owner, kind: ev.kind }),
+    });
+    expect(executor.arm).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([{ owner: "0xa", kind: "alert" }]);
+  });
+
+  it("counts a budget skip as an unprotected failure (no arm, health records false)", async () => {
+    const events: Array<{ owner: string; kind: string }> = [];
+    const executor = { arm: jest.fn(async () => true) };
+    const budget = { decide: () => ({ skip: true as const }), record: jest.fn() };
+    const health = makeDeadManHealth(1);
+    await deadManHeartbeat({
+      activeOwners: () => ["0xa"], budget, executor, now: () => now, ttlMs: ttl, health,
+      onHealthEvent: (owner, ev) => events.push({ owner, kind: ev.kind }),
+    });
+    expect(executor.arm).not.toHaveBeenCalled();
+    expect(events).toEqual([{ owner: "0xa", kind: "alert" }]);
+  });
+
+  it("records health success and emits recovered after an alert", async () => {
+    const events: string[] = [];
+    const health = makeDeadManHealth(1);
+    health.record("0xa", false); // prime an alert
+    const executor = { arm: jest.fn(async () => true) };
+    await deadManHeartbeat({
+      activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor,
+      now: () => now, ttlMs: ttl, health,
+      onHealthEvent: (_owner, ev) => events.push(ev.kind),
+    });
+    expect(events).toEqual(["recovered"]);
+  });
+
+  it("works without a health tracker (unchanged behavior)", async () => {
+    const executor = { arm: jest.fn(async () => true) };
+    await deadManHeartbeat({ activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor, now: () => now, ttlMs: ttl });
+    expect(executor.arm).toHaveBeenCalledWith("0xa", now + ttl);
+  });
 });
 
 describe("makeDeadManHealth", () => {

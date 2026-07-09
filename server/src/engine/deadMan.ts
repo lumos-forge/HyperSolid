@@ -91,15 +91,25 @@ export interface DeadManHeartbeatDeps {
   executor: DeadManExecutor;
   now(): number;
   ttlMs: number;
+  /** Optional health tracker: records whether each owner was protected this tick. */
+  health?: DeadManHealth;
+  /** Optional sink for health transition events (e.g. a logger). */
+  onHealthEvent?: (owner: string, event: DeadManHealthEvent) => void;
 }
 
 /** One heartbeat pass: for each active owner, arm/refresh scheduleCancel per the budget, recording
- *  only on a successful send. Sequential (no concurrency). */
+ *  only on a successful send. A budget skip or an arm failure both count as "unprotected this tick"
+ *  for the optional health tracker, which surfaces transition events (alert/recovered). Sequential. */
 export async function deadManHeartbeat(deps: DeadManHeartbeatDeps): Promise<void> {
   const now = deps.now();
   for (const owner of new Set(deps.activeOwners())) {
     const d = deps.budget.decide(owner, now, deps.ttlMs);
-    if (d.skip) continue;
-    if (await deps.executor.arm(owner, d.time)) deps.budget.record(owner, now, d.time, d.counts);
+    let armed = false;
+    if (!d.skip) {
+      armed = await deps.executor.arm(owner, d.time);
+      if (armed) deps.budget.record(owner, now, d.time, d.counts);
+    }
+    const ev = deps.health?.record(owner, armed);
+    if (ev && ev.kind !== "none") deps.onHealthEvent?.(owner, ev);
   }
 }
