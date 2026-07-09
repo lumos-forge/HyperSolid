@@ -29,13 +29,19 @@ type Observer interface {
 	Reap(target ledger.Status)
 	// LeaderState reports whether this instance currently holds reconciler leadership.
 	LeaderState(isLeader bool)
+	// StepDuration records one executed step's total latency in seconds.
+	StepDuration(seconds float64)
+	// HLRequest records one HL info request's latency by call ("open"/"fills"/"status").
+	HLRequest(call string, seconds float64)
 }
 
 type nopObserver struct{}
 
-func (nopObserver) ReconcileStep(string) {}
-func (nopObserver) Reap(ledger.Status)   {}
-func (nopObserver) LeaderState(bool)     {}
+func (nopObserver) ReconcileStep(string)      {}
+func (nopObserver) Reap(ledger.Status)        {}
+func (nopObserver) LeaderState(bool)          {}
+func (nopObserver) StepDuration(float64)      {}
+func (nopObserver) HLRequest(string, float64) {}
 
 // step outcome labels.
 const (
@@ -154,6 +160,7 @@ func (r *Reconciler) reconcileOne(ctx context.Context, keyID, cloid string, targ
 // step runs one poll+reconcile pass over all accounts, returning the first
 // infrastructure error (HL query or ledger infra) encountered.
 func (r *Reconciler) step(ctx context.Context) (err error) {
+	start := time.Now()
 	leader := r.isLeader == nil || r.isLeader()
 	r.obs.LeaderState(leader)
 	if r.isLeader != nil && !leader {
@@ -161,6 +168,7 @@ func (r *Reconciler) step(ctx context.Context) (err error) {
 		return nil // not the leader; another instance polls
 	}
 	defer func() {
+		r.obs.StepDuration(time.Since(start).Seconds())
 		if err != nil {
 			r.obs.ReconcileStep(outcomeError)
 		} else {
@@ -185,11 +193,15 @@ func (r *Reconciler) step(ctx context.Context) (err error) {
 			}
 		}
 		anchor = clampAnchor(anchor, now)
+		tOpen := time.Now()
 		open, err := r.client.OpenCloids(ctx, a.Address)
+		r.obs.HLRequest("open", time.Since(tOpen).Seconds())
 		if err != nil {
 			return err
 		}
+		tFills := time.Now()
 		fills, err := r.client.FillsByCloidSince(ctx, a.Address, anchor)
+		r.obs.HLRequest("fills", time.Since(tFills).Seconds())
 		if err != nil {
 			return err
 		}
@@ -219,7 +231,9 @@ func (r *Reconciler) step(ctx context.Context) (err error) {
 			if _, inFills := fills[o.Cloid]; inFills {
 				continue
 			}
+			tStatus := time.Now()
 			res, err := r.client.OrderStatus(ctx, a.Address, o.Cloid)
+			r.obs.HLRequest("status", time.Since(tStatus).Seconds())
 			if err != nil {
 				return err
 			}
