@@ -13,7 +13,7 @@ import { makeShadowVerifier } from "./agent/signerShadow";
 import { makeRestingExecutor } from "./agent/restingExecutor";
 import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
-import { makeDeadManExecutor } from "./agent/deadManExecutor";
+import { makeDeadManExecutor, type DeadManClientLike } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
 import { makeDeadManBudget, deadManHeartbeat } from "./engine/deadMan";
 import { buildApp } from "./http/app";
@@ -89,8 +89,25 @@ export async function main(): Promise<void> {
 
   const killSwitch = process.env.GLOBAL_KILL === "1";
   const deadManTtlMs = process.env.DEADMAN_TTL_MS ? Number(process.env.DEADMAN_TTL_MS) : undefined;
-  const deadManEnabled = deadManTtlMs !== undefined && Number.isFinite(deadManTtlMs) && deadManTtlMs >= 10_000;
-  const deadManExecutor = makeDeadManExecutor({ clientFor: clientFor as any, shadowVerify });
+  // The dead-man TTL must be comfortably larger than the tick interval: the heartbeat only refreshes
+  // the scheduled cancel every tick, so a TTL <= tickMs would let the switch fire during healthy
+  // operation (cancelling all orders and burning the HL 10/day trigger budget). Require >= 3x tick
+  // and >= 10s (HL's 5s minimum with margin).
+  const deadManEnabled =
+    deadManTtlMs !== undefined &&
+    Number.isFinite(deadManTtlMs) &&
+    deadManTtlMs >= 10_000 &&
+    deadManTtlMs >= 3 * tickMs;
+  if (deadManTtlMs !== undefined && !deadManEnabled) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `dead-man switch disabled: DEADMAN_TTL_MS=${deadManTtlMs} must be finite, >= 10000, and >= 3x TICK_MS (${tickMs})`,
+    );
+  }
+  const deadManExecutor = makeDeadManExecutor({
+    clientFor: clientFor as unknown as (owner: string) => DeadManClientLike | undefined,
+    shadowVerify,
+  });
   const deadManBudget = makeDeadManBudget();
   const activeOwners = () => [...new Set(store.listAll().filter((s) => s.status === "running").map((s) => s.owner))];
   const timer = setInterval(() => {
