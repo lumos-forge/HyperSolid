@@ -1,0 +1,23 @@
+# Multi-window multi-burn-rate SLO alerts. Generic over the `slo` label; one alert per
+# SLO whose burn rate breaches the threshold on BOTH a long and a short window (the short
+# window makes the alert clear quickly once the incident resolves).
+# `and on(slo)` matches the two windows by the `slo` label (their __name__ differs).
+groups:
+  - name: slo_alerts
+    rules:
+      - alert: SLOFastBurn
+        expr: slo:burn_rate:rate1h > 14.4 and on(slo) slo:burn_rate:rate5m > 14.4
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "SLO fast burn for {{ $labels.slo }}"
+          description: "{{ $labels.slo }} error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
+      - alert: SLOSlowBurn
+        expr: slo:burn_rate:rate6h > 6 and on(slo) slo:burn_rate:rate30m > 6
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "SLO slow burn for {{ $labels.slo }}"
+          description: "{{ $labels.slo }} error budget burning: 6h and 30m burn rate both exceed 6x (about 5% of the 30d budget per 6h). Open a ticket."
