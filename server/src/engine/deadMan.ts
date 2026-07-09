@@ -43,6 +43,47 @@ export function makeDeadManBudget(): DeadManBudget {
   };
 }
 
+/** Consecutive unprotected heartbeats before raising an alert (~alertAfter × tick of no protection). */
+export const DEADMAN_ALERT_AFTER = 3;
+
+export type DeadManHealthEvent =
+  | { kind: "none" }
+  | { kind: "alert"; consecutiveFailures: number }
+  | { kind: "recovered" };
+
+export interface DeadManHealth {
+  /** Record one heartbeat outcome for owner (armed = did we successfully arm/refresh this tick).
+   *  Returns a transition event (alert on crossing the threshold, recovered on first success after an
+   *  alert) or { kind: "none" } in steady state. */
+  record(owner: string, armed: boolean): DeadManHealthEvent;
+}
+
+interface HealthState {
+  failures: number;
+  alerting: boolean;
+}
+
+export function makeDeadManHealth(alertAfter: number = DEADMAN_ALERT_AFTER): DeadManHealth {
+  const state = new Map<string, HealthState>();
+  return {
+    record(owner: string, armed: boolean): DeadManHealthEvent {
+      const s = state.get(owner) ?? { failures: 0, alerting: false };
+      if (armed) {
+        const wasAlerting = s.alerting;
+        state.set(owner, { failures: 0, alerting: false });
+        return wasAlerting ? { kind: "recovered" } : { kind: "none" };
+      }
+      const failures = s.failures + 1;
+      if (!s.alerting && failures >= alertAfter) {
+        state.set(owner, { failures, alerting: true });
+        return { kind: "alert", consecutiveFailures: failures };
+      }
+      state.set(owner, { failures, alerting: s.alerting });
+      return { kind: "none" };
+    },
+  };
+}
+
 export interface DeadManHeartbeatDeps {
   /** Owners with >=1 running strategy. Duplicates are de-duped internally. */
   activeOwners(): string[];
@@ -50,15 +91,25 @@ export interface DeadManHeartbeatDeps {
   executor: DeadManExecutor;
   now(): number;
   ttlMs: number;
+  /** Optional health tracker: records whether each owner was protected this tick. */
+  health?: DeadManHealth;
+  /** Optional sink for health transition events (e.g. a logger). */
+  onHealthEvent?: (owner: string, event: DeadManHealthEvent) => void;
 }
 
 /** One heartbeat pass: for each active owner, arm/refresh scheduleCancel per the budget, recording
- *  only on a successful send. Sequential (no concurrency). */
+ *  only on a successful send. A budget skip or an arm failure both count as "unprotected this tick"
+ *  for the optional health tracker, which surfaces transition events (alert/recovered). Sequential. */
 export async function deadManHeartbeat(deps: DeadManHeartbeatDeps): Promise<void> {
   const now = deps.now();
   for (const owner of new Set(deps.activeOwners())) {
     const d = deps.budget.decide(owner, now, deps.ttlMs);
-    if (d.skip) continue;
-    if (await deps.executor.arm(owner, d.time)) deps.budget.record(owner, now, d.time, d.counts);
+    let armed = false;
+    if (!d.skip) {
+      armed = await deps.executor.arm(owner, d.time);
+      if (armed) deps.budget.record(owner, now, d.time, d.counts);
+    }
+    const ev = deps.health?.record(owner, armed);
+    if (ev && ev.kind !== "none") deps.onHealthEvent?.(owner, ev);
   }
 }

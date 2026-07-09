@@ -15,7 +15,7 @@ import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
 import { makeDeadManExecutor, type DeadManClientLike } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
-import { makeDeadManBudget, deadManHeartbeat } from "./engine/deadMan";
+import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth } from "./engine/deadMan";
 import { buildApp } from "./http/app";
 
 export const VERSION = "0.1.0";
@@ -109,6 +109,7 @@ export async function main(): Promise<void> {
     shadowVerify,
   });
   const deadManBudget = makeDeadManBudget();
+  const deadManHealth = makeDeadManHealth();
   const activeOwners = () => [...new Set(store.listAll().filter((s) => s.status === "running").map((s) => s.owner))];
   const timer = setInterval(() => {
     void tick(
@@ -133,6 +134,16 @@ export async function main(): Promise<void> {
         executor: deadManExecutor,
         now,
         ttlMs: deadManTtlMs as number,
+        health: deadManHealth,
+        onHealthEvent: (owner, ev) => {
+          if (ev.kind === "alert") {
+            // eslint-disable-next-line no-console
+            console.error(`dead-man arm failing for ${owner}: ${ev.consecutiveFailures} consecutive unprotected heartbeats`);
+          } else if (ev.kind === "recovered") {
+            // eslint-disable-next-line no-console
+            console.error(`dead-man arm recovered for ${owner}`);
+          }
+        },
       }).catch((e) =>
         // eslint-disable-next-line no-console
         console.error("dead-man heartbeat failed", e),
