@@ -1,0 +1,71 @@
+rule_files:
+  - ../recording.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Sign availability: 1 error + 99 ok per minute → error_ratio 0.01, budget 0.001 → burn 10.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+99x60'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="500"}'
+        values: '0+1x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="sign_availability"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="sign_availability"}'
+            value: 10
+
+  # Sign latency: 99/100 under 500ms → error_ratio 0.01, budget 0.01 → burn 1.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}'
+        values: '0+100x60'
+      - series: 'hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}'
+        values: '0+99x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="sign_latency"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="sign_latency"}'
+            value: 1.000000000000012 # promtool-exact
+
+  # Reconciler: 1 error + 99 ok per minute → error_ratio 0.01, budget 0.01 → burn 1.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_reconcile_steps_total{outcome="ok"}'
+        values: '0+99x60'
+      - series: 'hypersolid_reconcile_steps_total{outcome="error"}'
+        values: '0+1x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="reconciler_success"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="reconciler_success"}'
+            value: 1
+
+  # Healthy sign availability: traffic but zero 5xx → burn rate 0 (present, not absent).
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+100x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="sign_availability"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="sign_availability"}'
+            value: 0
+
+  # Healthy reconciler: ok steps, zero errors → burn rate 0 (present, not absent).
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_reconcile_steps_total{outcome="ok"}'
+        values: '0+100x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="reconciler_success"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="reconciler_success"}'
+            value: 0

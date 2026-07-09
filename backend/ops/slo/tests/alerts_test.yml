@@ -1,0 +1,103 @@
+rule_files:
+  - ../recording.yml
+  - ../alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Healthy: only 200s → burn rate 0/absent → no alerts.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+100x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: SLOSlowBurn
+        exp_alerts: []
+
+  # Fast burn: 50 err + 50 ok /min → error_ratio 0.5, burn 500 → BOTH alerts fire (page + ticket).
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+50x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="500"}'
+        values: '0+50x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              slo: sign_availability
+              severity: page
+            exp_annotations:
+              summary: "SLO fast burn for sign_availability"
+              description: "sign_availability error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
+      - eval_time: 70m
+        alertname: SLOSlowBurn
+        exp_alerts:
+          - exp_labels:
+              slo: sign_availability
+              severity: ticket
+            exp_annotations:
+              summary: "SLO slow burn for sign_availability"
+              description: "sign_availability error budget burning: 6h and 30m burn rate both exceed 6x (about 5% of the 30d budget per 6h). Open a ticket."
+
+  # Slow burn only: 1 err + 99 ok /min → error_ratio 0.01, burn 10 → SlowBurn fires, FastBurn does not.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+99x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="500"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: SLOSlowBurn
+        exp_alerts:
+          - exp_labels:
+              slo: sign_availability
+              severity: ticket
+            exp_annotations:
+              summary: "SLO slow burn for sign_availability"
+              description: "sign_availability error budget burning: 6h and 30m burn rate both exceed 6x (about 5% of the 30d budget per 6h). Open a ticket."
+
+  # Fast burn on sign_latency: 50% of requests slow → burn 50 → SLOFastBurn fires for sign_latency.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_request_duration_seconds_count{endpoint="sign_l1"}'
+        values: '0+100x90'
+      - series: 'hypersolid_http_request_duration_seconds_bucket{endpoint="sign_l1",le="0.5"}'
+        values: '0+50x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              slo: sign_latency
+              severity: page
+            exp_annotations:
+              summary: "SLO fast burn for sign_latency"
+              description: "sign_latency error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
+
+  # Fast burn on reconciler_success: 50% error steps → burn 50 → SLOFastBurn fires for reconciler_success.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_reconcile_steps_total{outcome="ok"}'
+        values: '0+50x90'
+      - series: 'hypersolid_reconcile_steps_total{outcome="error"}'
+        values: '0+50x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              slo: reconciler_success
+              severity: page
+            exp_annotations:
+              summary: "SLO fast burn for reconciler_success"
+              description: "reconciler_success error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
