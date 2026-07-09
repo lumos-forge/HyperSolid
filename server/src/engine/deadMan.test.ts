@@ -1,4 +1,4 @@
-import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth } from "./deadMan";
+import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth, deadManClearAll } from "./deadMan";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -63,7 +63,7 @@ describe("deadManHeartbeat", () => {
 
   it("arms and records each active owner once", async () => {
     const armed: Array<{ owner: string; time: number }> = [];
-    const executor = { arm: jest.fn(async (owner: string, time: number) => { armed.push({ owner, time }); return true; }) };
+    const executor = { arm: jest.fn(async (owner: string, time: number) => { armed.push({ owner, time }); return true; }), clear: jest.fn(async () => true) };
     const budget = makeDeadManBudget();
     await deadManHeartbeat({ activeOwners: () => ["0xa", "0xb"], budget, executor, now: () => now, ttlMs: ttl });
     expect(armed).toEqual([{ owner: "0xa", time: now + ttl }, { owner: "0xb", time: now + ttl }]);
@@ -71,20 +71,20 @@ describe("deadManHeartbeat", () => {
   });
 
   it("dedups repeated owners", async () => {
-    const executor = { arm: jest.fn(async () => true) };
+    const executor = { arm: jest.fn(async () => true), clear: jest.fn(async () => true) };
     await deadManHeartbeat({ activeOwners: () => ["0xa", "0xa", "0xa"], budget: makeDeadManBudget(), executor, now: () => now, ttlMs: ttl });
     expect(executor.arm).toHaveBeenCalledTimes(1);
   });
 
   it("does not arm when the budget says skip", async () => {
-    const executor = { arm: jest.fn(async () => true) };
+    const executor = { arm: jest.fn(async () => true), clear: jest.fn(async () => true) };
     const budget = { decide: () => ({ skip: true as const }), record: jest.fn() };
     await deadManHeartbeat({ activeOwners: () => ["0xa"], budget, executor, now: () => now, ttlMs: ttl });
     expect(executor.arm).not.toHaveBeenCalled();
   });
 
   it("does not record when arm fails (retry next tick)", async () => {
-    const executor = { arm: jest.fn(async () => false) };
+    const executor = { arm: jest.fn(async () => false), clear: jest.fn(async () => true) };
     const record = jest.fn();
     const budget = { decide: () => ({ skip: false as const, time: now + ttl, counts: true }), record };
     await deadManHeartbeat({ activeOwners: () => ["0xa"], budget, executor, now: () => now, ttlMs: ttl });
@@ -94,7 +94,7 @@ describe("deadManHeartbeat", () => {
 
   it("records a health failure and emits the event when arm fails", async () => {
     const events: Array<{ owner: string; kind: string }> = [];
-    const executor = { arm: jest.fn(async () => false) };
+    const executor = { arm: jest.fn(async () => false), clear: jest.fn(async () => true) };
     const health = makeDeadManHealth(1);
     await deadManHeartbeat({
       activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor,
@@ -107,7 +107,7 @@ describe("deadManHeartbeat", () => {
 
   it("counts a budget skip as an unprotected failure (no arm, health records false)", async () => {
     const events: Array<{ owner: string; kind: string }> = [];
-    const executor = { arm: jest.fn(async () => true) };
+    const executor = { arm: jest.fn(async () => true), clear: jest.fn(async () => true) };
     const budget = { decide: () => ({ skip: true as const }), record: jest.fn() };
     const health = makeDeadManHealth(1);
     await deadManHeartbeat({
@@ -122,7 +122,7 @@ describe("deadManHeartbeat", () => {
     const events: string[] = [];
     const health = makeDeadManHealth(1);
     health.record("0xa", false); // prime an alert
-    const executor = { arm: jest.fn(async () => true) };
+    const executor = { arm: jest.fn(async () => true), clear: jest.fn(async () => true) };
     await deadManHeartbeat({
       activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor,
       now: () => now, ttlMs: ttl, health,
@@ -132,7 +132,7 @@ describe("deadManHeartbeat", () => {
   });
 
   it("works without a health tracker (unchanged behavior)", async () => {
-    const executor = { arm: jest.fn(async () => true) };
+    const executor = { arm: jest.fn(async () => true), clear: jest.fn(async () => true) };
     await deadManHeartbeat({ activeOwners: () => ["0xa"], budget: makeDeadManBudget(), executor, now: () => now, ttlMs: ttl });
     expect(executor.arm).toHaveBeenCalledWith("0xa", now + ttl);
   });
@@ -193,5 +193,25 @@ describe("makeDeadManHealth", () => {
     h.record("0xo", false);
     h.record("0xo", false);
     expect(h.record("0xo", false)).toEqual({ kind: "alert", consecutiveFailures: 3 });
+  });
+});
+
+describe("deadManClearAll", () => {
+  it("clears each deduped owner once", async () => {
+    const cleared: string[] = [];
+    const executor = { clear: jest.fn(async (owner: string) => { cleared.push(owner); return true; }) };
+    await deadManClearAll({ activeOwners: () => ["0xa", "0xb", "0xa"], executor });
+    expect(cleared).toEqual(["0xa", "0xb"]);
+  });
+  it("no-ops on an empty owner list", async () => {
+    const executor = { clear: jest.fn(async () => true) };
+    await deadManClearAll({ activeOwners: () => [], executor });
+    expect(executor.clear).not.toHaveBeenCalled();
+  });
+  it("continues past a failing clear (best-effort)", async () => {
+    const cleared: string[] = [];
+    const executor = { clear: jest.fn(async (owner: string) => { cleared.push(owner); return owner !== "0xa"; }) };
+    await deadManClearAll({ activeOwners: () => ["0xa", "0xb"], executor });
+    expect(cleared).toEqual(["0xa", "0xb"]);
   });
 });

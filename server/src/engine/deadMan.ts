@@ -113,3 +113,14 @@ export async function deadManHeartbeat(deps: DeadManHeartbeatDeps): Promise<void
     if (ev && ev.kind !== "none") deps.onHealthEvent?.(owner, ev);
   }
 }
+
+/** Best-effort clear of the dead-man for every (deduped) owner, e.g. on graceful shutdown. A single
+ *  owner's failure does not stop the rest (executor.clear is itself never-throwing). Sequential. */
+export async function deadManClearAll(deps: {
+  activeOwners(): string[];
+  executor: Pick<DeadManExecutor, "clear">;
+}): Promise<void> {
+  for (const owner of new Set(deps.activeOwners())) {
+    await deps.executor.clear(owner);
+  }
+}
