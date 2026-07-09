@@ -41,7 +41,7 @@ func Middleware(name string, next http.HandlerFunc) http.HandlerFunc {
 				slog.String("method", r.Method),
 				slog.String("route", name),
 				slog.Int("status", rec.code),
-				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+				slog.Float64("duration_ms", float64(time.Since(start).Microseconds())/1000),
 			)
 			if p != nil {
 				panic(p)
