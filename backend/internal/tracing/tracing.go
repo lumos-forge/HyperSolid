@@ -70,7 +70,10 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 		resource.WithFromEnv(),
 	)
 	if err != nil {
-		res = resource.Default()
+		// resource.New returns a usable partial resource alongside the error
+		// (e.g. a malformed OTEL_RESOURCE_ATTRIBUTES entry); keep it rather than
+		// discarding the configured service.name via resource.Default().
+		log.Printf("tracing: partial resource, continuing: %v", err)
 	}
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
