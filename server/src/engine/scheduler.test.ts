@@ -444,7 +444,7 @@ function fakeExec(outcome?: (req: any) => any) {
   return {
     calls, cancels,
     placeLimit: jest.fn(async (req: any) => { calls.push(req); return outcome ? outcome(req) : { ok: true, oid: oid++ }; }),
-    cancelCloids: jest.fn(async (req: any) => { cancels.push(req); return true; }),
+    cancelMany: jest.fn(async (req: any) => { cancels.push(req); return true; }),
   };
 }
 function fakeReader(cloids: string[], total?: number) {
@@ -607,8 +607,8 @@ describe("gridLimit tick (draining)", () => {
     const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
     // Tick 1: both still open -> cancel both, keep rungs tracked (cancel not yet confirmed).
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, fakeReader(["0xB0", "0xS2"]) as any);
-    expect(exec.cancels).toHaveLength(1); // both rungs coalesced into one cancelCloids call
-    expect(exec.cancels[0].cloids.sort()).toEqual(["0xB0", "0xS2"]);
+    expect(exec.cancels).toHaveLength(1); // both rungs coalesced into one cancelMany call
+    expect(exec.cancels[0].cancels.map((c: any) => c.cloid).sort()).toEqual(["0xB0", "0xS2"]);
     expect(store.gridLimitRungs(s.id).some((r) => r.cloid !== null)).toBe(true);
     expect(store.get(s.id)!.status).toBe("paused");
     // Tick 2: book empty -> rungs cleared to idle, still paused.
@@ -625,7 +625,7 @@ describe("gridLimit tick (draining)", () => {
     const reader = fakeReader(["0xB0"]);
     const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, marks, exec as any, reader as any);
-    expect(exec.cancels.flatMap((c: any) => c.cloids)).toEqual(["0xB0"]);
+    expect(exec.cancels.flatMap((c: any) => c.cancels.map((x: any) => x.cloid))).toEqual(["0xB0"]);
     expect(exec.placeLimit).not.toHaveBeenCalled();
   });
 
@@ -648,10 +648,27 @@ describe("gridLimit tick (draining)", () => {
     const orphan = cloidForKey(s.id, "gl:0:1"); // rung 0 default seq 0 -> next-seq crash orphan
     const exec = fakeExec();
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([orphan]) as any);
-    expect(exec.cancels.flatMap((c: any) => c.cloids)).toContain(orphan);
+    expect(exec.cancels.flatMap((c: any) => c.cancels.map((x: any) => x.cloid))).toContain(orphan);
     expect(store.get(s.id)).toBeDefined();
     await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, { resolveMark: async () => 150, resolvePosition: async () => undefined }, exec as any, fakeReader([]) as any);
     expect(store.get(s.id)).toBeUndefined();
+  });
+
+  it("coalesces two draining strategies of one owner across coins into a single cancelMany", async () => {
+    const store = new MemoryStrategyStore(() => 0);
+    const a = store.create("0xo", "gridLimit", { ...glParams, coin: "BTC" });
+    const b = store.create("0xo", "gridLimit", { ...glParams, coin: "ETH" });
+    store.setGridLimitRung(a.id, { rung: 0, state: "armed", side: "buy", cloid: "0xA", px: 100, seq: 1 });
+    store.setGridLimitRung(b.id, { rung: 0, state: "armed", side: "buy", cloid: "0xE", px: 100, seq: 1 });
+    store.setStatus(a.id, "paused");
+    store.setStatus(b.id, "paused");
+    const exec = fakeExec();
+    const marks = { resolveMark: async () => 150, resolvePosition: async () => undefined };
+    await tick(store, {} as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks, exec as any, fakeReader(["0xA", "0xE"]) as any);
+    expect(exec.cancels).toHaveLength(1); // one cancelMany for the owner, spanning both coins
+    const sent = exec.cancels[0].cancels;
+    expect(sent).toContainEqual({ coin: "BTC", cloid: "0xA" });
+    expect(sent).toContainEqual({ coin: "ETH", cloid: "0xE" });
   });
 });
 
