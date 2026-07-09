@@ -43,6 +43,21 @@ func (nopObserver) LeaderState(bool)          {}
 func (nopObserver) StepDuration(float64)      {}
 func (nopObserver) HLRequest(string, float64) {}
 
+// Tracer starts a span for one executed reconcile step. The default (nopTracer)
+// returns ctx unchanged and a no-op end func, so the reconciler carries no hard
+// dependency on any tracing backend.
+type Tracer interface {
+	// StartStep begins a step span, returning a context carrying the span and a
+	// func that ends it. Implementations must never return a nil context or func.
+	StartStep(ctx context.Context) (context.Context, func())
+}
+
+type nopTracer struct{}
+
+func (nopTracer) StartStep(ctx context.Context) (context.Context, func()) {
+	return ctx, func() {}
+}
+
 // step outcome labels.
 const (
 	outcomeOK      = "ok"
@@ -83,6 +98,7 @@ type Reconciler struct {
 	accounts []Account
 	isLeader func() bool // optional leader gate; nil = always run
 	obs      Observer    // telemetry sink; never nil (defaults to nopObserver)
+	tracer   Tracer      // step-span tracer; never nil (defaults to nopTracer)
 }
 
 // Option configures a Reconciler.
@@ -103,9 +119,18 @@ func WithObserver(obs Observer) Option {
 	}
 }
 
+// WithTracer injects a step-span tracer. A nil tracer keeps the no-op default.
+func WithTracer(t Tracer) Option {
+	return func(r *Reconciler) {
+		if t != nil {
+			r.tracer = t
+		}
+	}
+}
+
 // New returns a Reconciler over the given HL info client, ledger, and accounts.
 func New(client InfoClient, led ledger.Reconciler, accounts []Account, opts ...Option) *Reconciler {
-	r := &Reconciler{client: client, led: led, accounts: accounts, obs: nopObserver{}}
+	r := &Reconciler{client: client, led: led, accounts: accounts, obs: nopObserver{}, tracer: nopTracer{}}
 	for _, o := range opts {
 		o(r)
 	}
@@ -167,6 +192,8 @@ func (r *Reconciler) step(ctx context.Context) (err error) {
 		r.obs.ReconcileStep(outcomeSkipped)
 		return nil // not the leader; another instance polls
 	}
+	ctx, endSpan := r.tracer.StartStep(ctx)
+	defer endSpan()
 	defer func() {
 		r.obs.StepDuration(time.Since(start).Seconds())
 		if err != nil {
