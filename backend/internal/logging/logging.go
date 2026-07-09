@@ -17,7 +17,9 @@ import (
 
 // traceHandler wraps a slog.Handler, adding trace_id/span_id attributes drawn from the
 // record's context when it carries a valid span. It reads only the stable otel/trace
-// SpanContext API and never depends on the OTel provider.
+// SpanContext API and never depends on the OTel provider. Because attributes are added
+// to the record before delegating, they land at the inner handler's current group
+// scope (see New).
 type traceHandler struct {
 	inner slog.Handler
 }
@@ -45,7 +47,10 @@ func (h traceHandler) WithGroup(name string) slog.Handler {
 }
 
 // New returns a JSON slog.Logger writing to w at the given minimum level, with trace
-// correlation applied to every record.
+// correlation applied to every record. Trace attributes (trace_id/span_id) are added
+// at the logger's current group scope; keep trace-correlated loggers ungrouped (do not
+// wrap the returned logger with WithGroup) so trace_id/span_id appear at the top level
+// for downstream log→trace joins.
 func New(w io.Writer, level slog.Level) *slog.Logger {
 	base := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})
 	return slog.New(traceHandler{inner: base})

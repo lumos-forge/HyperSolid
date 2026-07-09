@@ -76,3 +76,28 @@ func TestLevelFromEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestNewTraceAttrsTopLevelWhenUngrouped(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf, slog.LevelInfo)
+	ctx := ctxWithSpan("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331")
+	logger.InfoContext(ctx, "hello")
+	// Top-level (not nested under any group) — the contract the access-log
+	// middleware and all app logging rely on.
+	if !strings.Contains(buf.String(), `"trace_id":"0af7651916cd43dd8448eb211c80319c"`) {
+		t.Fatalf("trace_id should be top-level for an ungrouped logger: %q", buf.String())
+	}
+}
+
+func TestNewWithGroupNestsTraceAttrs(t *testing.T) {
+	// Deliberate, documented contract: a grouped logger nests trace attrs under the
+	// group. Consumers needing top-level trace_id must not group the correlated logger.
+	var buf bytes.Buffer
+	logger := New(&buf, slog.LevelInfo).WithGroup("req")
+	ctx := ctxWithSpan("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331")
+	logger.InfoContext(ctx, "hello")
+	out := buf.String()
+	if !strings.Contains(out, `"req":{`) || !strings.Contains(out, `"trace_id":"0af7651916cd43dd8448eb211c80319c"`) {
+		t.Fatalf("expected trace_id nested under the req group, got %q", out)
+	}
+}
