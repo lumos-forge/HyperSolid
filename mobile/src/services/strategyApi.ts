@@ -2,20 +2,25 @@ import { fetchWithTimeout } from "../lib/fetchWithTimeout";
 
 export type StrategyType = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
 
-export interface DcaParams {
+export interface StrategyParamsCommon {
+  /** Opt-in: while this strategy runs, arm the account-level scheduleCancel dead-man switch. */
+  deadMan?: boolean;
+}
+
+export interface DcaParams extends StrategyParamsCommon {
   coin: string; side: "buy"; quoteAmountUsdc: number; intervalHours: number; maxTotalUsdc?: number;
 }
-export interface TwapParams {
+export interface TwapParams extends StrategyParamsCommon {
   coin: string; side: "buy" | "sell"; totalUsdc: number; slices: number; durationHours: number;
 }
-export interface TpslParams {
+export interface TpslParams extends StrategyParamsCommon {
   coin: string; takeProfitPrice?: number; stopLossPrice?: number;
 }
-export interface GridParams {
+export interface GridParams extends StrategyParamsCommon {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
   mode?: "longOnly" | "symmetric";
 }
-export interface GridLimitParams {
+export interface GridLimitParams extends StrategyParamsCommon {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
   mode?: "longOnly" | "symmetric";
 }
