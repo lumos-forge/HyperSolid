@@ -189,6 +189,8 @@ type metricsObserver struct{}
 func (metricsObserver) ReconcileStep(outcome string) { metrics.ObserveReconcileStep(outcome) }
 func (metricsObserver) Reap(target ledger.Status)    { metrics.ObserveReap(string(target)) }
 func (metricsObserver) LeaderState(isLeader bool)    { metrics.SetReconcileLeader(isLeader) }
+func (metricsObserver) StepDuration(s float64)           { metrics.ObserveReconcileStepDuration(s) }
+func (metricsObserver) HLRequest(call string, s float64) { metrics.ObserveReconcileHL(call, s) }
 
 // Compile-time check that metricsObserver satisfies reconciler.Observer.
 var _ reconciler.Observer = metricsObserver{}

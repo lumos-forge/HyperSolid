@@ -3,6 +3,7 @@ package reconciler
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -333,15 +334,20 @@ func TestStepSkipsOrderStatusWhenOpenOrFilled(t *testing.T) {
 }
 
 // recObserver records Observer callbacks for assertions.
+// recObserver records Observer callbacks for assertions.
 type recObserver struct {
-	steps  []string
-	reaps  []ledger.Status
-	leader []bool
+	steps         []string
+	reaps         []ledger.Status
+	leader        []bool
+	stepDurations []float64
+	hlCalls       []string
 }
 
-func (o *recObserver) ReconcileStep(outcome string) { o.steps = append(o.steps, outcome) }
-func (o *recObserver) Reap(target ledger.Status)    { o.reaps = append(o.reaps, target) }
-func (o *recObserver) LeaderState(isLeader bool)    { o.leader = append(o.leader, isLeader) }
+func (o *recObserver) ReconcileStep(outcome string)     { o.steps = append(o.steps, outcome) }
+func (o *recObserver) Reap(target ledger.Status)        { o.reaps = append(o.reaps, target) }
+func (o *recObserver) LeaderState(isLeader bool)        { o.leader = append(o.leader, isLeader) }
+func (o *recObserver) StepDuration(seconds float64)     { o.stepDurations = append(o.stepDurations, seconds) }
+func (o *recObserver) HLRequest(call string, _ float64) { o.hlCalls = append(o.hlCalls, call) }
 
 func TestObserverLeaderStepOK(t *testing.T) {
 	led := ledger.NewMem()
@@ -408,5 +414,55 @@ func TestObserverReapByTarget(t *testing.T) {
 	}
 	if len(obs.reaps) != 1 || obs.reaps[0] != ledger.StatusRejected {
 		t.Fatalf("reaps = %v, want [rejected]", obs.reaps)
+	}
+}
+
+func TestObserverStepDurationAndHLOnLeaderStep(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}},
+		WithLeaderGate(func() bool { return true }), WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(obs.stepDurations) != 1 {
+		t.Fatalf("stepDurations = %v, want exactly 1", obs.stepDurations)
+	}
+	if !slices.Contains(obs.hlCalls, "open") || !slices.Contains(obs.hlCalls, "fills") {
+		t.Fatalf("hlCalls = %v, want to contain open+fills", obs.hlCalls)
+	}
+}
+
+func TestObserverHLStatusOnReap(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{
+		open:        map[string]map[string]hlinfo.OpenOrder{"0xacc": {}},
+		orderStatus: map[string]hlinfo.OrderStatusResult{"c1": {Status: "rejected", Found: true}},
+	}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}}, WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if !slices.Contains(obs.hlCalls, "status") {
+		t.Fatalf("hlCalls = %v, want to contain status (reap path)", obs.hlCalls)
+	}
+}
+
+func TestObserverNoLatencyWhenSkipped(t *testing.T) {
+	led := ledger.NewMem()
+	seedSigned(t, led, "k", "c1")
+	fc := &fakeClient{open: map[string]map[string]hlinfo.OpenOrder{"0xacc": {"c1": {}}}}
+	obs := &recObserver{}
+	r := New(fc, led, []Account{{KeyID: "k", Address: "0xacc"}},
+		WithLeaderGate(func() bool { return false }), WithObserver(obs))
+	if err := r.step(context.Background()); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if len(obs.stepDurations) != 0 || len(obs.hlCalls) != 0 {
+		t.Fatalf("skipped step must record no latency: durations=%v hlCalls=%v", obs.stepDurations, obs.hlCalls)
 	}
 }
