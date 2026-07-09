@@ -59,3 +59,25 @@ func TestMiddlewareInjectsTraceIDWithSpan(t *testing.T) {
 		t.Fatalf("access log missing trace_id: %q", buf.String())
 	}
 }
+
+func TestMiddlewareLogsOnPanic(t *testing.T) {
+	var buf bytes.Buffer
+	installDefault(t, &buf)
+	h := Middleware("sign_l1", func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	defer func() {
+		if p := recover(); p == nil {
+			t.Fatal("panic must propagate through the middleware")
+		}
+		out := buf.String()
+		if !strings.Contains(out, `"msg":"http request"`) {
+			t.Fatalf("panic path must still emit one access log, got %q", out)
+		}
+		if !strings.Contains(out, `"level":"WARN"`) || !strings.Contains(out, `"status":500`) {
+			t.Fatalf("panic must be logged as WARN status 500, got %q", out)
+		}
+	}()
+	h(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/sign/l1", nil))
+	t.Fatal("expected the handler panic to propagate past Middleware")
+}
