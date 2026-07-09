@@ -6,23 +6,23 @@ groups:
   - name: slo_sign_availability
     rules:
       - record: slo:burn_rate:rate5m
-        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[5m])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[5m]))) / 0.001
+        expr: ((sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[5m])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[5m]))) / 0.001
         labels:
           slo: sign_availability
       - record: slo:burn_rate:rate30m
-        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30m])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30m]))) / 0.001
+        expr: ((sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30m])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30m]))) / 0.001
         labels:
           slo: sign_availability
       - record: slo:burn_rate:rate1h
-        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[1h])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[1h]))) / 0.001
+        expr: ((sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[1h])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[1h]))) / 0.001
         labels:
           slo: sign_availability
       - record: slo:burn_rate:rate6h
-        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[6h])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[6h]))) / 0.001
+        expr: ((sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[6h])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[6h]))) / 0.001
         labels:
           slo: sign_availability
       - record: slo:error_ratio:rate30d
-        expr: sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30d])) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30d]))
+        expr: (sum(rate(hypersolid_http_requests_total{endpoint="sign_l1",code=~"5.."}[30d])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30d]))
         labels:
           slo: sign_availability
   - name: slo_sign_latency
@@ -50,22 +50,22 @@ groups:
   - name: slo_reconciler_success
     rules:
       - record: slo:burn_rate:rate5m
-        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[5m])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[5m]))) / 0.01
+        expr: ((sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[5m])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[5m]))) / 0.01
         labels:
           slo: reconciler_success
       - record: slo:burn_rate:rate30m
-        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30m])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30m]))) / 0.01
+        expr: ((sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30m])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30m]))) / 0.01
         labels:
           slo: reconciler_success
       - record: slo:burn_rate:rate1h
-        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[1h])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[1h]))) / 0.01
+        expr: ((sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[1h])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[1h]))) / 0.01
         labels:
           slo: reconciler_success
       - record: slo:burn_rate:rate6h
-        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[6h])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[6h]))) / 0.01
+        expr: ((sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[6h])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[6h]))) / 0.01
         labels:
           slo: reconciler_success
       - record: slo:error_ratio:rate30d
-        expr: sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30d])) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30d]))
+        expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30d])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30d]))
         labels:
           slo: reconciler_success

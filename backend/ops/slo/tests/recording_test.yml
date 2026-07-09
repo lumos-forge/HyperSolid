@@ -45,3 +45,27 @@ tests:
         exp_samples:
           - labels: 'slo:burn_rate:rate5m{slo="reconciler_success"}'
             value: 1
+
+  # Healthy sign availability: traffic but zero 5xx → burn rate 0 (present, not absent).
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+100x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="sign_availability"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="sign_availability"}'
+            value: 0
+
+  # Healthy reconciler: ok steps, zero errors → burn rate 0 (present, not absent).
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_reconcile_steps_total{outcome="ok"}'
+        values: '0+100x60'
+    promql_expr_test:
+      - expr: slo:burn_rate:rate5m{slo="reconciler_success"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'slo:burn_rate:rate5m{slo="reconciler_success"}'
+            value: 0
