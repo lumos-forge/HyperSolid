@@ -9,7 +9,7 @@ package tracing
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -60,7 +60,7 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 	}
 	exp, err := otlptracehttp.New(ctx)
 	if err != nil {
-		log.Printf("tracing: exporter init failed, tracing disabled: %v", err)
+		slog.Warn("tracing exporter init failed, tracing disabled", "error", err)
 		return noopShutdown, nil
 	}
 	// service.name defaults to hypersolid-signer; OTEL_SERVICE_NAME /
@@ -73,7 +73,7 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 		// resource.New returns a usable partial resource alongside the error
 		// (e.g. a malformed OTEL_RESOURCE_ATTRIBUTES entry); keep it rather than
 		// discarding the configured service.name via resource.Default().
-		log.Printf("tracing: partial resource, continuing: %v", err)
+		slog.Warn("tracing partial resource, continuing", "error", err)
 	}
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),

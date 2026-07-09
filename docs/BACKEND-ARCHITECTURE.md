@@ -31,7 +31,7 @@
 | **M7** | 推送服务 | APNs/FCM；自动交易/触发/熔断、授权健康告警（§5.3/§6）| 否 | 通知缺失 | **Go** |
 | **M8** | 中国智能路由代理 | 20+ 出口 IP 池、流量分离、429 降级（§4.1 / `docs/CHINA-ACCESS-ANALYSIS.md`）| 否 | 中国用户行情可达性下降 | **JS（Cloudflare Workers，保留）** |
 | **M9** | 存储层 | Postgres（**绝不存私钥**）+ Redis 缓存（§3）| 否 | 数据泄露（无私钥）| Go 接入 |
-| **M10** | 可观测 / 限频预算 | OTel 指标·追踪·日志、SLO、每用户速率预算 + 撤单合并 + 挂单上限 + scheduleCancel 计数（§6.3/§12）**【状态：核心落地 —— signer(Go)：HTTP Prometheus 指标+`/metrics` #48、reconciler 领域指标 #49、按 key 令牌桶限流 `/v1/sign/l1`（429，fail-closed）#50（`internal/{metrics,ratelimit}`，专用 registry）；agentic 引擎(server/ TS)：撤单合并+挂单上限 #51、scheduleCancel 死手开关（心跳+≤10/日预算）#52、死手失败过渡式告警 #53（`engine/deadMan`、`agent/{deadManExecutor,restingExecutor,openOrdersReader}`）。用 Prometheus（非 OTel）；OTel 边界追踪（signer：HTTP server span + HL /info client span + reconciler step span，OTLP 导出、opt-in fail-safe，`internal/tracing`）落地；日志·SLO·IP/地址级额度统管·WS 分片配额 待做】** | 否 | 盲飞 / 触发 HL 限频 | **Go（signer）+ TS（server/ 引擎）** |
+| **M10** | 可观测 / 限频预算 | OTel 指标·追踪·日志、SLO、每用户速率预算 + 撤单合并 + 挂单上限 + scheduleCancel 计数（§6.3/§12）**【状态：核心落地 —— signer(Go)：HTTP Prometheus 指标+`/metrics` #48、reconciler 领域指标 #49、按 key 令牌桶限流 `/v1/sign/l1`（429，fail-closed）#50（`internal/{metrics,ratelimit}`，专用 registry）；agentic 引擎(server/ TS)：撤单合并+挂单上限 #51、scheduleCancel 死手开关（心跳+≤10/日预算）#52、死手失败过渡式告警 #53（`engine/deadMan`、`agent/{deadManExecutor,restingExecutor,openOrdersReader}`）。用 Prometheus（非 OTel）；OTel 边界追踪（signer：HTTP server span + HL /info client span + reconciler step span，OTLP 导出、opt-in fail-safe，`internal/tracing`）落地；signer 结构化日志（slog JSON + trace_id/span_id 关联 + 业务路由访问日志，`internal/logging`）落地；SLO·IP/地址级额度统管·WS 分片配额·OTLP 日志管道（待 OTel Logs 信号稳定）待做】** | 否 | 盲飞 / 触发 HL 限频 | **Go（signer）+ TS（server/ 引擎）** |
 | **M11** | 入金引导 / Builder 返佣（后续）| approveBuilderFee、入金桥引导（与上架同期，§2 Phase 6）| 否 | — | **Go** |
 
 **关键观察**：11 模块中仅 **M5 持钥且安全攸关**；M4/M6 是分布式正确性攸关；其余 8 个 I/O 密集且「最坏只丢数据/降级」，被非托管红线兜底。
@@ -98,7 +98,7 @@
 - **HA / 幂等**（§6.2/§12）：M4/M6 用 **Temporal(Go)** 落地持久意图账本、定时单、scheduleCancel 心跳、重试幂等；无状态多 AZ + leader 选举 + 背压 + 熔断；手动交易降级直连 HL。
 - **限频预算**（§4.7/§6.3）：M10 统一管理 IP 1200 weight/min、地址级额度、WS ≤10 用户/IP；每用户速率预算 + 撤单合并 + 挂单上限 + scheduleCancel 计数，临界进降级并告警。**【已落地：signer 按 key 令牌桶限流（#50，429 fail-closed，`internal/ratelimit`）；agentic 引擎撤单合并+挂单上限（#51）+ scheduleCancel 死手（心跳+≤10/日预算 #52 + 失败告警 #53）。IP/地址级额度统管、WS 分片配额、临界统一降级 待做】**
 - **离线语义诚实**（§6.1）：scheduleCancel 只撤单不平仓 → 策略须预置 reduce-only 止损/止盈（驻留 HL 侧）+ 最大离线敞口 TTL + 显式风险揭示。
-- **可观测**（§12）：OpenTelemetry-Go 指标/追踪/日志 + SLO；sentry-go 崩溃；签名意图全量留痕供审计。**【已落地：signer Prometheus 指标（HTTP #48 + reconciler 领域 #49）经专用 registry + `/metrics` 暴露；死手开关失败过渡式告警（#53）。OTel 边界追踪（HTTP/HL/reconciler step span，OTLP，opt-in fail-safe）落地；日志·SLO·sentry-go 待做】**
+- **可观测**（§12）：OpenTelemetry-Go 指标/追踪/日志 + SLO；sentry-go 崩溃；签名意图全量留痕供审计。**【已落地：signer Prometheus 指标（HTTP #48 + reconciler 领域 #49）经专用 registry + `/metrics` 暴露；死手开关失败过渡式告警（#53）。OTel 边界追踪（HTTP/HL/reconciler step span，OTLP，opt-in fail-safe）落地；结构化日志（slog + trace 关联 + 访问日志）落地；SLO·sentry-go·OTLP 日志管道 待做】**
 - **供应链安全**：M5 依赖面最小化；`go mod` 校验 + `govulncheck` + 固定版本；KMS/Vault 管密钥，绝不入库（仓库 `.gitignore` 仅为底线）。
 
 ---
@@ -123,7 +123,7 @@ backend/
 │   ├── ratelimit/           # M10 限频预算（按 key 令牌桶 #50 ✅）
 │   ├── metrics/             # M10 Prometheus 指标（HTTP #48 + reconciler 领域 #49 ✅，专用 registry + /metrics）
 │   ├── store/               # M9 Postgres(pgx)/Redis
-│   └── obs/                 # OTel 日志·sentry（待做；追踪见 internal/tracing，指标用 metrics/ Prometheus）
+│   └── obs/                 # sentry（待做；结构化日志见 internal/logging、追踪见 internal/tracing、指标用 metrics/ Prometheus）
 └── proto/ (或 openapi/)      # 客户端 TS ↔ 后端 Go 契约，生成双端类型
 ```
 

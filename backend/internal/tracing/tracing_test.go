@@ -1,7 +1,10 @@
 package tracing
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +73,11 @@ func TestSampleRatio(t *testing.T) {
 }
 
 func TestSetupToleratesMalformedResourceAttributes(t *testing.T) {
+	var logBuf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318")
 	t.Setenv("OTEL_SDK_DISABLED", "")
 	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "not-a-valid-pair") // no '=' → partial resource error
@@ -90,5 +98,12 @@ func TestSetupToleratesMalformedResourceAttributes(t *testing.T) {
 	defer cancel()
 	if err := shutdown(ctx); err != nil {
 		t.Fatalf("shutdown: %v", err)
+	}
+
+	if !strings.Contains(logBuf.String(), "partial resource") {
+		t.Fatalf("expected a partial-resource warning, got %q", logBuf.String())
+	}
+	if !strings.Contains(logBuf.String(), `"level":"WARN"`) {
+		t.Fatalf("expected WARN level for partial-resource warning, got %q", logBuf.String())
 	}
 }

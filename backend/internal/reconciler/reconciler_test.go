@@ -1,14 +1,19 @@
 package reconciler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/hlinfo"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
+	"github.com/lumos-forge/hypersolid/backend/internal/logging"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // fakeClient serves canned per-address snapshots and can inject an error.
@@ -512,5 +517,41 @@ func TestNilTracerKeepsNopDefault(t *testing.T) {
 	r := New(fc, ledger.NewMem(), []Account{{KeyID: "k", Address: "0xacc"}}, WithTracer(nil))
 	if err := r.step(context.Background()); err != nil {
 		t.Fatalf("step: %v", err)
+	}
+}
+
+// spanTracer is a fake reconciler.Tracer that injects a fixed valid span context.
+type spanTracer struct{ tid, sid string }
+
+func (s spanTracer) StartStep(ctx context.Context) (context.Context, func()) {
+	traceID, _ := trace.TraceIDFromHex(s.tid)
+	spanID, _ := trace.SpanIDFromHex(s.sid)
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	return trace.ContextWithSpanContext(ctx, sc), func() {}
+}
+
+func TestStepLogsErrorWithTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(logging.New(&buf, slog.LevelInfo))
+	defer slog.SetDefault(prev)
+
+	boom := errors.New("boom")
+	tr := spanTracer{tid: "0af7651916cd43dd8448eb211c80319c", sid: "b7ad6b7169203331"}
+	r := New(&fakeClient{err: boom}, ledger.NewMem(),
+		[]Account{{KeyID: "k", Address: "0xacc"}}, WithTracer(tr))
+	if err := r.step(context.Background()); !errors.Is(err, boom) {
+		t.Fatalf("want boom, got %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"msg":"reconcile step failed"`) {
+		t.Fatalf("missing error log: %q", out)
+	}
+	if !strings.Contains(out, `"trace_id":"0af7651916cd43dd8448eb211c80319c"`) {
+		t.Fatalf("missing trace_id: %q", out)
 	}
 }
