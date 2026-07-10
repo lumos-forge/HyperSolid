@@ -134,7 +134,7 @@ func TestConfigRateFieldsDefaultZeroAndIgnoredByEvaluate(t *testing.T) {
 	cfg.AddressDailyMaxNotionalUsdc = 10_000
 	cfg.OwnerAddress = "0xabc"
 
-	d := Evaluate(Intent{Kind: "order", NotionalUsdc: 0}, cfg)
+	d := Evaluate(Intent{Kind: "order", NotionalUsdc: 1}, cfg)
 	if !d.Allow {
 		t.Fatalf("Evaluate must ignore stateful budget fields; got deny: %s", d.Reason)
 	}
