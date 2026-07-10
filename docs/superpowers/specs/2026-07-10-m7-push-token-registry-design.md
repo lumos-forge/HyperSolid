@@ -127,7 +127,7 @@ ON CONFLICT(token) DO UPDATE SET
 ## 6. 依赖注入与装配
 
 - `AppDeps` 增加可选 `pushTokens?: PushTokenStore`。
-- 生产装配（`server/src/index.ts`）：`SqlitePushTokenStore.open(<db 路径>)` 注入（与现有 strategy/agent store 同一 sqlite 装配风格；可复用同一 db 文件或独立文件，实现时择一，默认独立 `push.db` 以隔离）。
+- 生产装配（`server/src/index.ts`）：`SqlitePushTokenStore.open(dbPath)` 注入，复用现有 `dbPath`（`process.env.DB_PATH ?? "strategies.db"`，与 agents/strategies/activity 同一 sqlite 文件——遵循现有约定）。
 - 未注入时路由 503——保证既有测试/装配不因新依赖而破。
 
 ## 7. 测试计划（对齐 `sqliteStore.test.ts` + `app.test.ts`）
