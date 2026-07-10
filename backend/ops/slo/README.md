@@ -67,3 +67,22 @@ rule_files:
 Requires the signer `/metrics` endpoint to be scraped. Rules and their promtool unit tests
 (`tests/`) live here and are validated by the `slo` CI job
 (`promtool check rules` + `promtool test rules`).
+
+## Budget saturation (配额饱和)
+
+Beyond the SLO burn-rate rules, the signer exports `hypersolid_budget_denials_total{budget}` —
+one increment per `sign_l1` request denied by a rate/quota budget. `budget` is one of
+`key_rate`, `ip_rate`, `address_cap`, `key_daily_cap`.
+
+The `budget_saturation` recording group derives
+`budget:denial_ratio:rate{5m,30m,1h,6h} = rate(budget_denials) / rate(sign_l1 total)` (∈ [0,1]).
+
+Alerts (`budget_alerts`), multi-window (long + short, clear quickly):
+
+| Alert | Condition | Severity | Meaning |
+|---|---|---|---|
+| `BudgetSaturationHigh` | ratio > 0.2 on 6h AND 30m | ticket | Budgets frequently saturating — investigate. |
+| `BudgetSaturationCritical` | ratio > 0.5 on 1h AND 5m | page | Heavily throttled regime — abusive/misconfigured client or raise budgets. |
+
+The signer stays reject-first and stateless; clients degrade to direct HL on 429 (§4.1). These
+rules surface the throttled/"degraded" regime for operators; they do not change signing behavior.
