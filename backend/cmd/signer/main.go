@@ -124,41 +124,32 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 	switch kind {
 	case "order":
 		var p struct {
-			Asset   int64  `json:"asset"`
-			Px      string `json:"px"`
-			LimitPx string `json:"limitPx"`
-			Sz      string `json:"sz"`
+			Asset int64  `json:"asset"`
+			Px    string `json:"px"`
+			Sz    string `json:"sz"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return policy.Intent{Kind: kind, NotionalUsdc: math.NaN()}
-		}
-		if p.Px == "" {
-			p.Px = p.LimitPx
 		}
 		return policy.Intent{Kind: kind, Coin: strconv.FormatInt(p.Asset, 10), NotionalUsdc: orderNotional(p.Px, p.Sz)}
 	case "modify":
 		var p struct {
 			Order struct {
-				Asset   int64  `json:"asset"`
-				Px      string `json:"px"`
-				LimitPx string `json:"limitPx"`
-				Sz      string `json:"sz"`
+				Asset int64  `json:"asset"`
+				Px    string `json:"px"`
+				Sz    string `json:"sz"`
 			} `json:"order"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return policy.Intent{Kind: kind, NotionalUsdc: math.NaN()}
-		}
-		if p.Order.Px == "" {
-			p.Order.Px = p.Order.LimitPx
 		}
 		return policy.Intent{Kind: kind, Coin: strconv.FormatInt(p.Order.Asset, 10), NotionalUsdc: orderNotional(p.Order.Px, p.Order.Sz)}
 	case "batchModify":
 		var p struct {
 			Modifies []struct {
 				Order struct {
-					Px      string `json:"px"`
-					LimitPx string `json:"limitPx"`
-					Sz      string `json:"sz"`
+					Px string `json:"px"`
+					Sz string `json:"sz"`
 				} `json:"order"`
 			} `json:"modifies"`
 		}
@@ -167,11 +158,7 @@ func intentFor(kind string, params json.RawMessage) policy.Intent {
 		}
 		total := 0.0
 		for _, m := range p.Modifies {
-			px := m.Order.Px
-			if px == "" {
-				px = m.Order.LimitPx
-			}
-			total += orderNotional(px, m.Order.Sz)
+			total += orderNotional(m.Order.Px, m.Order.Sz)
 		}
 		// Multiple assets possible → leave Coin "" so only the global cap applies.
 		return policy.Intent{Kind: kind, NotionalUsdc: total}
@@ -238,6 +225,10 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 		ownerAddr, ownerOK := normalizeOwnerAddress(cfg.OwnerAddress)
 		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
 			if !ownerOK {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+			if cfg.IPRatePerSec == 0 {
 				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
 				return
 			}
