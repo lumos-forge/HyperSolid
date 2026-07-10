@@ -707,6 +707,190 @@ func TestSignL1MissingCloid(t *testing.T) {
 	}
 }
 
+func TestSignIPRateLimitSharedAcrossKeysSameOwnerSameIP(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	_ = ks.Add("k2", bytes.Repeat([]byte{2}, 32))
+	policies := policy.NewStore()
+	cfg := policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x1111111111111111111111111111111111111111",
+		IPRatePerSec:         1,
+		IPRateBurst:          2,
+	}
+	policies.Set("k1", cfg)
+	policies.Set("k2", cfg)
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	doSign := func(body, remoteAddr string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = remoteAddr
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	body1 := `{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	body2 := `{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	for i, body := range []string{body1, body2, body1} {
+		rr := doSign(body, "1.2.3.4:9999")
+		if i < 2 && rr.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d unexpectedly 429", i+1)
+		}
+		if i == 2 && rr.Code != http.StatusTooManyRequests {
+			t.Fatalf("request 3 status = %d, want 429", rr.Code)
+		}
+	}
+}
+
+func TestSignIPRateLimitDifferentOwnersSameIPIndependent(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	_ = ks.Add("k2", bytes.Repeat([]byte{2}, 32))
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x1111111111111111111111111111111111111111",
+		IPRatePerSec:         1,
+		IPRateBurst:          1,
+	})
+	policies.Set("k2", policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x2222222222222222222222222222222222222222",
+		IPRatePerSec:         1,
+		IPRateBurst:          1,
+	})
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	doSign := func(body string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "1.2.3.4:9999"
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+	body1 := `{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	body2 := `{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	if rr := doSign(body1); rr.Code == http.StatusTooManyRequests {
+		t.Fatal("owner A unexpectedly throttled")
+	}
+	if rr := doSign(body2); rr.Code == http.StatusTooManyRequests {
+		t.Fatal("owner B should not share owner A's IP bucket")
+	}
+}
+
+func TestSignAddressDailyCapSharedAcrossKeys(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	_ = ks.Add("k2", bytes.Repeat([]byte{2}, 32))
+	policies := policy.NewStore()
+	cfg := policy.Config{
+		AllowedKinds:                map[string]bool{"order": true},
+		MaxNotionalUsdc:             1e12,
+		DailyMaxNotionalUsdc:        1e12,
+		OwnerAddress:                "0x1111111111111111111111111111111111111111",
+		AddressDailyMaxNotionalUsdc: 600,
+	}
+	policies.Set("k1", cfg)
+	policies.Set("k2", cfg)
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+
+	first := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"100","sz":"5","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.RemoteAddr = "1.2.3.4:9999"
+	h.ServeHTTP(first, req1)
+	if first.Code == http.StatusForbidden {
+		t.Fatalf("first request unexpectedly denied: %s", first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"100","sz":"2","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.RemoteAddr = "1.2.3.4:9999"
+	h.ServeHTTP(second, req2)
+	if second.Code != http.StatusForbidden {
+		t.Fatalf("second request status = %d, want 403", second.Code)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(second.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if out.Error != "address daily cap exceeded" {
+		t.Fatalf("error = %q, want %q", out.Error, "address daily cap exceeded")
+	}
+}
+
+func TestSignInvalidRemoteAddrFailsClosedWhenIPBudgetEnabled(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x1111111111111111111111111111111111111111",
+		IPRatePerSec:         1,
+		IPRateBurst:          1,
+	})
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "not-a-socket"
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rr.Code)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if out.Error != "ip rate limit exceeded" {
+		t.Fatalf("error = %q, want %q", out.Error, "ip rate limit exceeded")
+	}
+}
+
+func TestSignMissingOwnerAddressFailsClosedWhenAddressBudgetEnabled(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:                map[string]bool{"order": true},
+		MaxNotionalUsdc:             1e12,
+		DailyMaxNotionalUsdc:        1e12,
+		AddressDailyMaxNotionalUsdc: 600,
+	})
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"100","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "1.2.3.4:9999"
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rr.Code)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if out.Error != "address daily cap exceeded" {
+		t.Fatalf("error = %q, want %q", out.Error, "address daily cap exceeded")
+	}
+}
+
 func reconcileMux(led ledger.Ledger) http.Handler {
 	return newMux(keystore.New(), policy.NewStore(), led, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 })
 }
