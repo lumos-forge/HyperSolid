@@ -40,3 +40,27 @@ func TestStoreConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestOwnerBudgetConflictMaps(t *testing.T) {
+	s := NewStore()
+	s.Set("k1", Config{OwnerAddress: "0xAAA", IPRatePerSec: 1, IPRateBurst: 1, AddressDailyMaxNotionalUsdc: 600})
+	if s.OwnerIPBudgetConflict("0xaaa") || s.OwnerAddressBudgetConflict("0xaaa") {
+		t.Fatal("single owner config must not conflict")
+	}
+
+	s.Set("k2", Config{OwnerAddress: "0xaaa", IPRatePerSec: 2, IPRateBurst: 2, AddressDailyMaxNotionalUsdc: 600})
+	if !s.OwnerIPBudgetConflict("0xAAA") {
+		t.Fatal("IP budget drift for same owner must be detected")
+	}
+	if s.OwnerAddressBudgetConflict("0xaaa") {
+		t.Fatal("address cap should still match here")
+	}
+
+	s.Set("k2", Config{OwnerAddress: "0xaaa", IPRatePerSec: 1, IPRateBurst: 1, AddressDailyMaxNotionalUsdc: 700})
+	if s.OwnerIPBudgetConflict("0xaaa") {
+		t.Fatal("IP budget drift should clear once configs match again")
+	}
+	if !s.OwnerAddressBudgetConflict("0xaaa") {
+		t.Fatal("address-cap drift for same owner must be detected")
+	}
+}

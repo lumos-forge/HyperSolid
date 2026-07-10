@@ -19,6 +19,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
@@ -199,12 +200,19 @@ func (metricsObserver) HLRequest(call string, s float64) { metrics.ObserveReconc
 var _ reconciler.Observer = metricsObserver{}
 var _ reconciler.Tracer = tracing.StepTracer{}
 
+// Bound the grouped owner-address/IP limiter so client-controlled source IP churn
+// cannot grow its bucket set without limit.
+const (
+	ipLimiterIdleTTL    = 30 * time.Minute
+	ipLimiterMaxBuckets = 10_000
+)
+
 // handleSignL1 signs an L1 action with the keystore signer named by keyId. The
 // reject-first policy (Evaluate) runs first; then, if this instance is the leader,
 // the single-writer atomically enforces the fencing token + daily notional cap and
 // allocates a strictly-increasing per-key nonce, which is returned. Fail-closed: an
 // unknown keyId → 404; a non-leader → 503; a stale fence → 409. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64, limiter *ratelimit.Limiter) http.HandlerFunc {
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64, keyLimiter, ipLimiter *ratelimit.Limiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -221,11 +229,47 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			return
 		}
 		cfg := policies.Get(req.KeyID)
-		if !limiter.Allow(req.KeyID, cfg.RatePerSec, cfg.RateBurst) {
+		ownerAddr, ownerOK := normalizeOwnerAddress(cfg.OwnerAddress)
+		if ownerOK {
+			if policies.OwnerIPBudgetConflict(ownerAddr) && policies.KeyOwnerIPBudgetConflict(req.KeyID) {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+		}
+		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
+			if !ownerOK {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+			if cfg.IPRatePerSec == 0 {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+			ip, ok := canonicalRemoteIP(r.RemoteAddr)
+			if !ok || !ipLimiter.Allow(ownerIPKey(ownerAddr, ip), cfg.IPRatePerSec, cfg.IPRateBurst) {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+		}
+		if !keyLimiter.Allow(req.KeyID, cfg.RatePerSec, cfg.RateBurst) {
 			writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 		intent := intentFor(req.Kind, req.Params)
+		if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
+			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			return
+		}
+		if intent.NotionalUsdc != 0 && ownerOK && policies.OwnerAddressBudgetConflict(ownerAddr) {
+			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			return
+		}
+		addressSpendKey := ""
+		addressDailyCap := 0.0
+		if intent.NotionalUsdc != 0 {
+			addressSpendKey = ownerAddr
+			addressDailyCap = cfg.AddressDailyMaxNotionalUsdc
+		}
 		if d := policy.Evaluate(intent, cfg); !d.Allow {
 			writeErr(w, http.StatusForbidden, d.Reason)
 			return
@@ -256,13 +300,15 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			return
 		}
 		grant, err := auth.Authorize(r.Context(), ledger.Request{
-			KeyID:    req.KeyID,
-			Cloid:    req.Cloid,
-			Digest:   digest,
-			Fence:    fence,
-			Notional: intent.NotionalUsdc,
-			DailyCap: cfg.DailyMaxNotionalUsdc,
-			NowMs:    nowMs(),
+			KeyID:           req.KeyID,
+			Cloid:           req.Cloid,
+			Digest:          digest,
+			Fence:           fence,
+			Notional:        intent.NotionalUsdc,
+			DailyCap:        cfg.DailyMaxNotionalUsdc,
+			AddressSpendKey: addressSpendKey,
+			AddressDailyCap: addressDailyCap,
+			NowMs:           nowMs(),
 		})
 		if err != nil {
 			switch {
@@ -270,6 +316,8 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 				writeErr(w, http.StatusBadRequest, "missing cloid")
 			case errors.Is(err, ledger.ErrCloidReuse):
 				writeErr(w, http.StatusConflict, "cloid reuse mismatch")
+			case errors.Is(err, ledger.ErrAddressDailyCap):
+				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
 			case errors.Is(err, singlewriter.ErrFenced):
 				writeErr(w, http.StatusConflict, "fenced")
 			case errors.Is(err, singlewriter.ErrDailyCap):
@@ -419,8 +467,9 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	mux.HandleFunc("/v1/digest/l1", loggedRoute("digest_l1", handleDigestL1))
-	limiter := ratelimit.New(nowMs)
-	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, limiter)))
+	keyLimiter := ratelimit.New(nowMs)
+	ipLimiter := ratelimit.NewBounded(nowMs, ipLimiterIdleTTL, ipLimiterMaxBuckets)
+	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, keyLimiter, ipLimiter)))
 	mux.HandleFunc("/v1/reconcile", loggedRoute("reconcile", handleReconcile(led)))
 	mux.HandleFunc("/v1/orphans", loggedRoute("orphans", handleOrphans(led)))
 	mux.Handle("/metrics", metrics.Handler())
@@ -443,6 +492,37 @@ type config struct {
 	reconcileInterval time.Duration
 	hlTimeout         time.Duration
 }
+
+// normalizeOwnerAddress lowercases and validates a 20-byte hex EVM address.
+func normalizeOwnerAddress(addr string) (string, bool) {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if len(addr) != 42 || !strings.HasPrefix(addr, "0x") {
+		return "", false
+	}
+	for _, c := range addr[2:] {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f':
+		default:
+			return "", false
+		}
+	}
+	return addr, true
+}
+
+// canonicalRemoteIP extracts and canonicalizes the direct peer IP from RemoteAddr.
+func canonicalRemoteIP(remoteAddr string) (string, bool) {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return "", false
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return "", false
+	}
+	return ip.String(), true
+}
+
+func ownerIPKey(ownerAddr, ip string) string { return ownerAddr + "|" + ip }
 
 // parseAccounts parses a comma-separated "keyID=address" list into reconcile
 // accounts, trimming whitespace and skipping malformed (missing/empty half) pairs.

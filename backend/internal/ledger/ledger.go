@@ -29,13 +29,15 @@ const (
 
 // Request is one cloid-idempotent signing authorization for an agent key.
 type Request struct {
-	KeyID    string   // agent private key id (per private key, not account)
-	Cloid    string   // client order id; half of the ledger key; MUST be non-empty
-	Digest   [32]byte // opaque intent digest (caller supplies; typically the HL action hash)
-	Fence    uint64   // fencing token from the caller's lease (passed to singlewriter)
-	Notional float64  // this action's USD notional; 0 for non-notional kinds
-	DailyCap float64  // per-key daily notional cap; 0 = unlimited, <0 = misconfig (denied)
-	NowMs    int64    // caller clock in ms; injectable for tests
+	KeyID           string   // agent private key id (per private key, not account)
+	Cloid           string   // client order id; half of the ledger key; MUST be non-empty
+	Digest          [32]byte // opaque intent digest (caller supplies; typically the HL action hash)
+	Fence           uint64   // fencing token from the caller's lease (passed to singlewriter)
+	Notional        float64  // this action's USD notional; 0 for non-notional kinds
+	DailyCap        float64  // per-key daily notional cap; 0 = unlimited, <0 = misconfig (denied)
+	AddressSpendKey string   // normalized owner address for grouped daily spend; "" when disabled
+	AddressDailyCap float64  // per-owner-address daily notional cap; 0 = disabled, <0 = misconfig (denied)
+	NowMs           int64    // caller clock in ms; injectable for tests
 }
 
 // Grant is the result of an accepted (or idempotently replayed) authorization.
@@ -85,8 +87,9 @@ type Ledger interface {
 
 // Typed rejections; the signer wiring (later slice) maps these to HTTP codes.
 var (
-	ErrMissingCloid      = errors.New("missing cloid")        // empty cloid → reject
-	ErrCloidReuse        = errors.New("cloid reuse mismatch") // same cloid, different digest → reject
-	ErrInvalidTransition = errors.New("invalid status transition") // disallowed lifecycle edge
-	ErrUnknownIntent     = errors.New("unknown intent")            // reconcile a (keyID,cloid) never signed
+	ErrMissingCloid      = errors.New("missing cloid")              // empty cloid → reject
+	ErrCloidReuse        = errors.New("cloid reuse mismatch")       // same cloid, different digest → reject
+	ErrAddressDailyCap   = errors.New("address daily cap exceeded") // owner-address daily cap would be exceeded
+	ErrInvalidTransition = errors.New("invalid status transition")  // disallowed lifecycle edge
+	ErrUnknownIntent     = errors.New("unknown intent")             // reconcile a (keyID,cloid) never signed
 )

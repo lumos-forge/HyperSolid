@@ -112,18 +112,30 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestConfigRateFieldsDefaultZeroAndIgnoredByEvaluate(t *testing.T) {
-	// New rate fields default to 0 (disabled) and must NOT affect the pure Evaluate.
+	// Stateful budget fields default to their zero values and must NOT affect the
+	// pure Evaluate path.
 	cfg := Config{
-		AllowedKinds: map[string]bool{"order": true},
+		AllowedKinds:    map[string]bool{"order": true},
+		MaxNotionalUsdc: 1000,
 	}
-	if cfg.RatePerSec != 0 || cfg.RateBurst != 0 {
-		t.Fatalf("rate fields must default to 0, got rate=%v burst=%v", cfg.RatePerSec, cfg.RateBurst)
+	if cfg.RatePerSec != 0 || cfg.RateBurst != 0 ||
+		cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 ||
+		cfg.DailyMaxNotionalUsdc != 0 || cfg.AddressDailyMaxNotionalUsdc != 0 ||
+		cfg.OwnerAddress != "" {
+		t.Fatalf("stateful budget fields must default to zero-values, got %+v", cfg)
 	}
-	// Setting them does not change the allow decision (Evaluate ignores rate).
+
+	// Setting them does not change the allow decision (Evaluate ignores them).
 	cfg.RatePerSec = 5
 	cfg.RateBurst = 10
-	d := Evaluate(Intent{Kind: "order", NotionalUsdc: 0}, cfg)
+	cfg.IPRatePerSec = 20
+	cfg.IPRateBurst = 40
+	cfg.DailyMaxNotionalUsdc = 5_000
+	cfg.AddressDailyMaxNotionalUsdc = 10_000
+	cfg.OwnerAddress = "0xabc"
+
+	d := Evaluate(Intent{Kind: "order", NotionalUsdc: 1}, cfg)
 	if !d.Allow {
-		t.Fatalf("Evaluate must ignore rate fields; got deny: %s", d.Reason)
+		t.Fatalf("Evaluate must ignore stateful budget fields; got deny: %s", d.Reason)
 	}
 }

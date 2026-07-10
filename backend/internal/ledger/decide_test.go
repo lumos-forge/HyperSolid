@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
@@ -10,9 +11,12 @@ import (
 const tNow int64 = 1_700_000_000_000
 
 func TestDecideFreshCloidAllocatesNonce(t *testing.T) {
-	sw, rec, g, err := Decide(singlewriter.State{}, nil, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: tNow})
+	sw, addr, rec, g, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1, NowMs: tNow})
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
+	}
+	if addr != (SpendState{}) {
+		t.Fatalf("addr = %+v, want zero state", addr)
 	}
 	if g.Nonce != uint64(tNow) || g.Duplicate {
 		t.Fatalf("g = %+v, want nonce %d dup false", g, uint64(tNow))
@@ -26,14 +30,15 @@ func TestDecideFreshCloidAllocatesNonce(t *testing.T) {
 }
 
 func TestDecideMissingCloid(t *testing.T) {
-	if _, _, _, err := Decide(singlewriter.State{}, nil, Request{KeyID: "k", Cloid: "", Fence: 1, NowMs: tNow}); !errors.Is(err, ErrMissingCloid) {
+	if _, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{KeyID: "k", Cloid: "", Fence: 1, NowMs: tNow}); !errors.Is(err, ErrMissingCloid) {
 		t.Fatalf("err = %v, want ErrMissingCloid", err)
 	}
 }
 
 func TestDecideDuplicateSameDigestReplaysNonce(t *testing.T) {
 	existing := &Record{Nonce: 42, Digest: [32]byte{7}, Status: "signed"}
-	sw, rec, g, err := Decide(singlewriter.State{LastNonce: 99}, existing, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{7}, Fence: 1, NowMs: tNow})
+	addr0 := SpendState{SpendDay: 99, SpendTotal: 12}
+	sw, addr, rec, g, err := Decide(singlewriter.State{LastNonce: 99}, addr0, existing, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{7}, Fence: 1, NowMs: tNow})
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -43,6 +48,9 @@ func TestDecideDuplicateSameDigestReplaysNonce(t *testing.T) {
 	if sw.LastNonce != 99 {
 		t.Fatalf("sw.LastNonce = %d, want 99 (unchanged)", sw.LastNonce)
 	}
+	if addr != addr0 {
+		t.Fatalf("addr = %+v, want unchanged %+v", addr, addr0)
+	}
 	if rec != *existing {
 		t.Fatalf("rec = %+v, want unchanged %+v", rec, *existing)
 	}
@@ -50,19 +58,33 @@ func TestDecideDuplicateSameDigestReplaysNonce(t *testing.T) {
 
 func TestDecideCloidReuseDifferentDigest(t *testing.T) {
 	existing := &Record{Nonce: 42, Digest: [32]byte{7}, Status: "signed"}
-	if _, _, _, err := Decide(singlewriter.State{}, existing, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{8}, Fence: 1, NowMs: tNow}); !errors.Is(err, ErrCloidReuse) {
+	if _, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, existing, Request{KeyID: "k", Cloid: "c1", Digest: [32]byte{8}, Fence: 1, NowMs: tNow}); !errors.Is(err, ErrCloidReuse) {
 		t.Fatalf("err = %v, want ErrCloidReuse", err)
 	}
 }
 
 func TestDecidePassesThroughSingleWriterErrors(t *testing.T) {
-	if _, _, _, err := Decide(singlewriter.State{Fence: 5}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 4, NowMs: tNow}); !errors.Is(err, singlewriter.ErrFenced) {
+	if _, _, _, _, err := Decide(singlewriter.State{Fence: 5}, SpendState{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 4, NowMs: tNow}); !errors.Is(err, singlewriter.ErrFenced) {
 		t.Fatalf("err = %v, want ErrFenced", err)
 	}
-	if _, _, _, err := Decide(singlewriter.State{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 1, NowMs: 0}); !errors.Is(err, singlewriter.ErrInvalidClock) {
+	if _, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 1, NowMs: 0}); !errors.Is(err, singlewriter.ErrInvalidClock) {
 		t.Fatalf("err = %v, want ErrInvalidClock", err)
 	}
-	if _, _, _, err := Decide(singlewriter.State{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 1, Notional: 2000, DailyCap: 1000, NowMs: tNow}); !errors.Is(err, singlewriter.ErrDailyCap) {
+	if _, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 1, Notional: 2000, DailyCap: 1000, NowMs: tNow}); !errors.Is(err, singlewriter.ErrDailyCap) {
 		t.Fatalf("err = %v, want ErrDailyCap", err)
+	}
+}
+
+func TestDecideAddressCapRejectsInvalidValues(t *testing.T) {
+	for _, cap := range []float64{-1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		_, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{
+			KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1,
+			Notional: 1, DailyCap: 0,
+			AddressSpendKey: "0xaaa", AddressDailyCap: cap,
+			NowMs: tNow,
+		})
+		if !errors.Is(err, ErrAddressDailyCap) {
+			t.Fatalf("cap=%v err=%v, want ErrAddressDailyCap", cap, err)
+		}
 	}
 }

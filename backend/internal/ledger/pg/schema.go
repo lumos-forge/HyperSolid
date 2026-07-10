@@ -22,15 +22,25 @@ const createSchemaSQL = `CREATE TABLE IF NOT EXISTS ledger_intents (
 	PRIMARY KEY (key_id, cloid)
 )`
 
-// EnsureSchema idempotently creates both the single-writer state table (reused
-// for the fence/cap/nonce authority) and the ledger_intents table, and ensures
-// the reconciliation updated_at column exists. A dedicated migration tool
-// (goose/migrate) is deferred to later M6 work.
+const createAddrSpendStateSQL = `CREATE TABLE IF NOT EXISTS addr_spend_state (
+	address_key text PRIMARY KEY,
+	spend_day   bigint NOT NULL,
+	spend_total double precision NOT NULL
+)`
+
+// EnsureSchema idempotently creates the single-writer state table (reused for
+// the fence/cap/nonce authority), the shared address spend table, and the
+// ledger_intents table, and ensures the reconciliation updated_at column
+// exists. A dedicated migration tool (goose/migrate) is deferred to later M6
+// work.
 func EnsureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := swpg.EnsureSchema(ctx, pool); err != nil {
 		return err
 	}
 	if _, err := pool.Exec(ctx, createSchemaSQL); err != nil {
+		return err
+	}
+	if _, err := pool.Exec(ctx, createAddrSpendStateSQL); err != nil {
 		return err
 	}
 	_, err := pool.Exec(ctx, `ALTER TABLE ledger_intents ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`)

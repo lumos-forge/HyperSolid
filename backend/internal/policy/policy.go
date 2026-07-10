@@ -15,13 +15,17 @@ type Intent struct {
 
 // Config is the per-user policy bound at the signing boundary.
 type Config struct {
-	AllowedKinds         map[string]bool    // reject-first allowlist; a kind absent/false is denied
-	KillSwitch           bool               // when true, every intent is rejected
-	MaxNotionalUsdc      float64            // global per-order notional cap
-	PerCoinMaxUsdc       map[string]float64 // optional tighter per-coin cap (overrides global)
-	DailyMaxNotionalUsdc float64            // per-key daily notional cap; 0 = no daily limit (enforced by SpendTracker, not Evaluate)
-	RatePerSec           float64            // per-key sustained sign rate (tokens/sec); 0 = no rate limit (enforced by ratelimit.Limiter, not Evaluate)
-	RateBurst            float64            // token-bucket capacity (max burst); paired with RatePerSec
+	AllowedKinds                map[string]bool    // reject-first allowlist; a kind absent/false is denied
+	KillSwitch                  bool               // when true, every intent is rejected
+	MaxNotionalUsdc             float64            // global per-order notional cap
+	PerCoinMaxUsdc              map[string]float64 // optional tighter per-coin cap (overrides global)
+	DailyMaxNotionalUsdc        float64            // per-key daily notional cap; 0 = no daily limit (enforced by SpendTracker, not Evaluate)
+	RatePerSec                  float64            // per-key sustained sign rate (tokens/sec); 0 = no rate limit (enforced by ratelimit.Limiter, not Evaluate)
+	RateBurst                   float64            // token-bucket capacity (max burst); paired with RatePerSec
+	OwnerAddress                string             // server-authoritative owner address for grouped ingress budgets; required when IP/address budgets are enabled
+	IPRatePerSec                float64            // per-(OwnerAddress, RemoteAddr) sustained sign rate; 0 = no grouped IP limit
+	IPRateBurst                 float64            // per-(OwnerAddress, RemoteAddr) token-bucket capacity; paired with IPRatePerSec
+	AddressDailyMaxNotionalUsdc float64            // per-OwnerAddress daily notional cap across keys; 0 = no grouped address limit
 }
 
 // Decision is the policy verdict. Allow is false unless every rule passes.

@@ -31,6 +31,10 @@ const (
 	swSelectSQL = `SELECT fence, last_nonce, spend_day, spend_total FROM sw_state WHERE key_id = $1 FOR UPDATE`
 	swUpdateSQL = `UPDATE sw_state SET fence = $2, last_nonce = $3, spend_day = $4, spend_total = $5 WHERE key_id = $1`
 
+	addrSeedSQL   = `INSERT INTO addr_spend_state (address_key, spend_day, spend_total) VALUES ($1, 0, 0) ON CONFLICT (address_key) DO NOTHING`
+	addrSelectSQL = `SELECT spend_day, spend_total FROM addr_spend_state WHERE address_key = $1 FOR UPDATE`
+	addrUpdateSQL = `UPDATE addr_spend_state SET spend_day = $2, spend_total = $3 WHERE address_key = $1`
+
 	recSelectSQL       = `SELECT nonce, digest, status FROM ledger_intents WHERE key_id = $1 AND cloid = $2`
 	recInsertSQL       = `INSERT INTO ledger_intents (key_id, cloid, nonce, digest, status, notional) VALUES ($1, $2, $3, $4, $5, $6)`
 	recStatusSelectSQL = `SELECT status FROM ledger_intents WHERE key_id = $1 AND cloid = $2 FOR UPDATE`
@@ -78,7 +82,29 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 		return ledger.Grant{}, fmt.Errorf("pg ledger: record select: %w", err)
 	}
 
-	nextSW, rec, grant, derr := ledger.Decide(sw, existing, r)
+	addr := ledger.SpendState{}
+	// Duplicate replay is a pure read of the existing intent: return the original
+	// nonce without touching the shared address-spend row, so a harmless replay
+	// cannot block unrelated fresh authorizations on the same owner address.
+	if existing != nil {
+		if existing.Digest != r.Digest {
+			return ledger.Grant{}, ledger.ErrCloidReuse
+		}
+		return ledger.Grant{Nonce: existing.Nonce, Duplicate: true}, nil
+	}
+	if r.AddressDailyCap > 0 {
+		if _, err := tx.Exec(ctx, addrSeedSQL, r.AddressSpendKey); err != nil {
+			return ledger.Grant{}, fmt.Errorf("pg ledger: addr seed: %w", err)
+		}
+		var addrDay int64
+		var addrTotal float64
+		if err := tx.QueryRow(ctx, addrSelectSQL, r.AddressSpendKey).Scan(&addrDay, &addrTotal); err != nil {
+			return ledger.Grant{}, fmt.Errorf("pg ledger: addr select: %w", err)
+		}
+		addr = ledger.SpendState{SpendDay: addrDay, SpendTotal: addrTotal}
+	}
+
+	nextSW, nextAddr, rec, grant, derr := ledger.Decide(sw, addr, existing, r)
 	if derr != nil {
 		return ledger.Grant{}, derr // typed rejection; deferred Rollback undoes the seed
 	}
@@ -88,6 +114,11 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 
 	if _, err := tx.Exec(ctx, swUpdateSQL, r.KeyID, int64(nextSW.Fence), int64(nextSW.LastNonce), nextSW.SpendDay, nextSW.SpendTotal); err != nil {
 		return ledger.Grant{}, fmt.Errorf("pg ledger: sw update: %w", err)
+	}
+	if r.AddressDailyCap > 0 {
+		if _, err := tx.Exec(ctx, addrUpdateSQL, r.AddressSpendKey, nextAddr.SpendDay, nextAddr.SpendTotal); err != nil {
+			return ledger.Grant{}, fmt.Errorf("pg ledger: addr update: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, recInsertSQL, r.KeyID, r.Cloid, int64(rec.Nonce), rec.Digest[:], rec.Status, r.Notional); err != nil {
 		return ledger.Grant{}, fmt.Errorf("pg ledger: record insert: %w", err)
