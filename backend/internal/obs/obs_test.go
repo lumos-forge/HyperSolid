@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,7 +12,11 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/lumos-forge/hypersolid/backend/internal/tracing"
 )
 
 func TestSetupNoDSNIsNoOp(t *testing.T) {
@@ -221,4 +226,111 @@ func TestMiddlewareConcurrentPanics(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestTracingOuterObsInnerCapturesTraceID proves the production nesting: with
+// tracing (otelhttp) OUTSIDE and obs INSIDE, obs recovers a panic on the span-
+// enriched context, so the trace_id tag is populated. This is the arrangement in
+// cmd/signer newMux; obs outermost would read the un-enriched original context
+// and never set trace_id.
+func TestTracingOuterObsInnerCapturesTraceID(t *testing.T) {
+	tp := sdktrace.NewTracerProvider()
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prev)
+		_ = tp.Shutdown(context.Background())
+	})
+
+	mt := initMockSentry(t)
+
+	h := tracing.Middleware("sign_l1", Middleware("sign_l1", func(http.ResponseWriter, *http.Request) {
+		panic(errors.New("boom"))
+	}))
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/v1/sign/l1", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if !sentry.Flush(2 * time.Second) {
+		t.Fatal("sentry flush timed out")
+	}
+	events := mt.captured()
+	if len(events) != 1 {
+		t.Fatalf("captured %d events, want 1", len(events))
+	}
+	tid := events[0].Tags["trace_id"]
+	if tid == "" || tid == "00000000000000000000000000000000" {
+		t.Fatalf("trace_id tag = %q, want a real trace id (obs must sit INSIDE tracing to see the span)", tid)
+	}
+	if events[0].Tags["route"] != "sign_l1" {
+		t.Fatalf("route tag = %q, want sign_l1", events[0].Tags["route"])
+	}
+}
+
+// TestConcurrentPanicsPreserveOwnTags guards the per-panic hub clone: each
+// concurrent panic carries a distinct route + trace_id and every captured event
+// must keep its OWN (route, trace_id) pair. A shared global scope stack would
+// cross-contaminate tags under concurrency.
+func TestConcurrentPanicsPreserveOwnTags(t *testing.T) {
+	mt := initMockSentry(t)
+
+	const n = 24
+	want := make(map[string]string, n) // route -> trace_id
+	for i := 0; i < n; i++ {
+		var tid trace.TraceID
+		tid[0] = byte(i + 1)
+		want[fmt.Sprintf("route-%d", i)] = tid.String()
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			var tid trace.TraceID
+			tid[0] = byte(i + 1)
+			var sid trace.SpanID
+			sid[0] = byte(i + 1)
+			sc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid})
+			ctx := trace.ContextWithSpanContext(context.Background(), sc)
+			route := fmt.Sprintf("route-%d", i)
+			h := Middleware(route, func(http.ResponseWriter, *http.Request) {
+				panic(errors.New(route))
+			})
+			rec := httptest.NewRecorder()
+			h(rec, httptest.NewRequest(http.MethodPost, "/x", nil).WithContext(ctx))
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want 500", rec.Code)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if !sentry.Flush(3 * time.Second) {
+		t.Fatal("sentry flush timed out")
+	}
+	events := mt.captured()
+	if len(events) != n {
+		t.Fatalf("captured %d events, want %d", len(events), n)
+	}
+	seen := make(map[string]bool, n)
+	for _, ev := range events {
+		route := ev.Tags["route"]
+		wantTID, ok := want[route]
+		if !ok {
+			t.Fatalf("unexpected route tag %q", route)
+		}
+		if ev.Tags["trace_id"] != wantTID {
+			t.Fatalf("route %s: trace_id = %q, want %q (scope contamination)", route, ev.Tags["trace_id"], wantTID)
+		}
+		if seen[route] {
+			t.Fatalf("route %s captured more than once", route)
+		}
+		seen[route] = true
+	}
+	if len(seen) != n {
+		t.Fatalf("saw %d distinct routes, want %d", len(seen), n)
+	}
 }

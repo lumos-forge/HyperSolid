@@ -458,10 +458,10 @@ func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return obs.Middleware(name, tracing.Middleware(name, metrics.Middleware(name, h)))
+		return tracing.Middleware(name, obs.Middleware(name, metrics.Middleware(name, h)))
 	}
 	loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return obs.Middleware(name, tracing.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
+		return tracing.Middleware(name, obs.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
 	}
 	mux.HandleFunc("/healthz", route("healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

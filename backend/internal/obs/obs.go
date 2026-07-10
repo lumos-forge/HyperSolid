@@ -81,16 +81,19 @@ func Middleware(name string, next http.HandlerFunc) http.HandlerFunc {
 }
 
 // reportPanic captures a recovered panic to Sentry with route + trace_id tags.
-// It is a safe no-op when Sentry is uninitialized: CurrentHub().Recover returns
+// It clones the current hub so the scope is isolated per panic — concurrent
+// panics must not contaminate each other's tags via the process-global scope
+// stack. It is a safe no-op when Sentry is uninitialized: Hub.Recover returns
 // nil without a bound client.
 func reportPanic(ctx context.Context, name string, rec interface{}) {
-	sentry.WithScope(func(scope *sentry.Scope) {
+	hub := sentry.CurrentHub().Clone()
+	hub.ConfigureScope(func(scope *sentry.Scope) {
 		scope.SetTag("route", name)
 		if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
 			scope.SetTag("trace_id", sc.TraceID().String())
 		}
-		sentry.CurrentHub().Recover(rec)
 	})
+	hub.Recover(rec)
 }
 
 // Recover is for a deferred call at the top of a goroutine (e.g. main or a
