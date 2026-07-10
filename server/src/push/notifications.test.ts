@@ -6,29 +6,27 @@ function fill(over: Partial<Activity> = {}): Activity {
 }
 
 describe("notification catalog", () => {
-  it("fillNotification: buy with formatted price and structured data", () => {
-    const n = fillNotification(fill());
+  it("fillNotification en", () => {
+    const n = fillNotification(fill(), "en");
     expect(n.title).toBe("Order filled");
     expect(n.body).toBe("Buy 0.01 BTC @ 50,000");
     expect(n.data).toEqual({ kind: "fill", strategyId: "s1", coin: "BTC", side: "buy", sz: 0.01, px: 50000 });
   });
 
-  it("fillNotification: sell capitalizes side", () => {
-    const n = fillNotification(fill({ side: "sell", coin: "ETH", sz: 2, px: 3200.5 }));
-    expect(n.body).toBe("Sell 2 ETH @ 3,200.5");
-    expect(n.data).toMatchObject({ side: "sell", coin: "ETH" });
+  it("fillNotification zh", () => {
+    const n = fillNotification(fill({ side: "sell", coin: "ETH", sz: 2, px: 3200 }), "zh");
+    expect(n.title).toBe("订单成交");
+    expect(n.body).toBe("卖出 2 ETH @ 3,200");
   });
 
-  it("deadManAlertNotification: mentions the failure count", () => {
-    const n = deadManAlertNotification({ consecutiveFailures: 3 });
-    expect(n.title).toContain("protection");
-    expect(n.body).toContain("3 consecutive");
-    expect(n.data).toEqual({ kind: "deadman_alert", consecutiveFailures: 3 });
+  it("deadManAlertNotification en/zh", () => {
+    expect(deadManAlertNotification({ consecutiveFailures: 3 }, "en").body).toContain("3 consecutive");
+    expect(deadManAlertNotification({ consecutiveFailures: 3 }, "zh").title).toBe("策略保护异常");
+    expect(deadManAlertNotification({ consecutiveFailures: 3 }, "zh").data).toEqual({ kind: "deadman_alert", consecutiveFailures: 3 });
   });
 
-  it("deadManRecoveredNotification: recovered kind", () => {
-    const n = deadManRecoveredNotification();
-    expect(n.title).toContain("restored");
-    expect(n.data).toEqual({ kind: "deadman_recovered" });
+  it("deadManRecoveredNotification en/zh", () => {
+    expect(deadManRecoveredNotification("en").data).toEqual({ kind: "deadman_recovered" });
+    expect(deadManRecoveredNotification("zh").title).toBe("策略保护已恢复");
   });
 });

@@ -4,13 +4,14 @@ export interface PushTokenRow {
   token: string;
   owner: string;
   platform: string | null;
+  locale: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface PushTokenStore {
   /** Upsert by token; on conflict rebind owner + refresh platform/updatedAt. */
-  register(owner: string, token: string, platform: string | null, now: number): void;
+  register(owner: string, token: string, platform: string | null, locale: string | null, now: number): void;
   /** Delete only if the token belongs to owner. Returns true when a row was deleted. */
   unregister(owner: string, token: string): boolean;
   /** All tokens currently bound to owner (for P2 fan-out). */
@@ -23,12 +24,13 @@ interface DbRow {
   token: string;
   owner: string;
   platform: string | null;
+  locale: string | null;
   created_at: number;
   updated_at: number;
 }
 
 function toRow(r: DbRow): PushTokenRow {
-  return { token: r.token, owner: r.owner, platform: r.platform, createdAt: r.created_at, updatedAt: r.updated_at };
+  return { token: r.token, owner: r.owner, platform: r.platform, locale: r.locale, createdAt: r.created_at, updatedAt: r.updated_at };
 }
 
 function migrate(db: Database.Database): void {
@@ -42,6 +44,8 @@ function migrate(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS push_tokens_owner ON push_tokens(owner);
   `);
+  const cols = new Set((db.prepare("PRAGMA table_info(push_tokens)").all() as { name: string }[]).map((c) => c.name));
+  if (!cols.has("locale")) db.exec("ALTER TABLE push_tokens ADD COLUMN locale TEXT");
 }
 
 /** Durable PushTokenStore over SQLite. Owner matching is case-insensitive. */
@@ -55,17 +59,18 @@ export class SqlitePushTokenStore implements PushTokenStore {
     return new SqlitePushTokenStore(db);
   }
 
-  register(owner: string, token: string, platform: string | null, now: number): void {
+  register(owner: string, token: string, platform: string | null, locale: string | null, now: number): void {
     this.db
       .prepare(
-        `INSERT INTO push_tokens (token, owner, platform, created_at, updated_at)
-         VALUES (@token, @owner, @platform, @now, @now)
+        `INSERT INTO push_tokens (token, owner, platform, locale, created_at, updated_at)
+         VALUES (@token, @owner, @platform, @locale, @now, @now)
          ON CONFLICT(token) DO UPDATE SET
            owner = excluded.owner,
            platform = excluded.platform,
+           locale = excluded.locale,
            updated_at = excluded.updated_at`,
       )
-      .run({ token, owner: owner.toLowerCase(), platform, now });
+      .run({ token, owner: owner.toLowerCase(), platform, locale, now });
   }
 
   unregister(owner: string, token: string): boolean {
@@ -77,7 +82,7 @@ export class SqlitePushTokenStore implements PushTokenStore {
 
   tokensForOwner(owner: string): PushTokenRow[] {
     const rows = this.db
-      .prepare(`SELECT token, owner, platform, created_at, updated_at FROM push_tokens WHERE owner = ?`)
+      .prepare(`SELECT token, owner, platform, locale, created_at, updated_at FROM push_tokens WHERE owner = ?`)
       .all(owner.toLowerCase()) as DbRow[];
     return rows.map(toRow);
   }

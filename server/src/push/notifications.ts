@@ -1,37 +1,37 @@
 import type { Notification } from "./notifier";
 import type { Activity } from "../strategies/activityStore";
-
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
-}
+import { pushMessages, type PushLocale } from "./messages";
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
 }
 
-/** "Order filled" — "Buy 0.01 BTC @ 50,000". */
-export function fillNotification(a: Activity): Notification {
+/** Fill notification, localized. */
+export function fillNotification(a: Activity, locale: PushLocale): Notification {
+  const m = pushMessages[locale];
   return {
-    title: "Order filled",
-    body: `${capitalize(a.side)} ${fmt(a.sz)} ${a.coin} @ ${fmt(a.px)}`,
+    title: m.fillTitle,
+    body: m.fillBody(a.side, fmt(a.sz), a.coin, fmt(a.px)),
     data: { kind: "fill", strategyId: a.strategyId, coin: a.coin, side: a.side, sz: a.sz, px: a.px },
   };
 }
 
-/** Dead-man protection is failing (agent authorization at risk). */
-export function deadManAlertNotification(ev: { consecutiveFailures: number }): Notification {
+/** Dead-man protection failing, localized. */
+export function deadManAlertNotification(ev: { consecutiveFailures: number }, locale: PushLocale): Notification {
+  const m = pushMessages[locale];
   return {
-    title: "Strategy protection at risk",
-    body: `${ev.consecutiveFailures} consecutive unprotected heartbeats — check your agent authorization.`,
+    title: m.deadmanAlertTitle,
+    body: m.deadmanAlertBody(ev.consecutiveFailures),
     data: { kind: "deadman_alert", consecutiveFailures: ev.consecutiveFailures },
   };
 }
 
-/** Dead-man protection recovered. */
-export function deadManRecoveredNotification(): Notification {
+/** Dead-man protection recovered, localized. */
+export function deadManRecoveredNotification(locale: PushLocale): Notification {
+  const m = pushMessages[locale];
   return {
-    title: "Strategy protection restored",
-    body: "Your automated strategies are protected again.",
+    title: m.deadmanRecoveredTitle,
+    body: m.deadmanRecoveredBody,
     data: { kind: "deadman_recovered" },
   };
 }

@@ -392,4 +392,20 @@ describe("gridLimit HTTP", () => {
     expect(res.statusCode).toBe(503);
     await app.close();
   });
+
+  it("stores the locale from the register body", async () => {
+    const { app, pushTokens } = buildWithPush();
+    const token = await tokenFor(app);
+    await app.inject({ method: "POST", url: "/push/register", headers: { authorization: `Bearer ${token}` }, payload: { token: PUSH_T, platform: "ios", locale: "zh" } });
+    expect(pushTokens.tokensForOwner(account.address)[0].locale).toBe("zh");
+    await app.close();
+  });
+
+  it("stores null locale for an unsupported locale value", async () => {
+    const { app, pushTokens } = buildWithPush();
+    const token = await tokenFor(app);
+    await app.inject({ method: "POST", url: "/push/register", headers: { authorization: `Bearer ${token}` }, payload: { token: PUSH_T, locale: "fr" } });
+    expect(pushTokens.tokensForOwner(account.address)[0].locale).toBeNull();
+    await app.close();
+  });
 });
