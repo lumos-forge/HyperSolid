@@ -162,4 +162,28 @@ func TestAdmitFullPoolDeniesAndCounts(t *testing.T) {
 	}
 }
 
+func TestAssignmentLookup(t *testing.T) {
+	a, _ := New(2, 10)
+	const u = "0x00000000000000000000000000000000000000AA"
+	if sid, ok := a.Assignment(u); ok || sid != -1 {
+		t.Fatalf("Assignment before admit = (%d,%v), want (-1,false)", sid, ok)
+	}
+	want, _ := a.Admit(u)
+	// Lookup is case-insensitive and does not change state.
+	sid, ok := a.Assignment("0x00000000000000000000000000000000000000aa")
+	if !ok || sid != want {
+		t.Fatalf("Assignment after admit = (%d,%v), want (%d,true)", sid, ok, want)
+	}
+	if got := a.Stats().Admitted; got != 1 {
+		t.Fatalf("Assignment must not admit: Admitted = %d, want 1", got)
+	}
+	if sid, ok := a.Assignment("garbage"); ok || sid != -1 {
+		t.Fatalf("Assignment(invalid) = (%d,%v), want (-1,false)", sid, ok)
+	}
+	a.Release(u)
+	if sid, ok := a.Assignment(u); ok || sid != -1 {
+		t.Fatalf("Assignment after release = (%d,%v), want (-1,false)", sid, ok)
+	}
+}
+
 var _ = sync.Mutex{} // keep sync imported for later tasks

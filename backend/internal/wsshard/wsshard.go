@@ -123,6 +123,22 @@ func (a *Allocator) Release(user string) bool {
 	return true
 }
 
+// Assignment returns user's current shard without changing state. It returns
+// (-1, false) when the user is not on the books or the address is invalid.
+func (a *Allocator) Assignment(user string) (int, bool) {
+	key, ok := normalizeAddr(user)
+	if !ok {
+		return -1, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	sid, exists := a.assign[key]
+	if !exists {
+		return -1, false
+	}
+	return sid, true
+}
+
 // Stats returns the current snapshot. ShardLoad is a copy the caller may retain.
 func (a *Allocator) Stats() Stats {
 	a.mu.Lock()
