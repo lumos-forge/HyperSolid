@@ -70,4 +70,29 @@ describe("StrategyApi", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("https://api/strategies/s1/rungs");
     expect(rungs).toEqual([{ rung: 0, state: "armed", buyPrice: 100, sellPrice: 120 }]);
   });
+
+  it("registers a push token with platform in the body", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({}));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    await api.registerPush("ExponentPushToken[x]", "ios");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api/push/register",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({ token: "ExponentPushToken[x]", platform: "ios" });
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+
+  it("unregisters a push token", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({}));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    await api.unregisterPush("ExponentPushToken[x]");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api/push/unregister",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({ token: "ExponentPushToken[x]" });
+  });
 });
