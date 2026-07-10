@@ -1073,8 +1073,17 @@ func TestSignSameOwnerDifferentAddressCapConfigFailsClosed(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	req1.RemoteAddr = "1.2.3.4:9999"
 	h.ServeHTTP(first, req1)
-	if first.Code != http.StatusOK {
-		t.Fatalf("first status = %d, want 200", first.Code)
+	if first.Code != http.StatusForbidden {
+		t.Fatalf("first status = %d, want 403", first.Code)
+	}
+	var firstOut struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &firstOut); err != nil {
+		t.Fatalf("first decode error body: %v", err)
+	}
+	if firstOut.Error != "address daily cap exceeded" {
+		t.Fatalf("first error = %q, want %q", firstOut.Error, "address daily cap exceeded")
 	}
 	second := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"px":"100","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`))
@@ -1126,6 +1135,36 @@ func TestSignInvalidAddressDailyCapsFailClosed(t *testing.T) {
 		if out.Error != "address daily cap exceeded" {
 			t.Fatalf("cap=%v error=%q, want %q", cap, out.Error, "address daily cap exceeded")
 		}
+	}
+}
+
+func TestCancelOnlyKeyNotBlockedByAddressCapDrift(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("order-key", bytes.Repeat([]byte{1}, 32))
+	_ = ks.Add("cancel-key", bytes.Repeat([]byte{2}, 32))
+	policies := policy.NewStore()
+	policies.Set("order-key", policy.Config{
+		AllowedKinds:                map[string]bool{"order": true},
+		MaxNotionalUsdc:             1e12,
+		DailyMaxNotionalUsdc:        1e12,
+		OwnerAddress:                "0x1111111111111111111111111111111111111111",
+		AddressDailyMaxNotionalUsdc: 600,
+	})
+	policies.Set("cancel-key", policy.Config{
+		AllowedKinds:                map[string]bool{"cancelByCloid": true},
+		MaxNotionalUsdc:             1e12,
+		DailyMaxNotionalUsdc:        1e12,
+		OwnerAddress:                "0x1111111111111111111111111111111111111111",
+		AddressDailyMaxNotionalUsdc: 1200, // drift vs order-key, but cancelByCloid is non-notional
+	})
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"cancel-key","cloid":"c1","kind":"cancelByCloid","params":{"cancels":[{"asset":1,"cloid":"0x1234567890abcdef1234567890abcdef"}]},"isTestnet":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "1.2.3.4:9999"
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (non-notional cancel must not be blocked by address-cap drift)", rr.Code)
 	}
 }
 

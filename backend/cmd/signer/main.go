@@ -235,10 +235,6 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
 				return
 			}
-			if policies.OwnerAddressBudgetConflict(ownerAddr) && policies.KeyOwnerAddressBudgetConflict(req.KeyID) {
-				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
-				return
-			}
 		}
 		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
 			if !ownerOK {
@@ -260,6 +256,16 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			return
 		}
 		intent := intentFor(req.Kind, req.Params)
+		if intent.NotionalUsdc != 0 {
+			if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
+				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+				return
+			}
+			if ownerOK && policies.OwnerAddressBudgetConflict(ownerAddr) {
+				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+				return
+			}
+		}
 		if d := policy.Evaluate(intent, cfg); !d.Allow {
 			writeErr(w, http.StatusForbidden, d.Reason)
 			return
@@ -287,10 +293,6 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 		fence, isLeader := fencer.Fence()
 		if !isLeader {
 			writeErr(w, http.StatusServiceUnavailable, "not leader")
-			return
-		}
-		if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
-			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
 			return
 		}
 		grant, err := auth.Authorize(r.Context(), ledger.Request{
