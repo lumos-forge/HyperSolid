@@ -202,3 +202,23 @@ func TestRecoverRepanicsAfterReporting(t *testing.T) {
 		t.Fatalf("captured %d events, want 1", n)
 	}
 }
+
+func TestMiddlewareConcurrentPanics(t *testing.T) {
+	initMockSentry(t)
+	h := Middleware("sign_l1", func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := httptest.NewRecorder()
+			h(rec, httptest.NewRequest(http.MethodPost, "/v1/sign/l1", nil))
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want 500", rec.Code)
+			}
+		}()
+	}
+	wg.Wait()
+}
