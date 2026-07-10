@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -205,7 +206,7 @@ var _ reconciler.Tracer = tracing.StepTracer{}
 // the single-writer atomically enforces the fencing token + daily notional cap and
 // allocates a strictly-increasing per-key nonce, which is returned. Fail-closed: an
 // unknown keyId → 404; a non-leader → 503; a stale fence → 409. Never logs key material.
-func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64, keyLimiter, ipLimiter *ratelimit.Limiter) http.HandlerFunc {
+func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Authorizer, fencer Fencer, nowMs func() int64, keyLimiter, ipLimiter *ratelimit.Limiter, owners *ownerBudgetRegistry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -223,6 +224,17 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 		}
 		cfg := policies.Get(req.KeyID)
 		ownerAddr, ownerOK := normalizeOwnerAddress(cfg.OwnerAddress)
+		if ownerOK && (cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 || cfg.AddressDailyMaxNotionalUsdc != 0) {
+			ipConflict, addressConflict := owners.check(ownerAddr, cfg)
+			if ipConflict {
+				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				return
+			}
+			if addressConflict {
+				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+				return
+			}
+		}
 		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
 			if !ownerOK {
 				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
@@ -446,7 +458,8 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 	mux.HandleFunc("/v1/digest/l1", loggedRoute("digest_l1", handleDigestL1))
 	keyLimiter := ratelimit.New(nowMs)
 	ipLimiter := ratelimit.New(nowMs)
-	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, keyLimiter, ipLimiter)))
+	owners := newOwnerBudgetRegistry()
+	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, keyLimiter, ipLimiter, owners)))
 	mux.HandleFunc("/v1/reconcile", loggedRoute("reconcile", handleReconcile(led)))
 	mux.HandleFunc("/v1/orphans", loggedRoute("orphans", handleOrphans(led)))
 	mux.Handle("/metrics", metrics.Handler())
@@ -471,6 +484,38 @@ type config struct {
 }
 
 // normalizeOwnerAddress lowercases and validates a 20-byte hex EVM address.
+type ownerBudget struct {
+	ipRatePerSec    float64
+	ipRateBurst     float64
+	addressDailyCap float64
+}
+
+type ownerBudgetRegistry struct {
+	mu      sync.Mutex
+	byOwner map[string]ownerBudget
+}
+
+func newOwnerBudgetRegistry() *ownerBudgetRegistry {
+	return &ownerBudgetRegistry{byOwner: make(map[string]ownerBudget)}
+}
+
+func (r *ownerBudgetRegistry) check(owner string, cfg policy.Config) (ipConflict, addressConflict bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	want := ownerBudget{
+		ipRatePerSec:    cfg.IPRatePerSec,
+		ipRateBurst:     cfg.IPRateBurst,
+		addressDailyCap: cfg.AddressDailyMaxNotionalUsdc,
+	}
+	if got, ok := r.byOwner[owner]; ok {
+		ipConflict = got.ipRatePerSec != want.ipRatePerSec || got.ipRateBurst != want.ipRateBurst
+		addressConflict = got.addressDailyCap != want.addressDailyCap
+		return ipConflict, addressConflict
+	}
+	r.byOwner[owner] = want
+	return false, false
+}
+
 func normalizeOwnerAddress(addr string) (string, bool) {
 	addr = strings.ToLower(strings.TrimSpace(addr))
 	if len(addr) != 42 || !strings.HasPrefix(addr, "0x") {
