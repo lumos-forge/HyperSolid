@@ -10,6 +10,12 @@ import { useEnvStore, type Network } from "../state/envStore";
 import { useThemeStore } from "../state/themeStore";
 import { useLocaleStore } from "../state/localeStore";
 import { useLockPrefsStore, AUTO_LOCK_OPTIONS } from "../state/lockPrefsStore";
+import { usePushPrefsStore } from "../state/pushPrefsStore";
+import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
+import { StrategyApi } from "../services/strategyApi";
+import { openStrategySession } from "../wallet/walletSession";
+import { applyPushPreference } from "../services/pushToggle";
+import type { LocalWalletService } from "../wallet/localWallet";
 import { useT } from "../i18n/useT";
 import type { Locale } from "../i18n/messages";
 import { WalletManager } from "../wallet/walletManager";
@@ -56,6 +62,13 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const setBiometricEnabled = useLockPrefsStore((s) => s.setBiometricEnabled);
   const autoLockMinutes = useLockPrefsStore((s) => s.autoLockMinutes);
   const setAutoLockMinutes = useLockPrefsStore((s) => s.setAutoLockMinutes);
+  const wallet = useWalletStore((s) => s.wallet);
+  const address = useWalletStore((s) => s.address);
+  const pushEnabled = usePushPrefsStore((s) => s.enabled);
+  const pushToken = usePushPrefsStore((s) => s.token);
+  const setPushEnabled = usePushPrefsStore((s) => s.setEnabled);
+  const setPushToken = usePushPrefsStore((s) => s.setToken);
+  const baseUrl = useRuntimeConfigStore((s) => s.strategyApiBaseUrl);
 
   const manager = useMemo(() => deps?.manager ?? new WalletManager(new SecureStoreKeyStore()), [deps]);
   const pinStore = useMemo(() => deps?.pinStore ?? new PinStore(), [deps]);
@@ -84,6 +97,34 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
       await setBiometricEnabled(!biometricEnabled);
     } catch {
       Alert.alert(t("account.faceIdUnavailable"), t("account.faceIdUnavailableBody"));
+    }
+  }
+
+  async function onToggleNotifications() {
+    const makeAuthedApi = async () => {
+      const local = wallet as Partial<LocalWalletService> | null;
+      if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || !baseUrl || !address) return null;
+      const tok = await openStrategySession(new StrategyApi(baseUrl, null), local.getViemAccount(), address);
+      return new StrategyApi(baseUrl, tok);
+    };
+    const { expoPushEnv } = await import("../services/pushEnv");
+    const r = await applyPushPreference(!pushEnabled, { env: expoPushEnv(), makeAuthedApi, prevToken: pushToken });
+    if (!pushEnabled) {
+      if (r.ok) {
+        await setPushEnabled(true);
+        if (r.token) await setPushToken(r.token);
+        useToastStore.getState().show(t("settings.pushEnabled"), "success");
+      } else {
+        const key =
+          r.reason === "no_session" ? "settings.pushNoSession" :
+          r.reason === "permission_denied" ? "settings.pushPermission" :
+          "settings.pushFailed";
+        useToastStore.getState().show(t(key), "error");
+      }
+    } else {
+      await setPushEnabled(false);
+      await setPushToken(null);
+      useToastStore.getState().show(t("settings.pushDisabled"), "success");
     }
   }
 
@@ -203,6 +244,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
         <>
           <SectionLabel theme={theme}>{t("settings.security")}</SectionLabel>
           <SettingRow theme={theme} icon="shield" name={t("account.security")} value={biometricEnabled ? t("account.faceIdOn") : t("account.faceIdOff")} onPress={onToggleBiometric} />
+          <SettingRow theme={theme} icon="alert" name={t("settings.notifications")} value={pushEnabled ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={onToggleNotifications} />
           <SettingRow theme={theme} icon="lock" name={t("account.autoLock")} value={autoLockLabel(autoLockMinutes)} onPress={() => setPicker("autolock")} />
           <SettingRow theme={theme} icon="key" name={t("account.changePin")} value="" onPress={openChangePin} />
 

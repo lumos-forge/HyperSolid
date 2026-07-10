@@ -23,6 +23,7 @@ import { useAuthStore } from "./src/state/authStore";
 import { useWalletStore } from "./src/state/walletStore";
 import { useOnboardingStore } from "./src/state/onboardingStore";
 import { useLockPrefsStore } from "./src/state/lockPrefsStore";
+import { usePushPrefsStore } from "./src/state/pushPrefsStore";
 import { useThemeStore } from "./src/state/themeStore";
 import { useLocaleStore } from "./src/state/localeStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
@@ -94,6 +95,7 @@ export default function App() {
     void useThemeStore.getState().hydrate();
     void useLocaleStore.getState().hydrate();
     void useEnvStore.getState().hydrate();
+    void usePushPrefsStore.getState().hydrate();
     useAuthStore.getState().evaluate(
       () => manager.hasWallet(),
       () => pinStore.hasPin(),
