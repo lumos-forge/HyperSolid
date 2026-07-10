@@ -19,6 +19,7 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
 	"github.com/lumos-forge/hypersolid/backend/internal/logging"
+	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
 	"go.opentelemetry.io/otel"
@@ -1717,5 +1718,95 @@ func TestHealthzThroughObsWrapper(t *testing.T) {
 	}
 	if body.Status != "ok" {
 		t.Fatalf("status = %q, want ok", body.Status)
+	}
+}
+
+func TestBudgetDenialMetricsIPRate(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	policies := policy.NewStore()
+	cfg := policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x1111111111111111111111111111111111111111",
+		IPRatePerSec:         1,
+		IPRateBurst:          2,
+	}
+	policies.Set("k1", cfg)
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	doSign := func(cloid string) *httptest.ResponseRecorder {
+		body := `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":1,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "9.9.9.9:1234"
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+	before := metrics.BudgetDenialValue(metrics.BudgetIPRate)
+	doSign("bd-c1") // 200
+	doSign("bd-c2") // 200
+	rr := doSign("bd-c3")
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("3rd status = %d, want 429", rr.Code)
+	}
+	if got := metrics.BudgetDenialValue(metrics.BudgetIPRate) - before; got != 1 {
+		t.Fatalf("ip_rate denial delta = %v, want 1", got)
+	}
+}
+
+func TestBudgetDenialMetricsKeyDailyCap(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{0x11}, 32))
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 600})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+	post := func(cloid string) int {
+		body := `{"keyId":"k1","cloid":"` + cloid + `","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
+		res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
+	}
+	before := metrics.BudgetDenialValue(metrics.BudgetKeyDailyCap)
+	if s := post("bdc-c1"); s != 200 {
+		t.Fatalf("first status = %d, want 200", s)
+	}
+	if s := post("bdc-c2"); s != 403 {
+		t.Fatalf("second status = %d, want 403", s)
+	}
+	if got := metrics.BudgetDenialValue(metrics.BudgetKeyDailyCap) - before; got != 1 {
+		t.Fatalf("key_daily_cap denial delta = %v, want 1", got)
+	}
+}
+
+func TestPolicyDenialIsNotABudgetDenial(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{0x11}, 32))
+	policies := policy.NewStore()
+	// Unknown kind → policy denies with 403 BEFORE any budget check.
+	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12, DailyMaxNotionalUsdc: 1e12})
+	srv := httptest.NewServer(leaderMux(ks, policies, func() int64 { return 1700000000000 }))
+	defer srv.Close()
+	beforeAddr := metrics.BudgetDenialValue(metrics.BudgetAddressCap)
+	beforeKey := metrics.BudgetDenialValue(metrics.BudgetKeyDailyCap)
+	body := `{"keyId":"k1","cloid":"pol-c1","kind":"cancel","params":{"asset":0,"oid":1},"isTestnet":false}`
+	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 403 {
+		t.Fatalf("status = %d, want 403 (policy denies unknown kind)", res.StatusCode)
+	}
+	if got := metrics.BudgetDenialValue(metrics.BudgetAddressCap) - beforeAddr; got != 0 {
+		t.Fatalf("address_cap delta = %v, want 0 (policy denial is not a budget denial)", got)
+	}
+	if got := metrics.BudgetDenialValue(metrics.BudgetKeyDailyCap) - beforeKey; got != 0 {
+		t.Fatalf("key_daily_cap delta = %v, want 0 (policy denial is not a budget denial)", got)
 	}
 }
