@@ -250,9 +250,11 @@ export class NotifyingActivityStore implements ActivityStore {
   record(a: Omit<Activity, "id">): Activity {
     const row = this.inner.record(a);
     try {
-      void this.notifier.notify(row.owner, fillNotification(row));
+      // fire-and-forget: swallow both a synchronous throw and an async rejection
+      // so a broken notifier can never break activity recording.
+      void Promise.resolve(this.notifier.notify(row.owner, fillNotification(row))).catch(() => {});
     } catch {
-      // fire-and-forget: a broken notifier must never break activity recording
+      // notifier threw synchronously (non-async broken impl)
     }
     return row;
   }
