@@ -14,7 +14,7 @@
 
 **Verified facts (do not re-derive):**
 - `expo-server-sdk` v6.1.0 exports the `Expo` class and types `ExpoPushMessage`, `ExpoPushTicket`.
-  - `Expo.isExpoPushToken(token: unknown): token is ExpoPushToken` (static); `ExpoPushToken = string`.
+  - `Expo.isExpoPushToken(token: unknown): token is ExpoPushToken` (static); `ExpoPushToken = string`. NOTE: `expo-server-sdk` is ESM and jest does not transform `node_modules`, so `notifier.ts` imports only its **types** (erased) and defaults `isValidToken` to a local regex `^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$` — never a runtime `import { Expo }` value import (that breaks under jest). The real `Expo` instance is injected via `ExpoLike` at the P4 wiring site.
   - `expo.chunkPushNotifications(messages: ExpoPushMessage[]): ExpoPushMessage[][]`.
   - `expo.sendPushNotificationsAsync(messages: ExpoPushMessage[]): Promise<ExpoPushTicket[]>`.
   - `ExpoPushMessage` has `{ to, title?, body?, data?, sound? }` (among others).
@@ -189,8 +189,13 @@ Expected: FAIL — cannot find module `./notifier`.
 Create `server/src/push/notifier.ts`:
 
 ```ts
-import { Expo, type ExpoPushMessage, type ExpoPushTicket } from "expo-server-sdk";
+import type { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import type { PushTokenStore } from "./pushTokenStore";
+
+// Expo push token format (matches Expo.isExpoPushToken). Default validator so
+// this module needs only expo-server-sdk's (erased) types — no runtime import of
+// the ESM package, keeping it trivially unit-testable under jest.
+const EXPO_PUSH_TOKEN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 
 export interface Notification {
   title: string;
@@ -210,7 +215,7 @@ export interface NotifierDeps {
   store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
   /** Failure log sink; defaults to console.error. */
   logger?: (msg: string, err?: unknown) => void;
-  /** Token validator; defaults to Expo.isExpoPushToken. */
+  /** Token validator; defaults to the Expo push-token format regex. */
   isValidToken?: (token: string) => boolean;
 }
 
@@ -232,7 +237,7 @@ export class Notifier {
     this.expo = deps.expo;
     this.store = deps.store;
     this.log = deps.logger ?? ((msg, err) => console.error(msg, err));
-    this.isValid = deps.isValidToken ?? ((t) => Expo.isExpoPushToken(t));
+    this.isValid = deps.isValidToken ?? ((t) => EXPO_PUSH_TOKEN.test(t));
   }
 
   async notify(owner: string, n: Notification): Promise<NotifyResult> {

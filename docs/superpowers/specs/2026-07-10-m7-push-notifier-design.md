@@ -29,7 +29,7 @@ P2 交付**通知发送核心**：一个 fail-safe 的 `notify(owner, notificati
 
 ## 3. 依赖
 
-新增 `expo-server-sdk`（Expo 官方 Node SDK，production-grade）到 `server/package.json` dependencies。提供 `Expo` 类（`Expo.isExpoPushToken`、`chunkPushNotifications`、`sendPushNotificationsAsync`）与类型 `ExpoPushMessage`、`ExpoPushTicket`。
+新增 `expo-server-sdk`（Expo 官方 Node SDK，production-grade）到 `server/package.json` dependencies。提供类型 `ExpoPushMessage`、`ExpoPushTicket`（notifier 仅用其类型，运行时依赖注入的 `ExpoLike`；默认令牌校验用本地正则以避免 jest 加载 ESM 包）；生产装配处（P4）用 `Expo` 实例。
 
 ## 4. 类型与接口（`server/src/push/notifier.ts`）
 
@@ -55,7 +55,7 @@ export interface NotifierDeps {
   store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
   /** Failure log sink; defaults to console.error. */
   logger?: (msg: string, err?: unknown) => void;
-  /** Token validator; defaults to Expo.isExpoPushToken. */
+  /** Token validator; defaults to the Expo push-token format regex (types-only dep). */
   isValidToken?: (token: string) => boolean;
 }
 
