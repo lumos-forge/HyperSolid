@@ -6,6 +6,7 @@
 package obs
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -61,5 +62,33 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-// Unused import guard removed in Task 2 when trace is used.
-var _ = trace.SpanContextFromContext
+// Middleware is a panic-recovery HTTP middleware matching the shape of
+// tracing.Middleware / logging.Middleware. On a panic it reports the value to
+// Sentry (tagged with the route name and the request's OTel trace_id), writes a
+// 500 JSON response, and returns WITHOUT re-panicking so the API stays consistent
+// with other 500 paths. A panicking handler must never leak an empty or partial
+// response; when Sentry is disabled it still recovers and writes the 500.
+func Middleware(name string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				reportPanic(r.Context(), name, rec)
+				writeErr(w, http.StatusInternalServerError, "internal error")
+			}
+		}()
+		next(w, r)
+	}
+}
+
+// reportPanic captures a recovered panic to Sentry with route + trace_id tags.
+// It is a safe no-op when Sentry is uninitialized: CurrentHub().Recover returns
+// nil without a bound client.
+func reportPanic(ctx context.Context, name string, rec interface{}) {
+	sentry.WithScope(func(scope *sentry.Scope) {
+		scope.SetTag("route", name)
+		if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
+			scope.SetTag("trace_id", sc.TraceID().String())
+		}
+		sentry.CurrentHub().Recover(rec)
+	})
+}
