@@ -256,15 +256,13 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			return
 		}
 		intent := intentFor(req.Kind, req.Params)
-		if intent.NotionalUsdc != 0 {
-			if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
-				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
-				return
-			}
-			if ownerOK && policies.OwnerAddressBudgetConflict(ownerAddr) {
-				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
-				return
-			}
+		if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
+			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			return
+		}
+		if intent.NotionalUsdc != 0 && ownerOK && policies.OwnerAddressBudgetConflict(ownerAddr) {
+			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			return
 		}
 		if d := policy.Evaluate(intent, cfg); !d.Allow {
 			writeErr(w, http.StatusForbidden, d.Reason)
