@@ -118,19 +118,22 @@ func Middleware(name string, next http.HandlerFunc) http.HandlerFunc {
 }
 ```
 
-`reportPanic` 直接执行（无需 `enabled()` 守卫）——当 Sentry 未初始化时 `sentry.CurrentHub().Recover` 因无 client 而安全 no-op（`Hub.Recover` 在 `client==nil` 时返回 nil）：
+`reportPanic` 直接执行（无需 `enabled()` 守卫）——当 Sentry 未初始化时 `Hub.Recover` 因无 client 而安全 no-op（返回 nil）。它**克隆 hub** 以隔离每次 panic 的 scope，避免并发 panic 经进程级全局 scope 栈相互污染 tag：
 
 ```go
-sentry.WithScope(func(scope *sentry.Scope) {
+hub := sentry.CurrentHub().Clone()
+hub.ConfigureScope(func(scope *sentry.Scope) {
 	scope.SetTag("route", name)
 	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
 		scope.SetTag("trace_id", sc.TraceID().String())
 	}
-	sentry.CurrentHub().Recover(rec) // captures the panic value + stack; no-op when uninitialized
 })
+hub.Recover(rec) // captures the panic value + stack; no-op when uninitialized
 ```
 
-> 为何不在 `reportPanic` 里守 `enabled()`：sentry-go 未 Init 时全局 hub 无 client，`WithScope`/`Recover` 均为安全 no-op；不加守卫可让中间件在测试中通过注入 mock transport 的 `sentry.Init` 直接被验证，无需依赖 `SENTRY_DSN` 环境变量。`enabled()` 只用于 `Setup` 决定是否 Init。
+> 为何克隆 hub 而非 `sentry.WithScope` + `sentry.CurrentHub().Recover`：后者操作单一进程级 hub 的共享 scope 栈——`WithScope` push 一个 scope，但 `CurrentHub().Recover` 读的是栈顶；并发 panic 下另一 goroutine 的 push 可能插在中间，导致 A 的事件带上 B 的 route/trace_id。克隆 hub 让每次 panic 拥有独立 scope 栈，彻底隔离。
+>
+> 为何不在 `reportPanic` 里守 `enabled()`：sentry-go 未 Init 时全局 hub 无 client，clone/ConfigureScope/Recover 均为安全 no-op；不加守卫可让中间件在测试中通过注入 mock transport 的 `sentry.Init` 直接被验证，无需依赖 `SENTRY_DSN` 环境变量。`enabled()` 只用于 `Setup` 决定是否 Init。
 
 - 复用 signer 既有 `writeErr` 的 JSON 风格（`{"error":"internal error"}` + 500）。obs 包内定义等价的私有 `writeErr`（obs 不依赖 cmd/signer；见 §6）。
 - 不 re-panic：net/http 收不到 panic，响应为受控 500。
@@ -156,16 +159,18 @@ flushSentry, _ := obs.Setup()
 defer flushSentry(2 * time.Second)
 ```
 
-- 中间件放到链**最外层**，兜住内层所有 panic。`newMux` 的两个包装器：
+- 中间件放到 tracing **内层**（otelhttp 之内），使 obs 能读到 otelhttp 注入的 server span → panic 事件带 `trace_id`；同时仍兜住其内层（logging/metrics/handler，且这两者 recover 后 re-panic）的所有 panic。`newMux` 的两个包装器：
 
 ```go
 route := func(name string, h http.HandlerFunc) http.HandlerFunc {
-	return obs.Middleware(name, tracing.Middleware(name, metrics.Middleware(name, h)))
+	return tracing.Middleware(name, obs.Middleware(name, metrics.Middleware(name, h)))
 }
 loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
-	return obs.Middleware(name, tracing.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
+	return tracing.Middleware(name, obs.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
 }
 ```
+
+> 为何 obs 在 tracing 之内而非最外层：`tracing.Middleware` = `otelhttp.NewHandler`，它把 server span 注入到一个**派生请求**上下文，只有其内层可见。若 obs 在最外层，handler panic 回卷到 obs 的 recover 时读到的是**原始**请求上下文（无 span），`trace_id` 永远为空。把 obs 放进 tracing 之内即可读到 span；代价是 otelhttp 自身若 panic 不由 obs 兜（otelhttp 稳健，且 net/http 仍会按请求恢复，进程不崩）。这与 `logging` 已置于 tracing 之内以获得 trace_id 的既有做法一致。
 
 - （可选，进程逃逸兜底）`run()` 顶部不放 `defer obs.Recover()`，因为 net/http 已按请求恢复 panic；`Recover()` 的价值在于**非 HTTP goroutine**（如 reconciler 循环）的兜底。M10 阶段 reconciler 已有自身错误处理，故本次仅**提供** `Recover()` API + 测试，接线到 reconciler 循环留待其需要时；不在 `main` 强制 `defer obs.Recover()`（HTTP 路径由中间件覆盖，main 直接 panic 本就会崩溃留栈）。
 
@@ -201,7 +206,7 @@ cd backend && \
 ## 9. 与现有代码的关系
 
 - 形态对齐 `internal/tracing`（opt-in `enabled()`、fail-safe 降级 no-op、env 驱动、Setup 返回收尾函数）。
-- 中间件对齐 `internal/{tracing,logging,metrics}.Middleware(name, next)` 签名，插入链最外层。
+- 中间件对齐 `internal/{tracing,logging,metrics}.Middleware(name, next)` 签名，置于 tracing 之内、logging/metrics 之外（见 §5.5）。
 - trace_id 取用对齐 `internal/logging` 的 `trace.SpanContextFromContext`。
 - go.mod 依赖新增，参照现有 OTel 依赖块。
 

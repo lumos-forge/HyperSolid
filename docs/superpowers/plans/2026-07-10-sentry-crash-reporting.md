@@ -4,7 +4,7 @@
 
 **Goal:** Ship `backend/internal/obs`, an opt-in, fail-safe Sentry crash/panic reporting unit (Setup + panic-recovery HTTP middleware + main-level Recover), and wire it into `cmd/signer` so handler panics are captured with trace_id — with zero request-body/header/query leakage.
 
-**Architecture:** One package `internal/obs` with two files: `obs.go` (Setup, Middleware, Recover, private writeErr + reportPanic) and `obs_test.go`. Mirrors `internal/tracing` (opt-in `enabled()`, fail-safe degrade-to-no-op, env-driven, Setup returns a teardown func). Middleware matches the `func(name string, next http.HandlerFunc) http.HandlerFunc` shape and is inserted at the OUTERMOST layer of the signer's route wrappers. Reporting relies on sentry-go being a safe no-op when uninitialized, so only `Setup` gates on `SENTRY_DSN`.
+**Architecture:** One package `internal/obs` with two files: `obs.go` (Setup, Middleware, Recover, private writeErr + reportPanic) and `obs_test.go`. Mirrors `internal/tracing` (opt-in `enabled()`, fail-safe degrade-to-no-op, env-driven, Setup returns a teardown func). Middleware matches the `func(name string, next http.HandlerFunc) http.HandlerFunc` shape and is placed INSIDE `tracing.Middleware` (but outside logging/metrics) so it reads the otelhttp server span for `trace_id` while still catching handler/logging/metrics panics. `reportPanic` clones the hub per panic for scope isolation. Reporting relies on sentry-go being a safe no-op when uninitialized, so only `Setup` gates on `SENTRY_DSN`.
 
 **Tech Stack:** Go; `github.com/getsentry/sentry-go` v0.47.0 (already added to go.mod as indirect via `go get`; becomes direct once imported); `go.opentelemetry.io/otel/trace` (already a dependency) for trace_id; stdlib `net/http`, `os`, `time`, `log/slog`.
 
@@ -14,8 +14,8 @@
 
 **Verified sentry-go v0.47.0 API facts (do not re-derive):**
 - `sentry.Init(sentry.ClientOptions{Dsn, Environment, Release, SendDefaultPII, TracesSampleRate, BeforeSend, Transport}) error`.
-- `sentry.WithScope(func(scope *sentry.Scope))`; `scope.SetTag(key, value string)`.
-- `sentry.CurrentHub().Recover(err interface{}) *sentry.EventID` — uses the hub's current scope; returns nil (no-op) when no client is bound (uninitialized).
+- `sentry.CurrentHub().Clone() *sentry.Hub`; `hub.ConfigureScope(func(scope *sentry.Scope))`; `scope.SetTag(key, value string)`.
+- `hub.Recover(err interface{}) *sentry.EventID` — uses that hub's scope; returns nil (no-op) when no client is bound (uninitialized). Cloning gives per-panic scope isolation (concurrent panics must not share the global scope stack).
 - `sentry.Flush(timeout time.Duration) bool`.
 - `sentry.Event` has field `Request *sentry.Request` (json `request,omitempty`) and `Exception []sentry.Exception`.
 - `BeforeSend func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event`.
@@ -29,7 +29,7 @@
 
 - Create: `backend/internal/obs/obs.go` — `enabled`, `Setup`, `Middleware`, `Recover`, private `reportPanic`, private `writeErr`.
 - Create: `backend/internal/obs/obs_test.go` — all unit + race tests, including a `mockTransport`.
-- Modify: `backend/cmd/signer/main.go` — add `obs.Setup()` + `defer flush(...)` in `run()`; wrap route builders with `obs.Middleware` at the outermost layer in `newMux`.
+- Modify: `backend/cmd/signer/main.go` — add `obs.Setup()` + `defer flush(...)` in `run()`; insert `obs.Middleware` inside `tracing.Middleware` (outside logging/metrics) in `newMux`.
 - Modify: `backend/go.mod` / `backend/go.sum` — `sentry-go` becomes a direct dependency (via `go mod tidy` in Task 1).
 
 ---
@@ -265,16 +265,18 @@ func Middleware(name string, next http.HandlerFunc) http.HandlerFunc {
 }
 
 // reportPanic captures a recovered panic to Sentry with route + trace_id tags.
-// It is a safe no-op when Sentry is uninitialized: CurrentHub().Recover returns
-// nil without a bound client.
+// It clones the hub so concurrent panics don't contaminate each other's tags via
+// the process-global scope stack. It is a safe no-op when Sentry is uninitialized:
+// Hub.Recover returns nil without a bound client.
 func reportPanic(ctx context.Context, name string, rec interface{}) {
-	sentry.WithScope(func(scope *sentry.Scope) {
+	hub := sentry.CurrentHub().Clone()
+	hub.ConfigureScope(func(scope *sentry.Scope) {
 		scope.SetTag("route", name)
 		if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
 			scope.SetTag("trace_id", sc.TraceID().String())
 		}
-		sentry.CurrentHub().Recover(rec)
 	})
+	hub.Recover(rec)
 }
 ```
 
@@ -570,7 +572,7 @@ func TestMiddlewareConcurrentPanics(t *testing.T) {
 - [ ] **Step 2: Run test under the race detector**
 
 Run: `cd backend && go test -race ./internal/obs/ -run TestMiddlewareConcurrentPanics`
-Expected: PASS with no `DATA RACE` reports. (The middleware holds no shared mutable state; `sentry.WithScope` is concurrency-safe.)
+Expected: PASS with no `DATA RACE` reports. (The middleware holds no shared mutable state; `reportPanic` clones the hub so each panic uses an isolated scope.)
 
 - [ ] **Step 3: (no production change expected)**
 
@@ -656,7 +658,7 @@ Immediately after that block, insert:
 	defer flushSentry(2 * time.Second)
 ```
 
-(c) In `newMux`, wrap both route builders with `obs.Middleware` at the OUTERMOST layer. Locate:
+(c) In `newMux`, insert `obs.Middleware` INSIDE `tracing.Middleware` (but outside logging/metrics) so obs reads the otelhttp server span for `trace_id` while still catching handler/logging/metrics panics (logging and metrics recover-then-re-panic). Locate:
 
 ```go
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
@@ -671,10 +673,10 @@ Replace with:
 
 ```go
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return obs.Middleware(name, tracing.Middleware(name, metrics.Middleware(name, h)))
+		return tracing.Middleware(name, obs.Middleware(name, metrics.Middleware(name, h)))
 	}
 	loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return obs.Middleware(name, tracing.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
+		return tracing.Middleware(name, obs.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
 	}
 ```
 
