@@ -6,6 +6,10 @@ import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
 import { SqliteActivityStore } from "./strategies/activityStore";
 import { SqlitePushTokenStore } from "./push/pushTokenStore";
+import { Expo } from "expo-server-sdk";
+import { Notifier } from "./push/notifier";
+import { NotifyingActivityStore } from "./push/notifyingActivityStore";
+import { deadManAlertNotification, deadManRecoveredNotification } from "./push/notifications";
 import type { StrategyStore } from "./strategies/store";
 import { appConfigFromEnv, geoHeadersFromEnv } from "./config/appConfig";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
@@ -68,8 +72,9 @@ export async function main(): Promise<void> {
   const auth = new Auth({ secret: authSecret });
   const agents = new AgentManager(SqliteAgentStore.open(dbPath, agentEncKey), generatePrivateKey);
   const store: StrategyStore = SqliteStrategyStore.open(dbPath, now);
-  const activity = SqliteActivityStore.open(dbPath);
   const pushTokens = SqlitePushTokenStore.open(dbPath);
+  const notifier = new Notifier({ expo: new Expo(), store: pushTokens });
+  const activity = new NotifyingActivityStore(SqliteActivityStore.open(dbPath), notifier);
 
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
@@ -150,9 +155,11 @@ export async function main(): Promise<void> {
           if (ev.kind === "alert") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm failing for ${owner}: ${ev.consecutiveFailures} consecutive unprotected heartbeats`);
+            void notifier.notify(owner, deadManAlertNotification(ev)).catch(() => {});
           } else if (ev.kind === "recovered") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm recovered for ${owner}`);
+            void notifier.notify(owner, deadManRecoveredNotification()).catch(() => {});
           }
         },
       }).catch((e) =>
