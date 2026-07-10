@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 var reg = prometheus.NewRegistry()
@@ -53,8 +54,13 @@ var reconcileHLDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets: prometheus.DefBuckets,
 }, []string{"call"})
 
+var budgetDenials = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "hypersolid_budget_denials_total",
+	Help: "signer sign_l1 requests denied by a rate/quota budget, by budget kind.",
+}, []string{"budget"})
+
 func init() {
-	reg.MustRegister(httpRequests, httpDuration, reconcileSteps, reconcileReaps, reconcileLeader, reconcileStepDuration, reconcileHLDuration)
+	reg.MustRegister(httpRequests, httpDuration, reconcileSteps, reconcileReaps, reconcileLeader, reconcileStepDuration, reconcileHLDuration, budgetDenials)
 }
 
 // ObserveHTTP records one served request: endpoint label, HTTP status code, and
@@ -67,6 +73,29 @@ func ObserveHTTP(endpoint string, code int, seconds float64) {
 // Handler serves the Prometheus text exposition for the dedicated registry.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
+}
+
+// Budget denial kinds. A small closed set keeps label cardinality bounded.
+const (
+	BudgetKeyRate     = "key_rate"      // per-key token bucket (429)
+	BudgetIPRate      = "ip_rate"       // per-(owner,IP) token bucket (429)
+	BudgetAddressCap  = "address_cap"   // per-owner-address daily notional cap (403)
+	BudgetKeyDailyCap = "key_daily_cap" // per-key daily notional cap (403)
+)
+
+// ObserveBudgetDenial counts one sign_l1 request denied by the named budget.
+func ObserveBudgetDenial(budget string) {
+	budgetDenials.WithLabelValues(budget).Inc()
+}
+
+// BudgetDenialValue returns the current count for a budget label (0 if unseen).
+// Intended for tests and diagnostics.
+func BudgetDenialValue(budget string) float64 {
+	var m dto.Metric
+	if err := budgetDenials.WithLabelValues(budget).Write(&m); err != nil {
+		return 0
+	}
+	return m.GetCounter().GetValue()
 }
 
 // statusRecorder captures the status code written by a handler (defaults to 200
