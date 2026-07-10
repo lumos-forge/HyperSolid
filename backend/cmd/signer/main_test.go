@@ -872,6 +872,71 @@ func TestSignInvalidRemoteAddrFailsClosedWhenIPBudgetEnabled(t *testing.T) {
 	}
 }
 
+func TestSignIPRateLimitSameOwnerDifferentIPsIndependent(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	_ = ks.Add("k2", bytes.Repeat([]byte{2}, 32))
+	policies := policy.NewStore()
+	cfg := policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		OwnerAddress:         "0x1111111111111111111111111111111111111111",
+		IPRatePerSec:         1,
+		IPRateBurst:          1,
+	}
+	policies.Set("k1", cfg)
+	policies.Set("k2", cfg)
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	doSign := func(body, remoteAddr string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = remoteAddr
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+	body1 := `{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	body2 := `{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
+	if rr := doSign(body1, "1.2.3.4:9999"); rr.Code != http.StatusOK {
+		t.Fatalf("first IP status = %d, want 200", rr.Code)
+	}
+	if rr := doSign(body2, "5.6.7.8:9999"); rr.Code != http.StatusOK {
+		t.Fatalf("second IP status = %d, want 200 (different IP must not share bucket)", rr.Code)
+	}
+}
+
+func TestSignMissingOwnerAddressFailsClosedWhenIPBudgetEnabled(t *testing.T) {
+	ks := keystore.New()
+	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+	policies := policy.NewStore()
+	policies.Set("k1", policy.Config{
+		AllowedKinds:         map[string]bool{"order": true},
+		MaxNotionalUsdc:      1e12,
+		DailyMaxNotionalUsdc: 1e12,
+		IPRatePerSec:         1,
+		IPRateBurst:          1,
+	})
+	h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "1.2.3.4:9999"
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rr.Code)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if out.Error != "ip rate limit exceeded" {
+		t.Fatalf("error = %q, want %q", out.Error, "ip rate limit exceeded")
+	}
+}
+
 func TestSignMissingOwnerAddressFailsClosedWhenAddressBudgetEnabled(t *testing.T) {
 	ks := keystore.New()
 	_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))

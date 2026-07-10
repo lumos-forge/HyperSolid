@@ -236,7 +236,7 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 		}
 		cfg := policies.Get(req.KeyID)
 		ownerAddr, ownerOK := normalizeOwnerAddress(cfg.OwnerAddress)
-		if cfg.IPRatePerSec > 0 {
+		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
 			if !ownerOK {
 				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
 				return
