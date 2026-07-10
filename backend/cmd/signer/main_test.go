@@ -739,8 +739,19 @@ func TestSignIPRateLimitSharedAcrossKeysSameOwnerSameIP(t *testing.T) {
 		if i < 2 && rr.Code == http.StatusTooManyRequests {
 			t.Fatalf("request %d unexpectedly 429", i+1)
 		}
-		if i == 2 && rr.Code != http.StatusTooManyRequests {
-			t.Fatalf("request 3 status = %d, want 429", rr.Code)
+		if i == 2 {
+			if rr.Code != http.StatusTooManyRequests {
+				t.Fatalf("request 3 status = %d, want 429", rr.Code)
+			}
+			var out struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+				t.Fatalf("decode error body: %v", err)
+			}
+			if out.Error != "ip rate limit exceeded" {
+				t.Fatalf("error = %q, want %q", out.Error, "ip rate limit exceeded")
+			}
 		}
 	}
 }
@@ -777,11 +788,11 @@ func TestSignIPRateLimitDifferentOwnersSameIPIndependent(t *testing.T) {
 	}
 	body1 := `{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
 	body2 := `{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
-	if rr := doSign(body1); rr.Code == http.StatusTooManyRequests {
-		t.Fatal("owner A unexpectedly throttled")
+	if rr := doSign(body1); rr.Code != http.StatusOK {
+		t.Fatalf("owner A status = %d, want 200", rr.Code)
 	}
-	if rr := doSign(body2); rr.Code == http.StatusTooManyRequests {
-		t.Fatal("owner B should not share owner A's IP bucket")
+	if rr := doSign(body2); rr.Code != http.StatusOK {
+		t.Fatalf("owner B status = %d, want 200", rr.Code)
 	}
 }
 
@@ -806,8 +817,8 @@ func TestSignAddressDailyCapSharedAcrossKeys(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	req1.RemoteAddr = "1.2.3.4:9999"
 	h.ServeHTTP(first, req1)
-	if first.Code == http.StatusForbidden {
-		t.Fatalf("first request unexpectedly denied: %s", first.Body.String())
+	if first.Code != http.StatusOK {
+		t.Fatalf("first sign status = %d, want 200", first.Code)
 	}
 
 	second := httptest.NewRecorder()
