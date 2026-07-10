@@ -1,6 +1,7 @@
 package wsshard
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 )
@@ -75,6 +76,58 @@ func TestAdmitRejectsInvalidAddress(t *testing.T) {
 	}
 	if got := a.Stats().Admitted; got != 0 {
 		t.Fatalf("Admitted = %d, want 0 after only invalid admits", got)
+	}
+}
+
+// admitN admits n distinct valid addresses and returns the shard each landed on.
+func admitN(t *testing.T, a *Allocator, n int) []int {
+	t.Helper()
+	got := make([]int, 0, n)
+	for i := 1; i <= n; i++ {
+		addr := fmt.Sprintf("0x%040x", i)
+		sid, ok := a.Admit(addr)
+		if !ok {
+			t.Fatalf("Admit #%d unexpectedly denied", i)
+		}
+		got = append(got, sid)
+	}
+	return got
+}
+
+func TestAdmitLeastLoadedRoundRobinsTies(t *testing.T) {
+	a, _ := New(3, 10)
+	// With all shards equal, least-loaded + lowest-index tie-break lays users out
+	// 0,1,2,0,1,2,... so load stays balanced.
+	got := admitN(t, a, 6)
+	want := []int{0, 1, 2, 0, 1, 2}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("assignment[%d] = %d, want %d (seq=%v)", i, got[i], want[i], got)
+		}
+	}
+	load := a.Stats().ShardLoad
+	for i, l := range load {
+		if l != 2 {
+			t.Fatalf("ShardLoad[%d] = %d, want 2 (balanced), load=%v", i, l, load)
+		}
+	}
+}
+
+func TestAdmitPrefersEmptierShardAfterRelease(t *testing.T) {
+	a, _ := New(2, 10)
+	// Fill shard 0 and shard 1 to load 2 each (users u1..u4 -> 0,1,0,1).
+	admitN(t, a, 4)
+	// Release both users on shard 0 (u1 and u3 landed on shard 0).
+	if !a.Release("0x" + fmt.Sprintf("%040x", 1)) {
+		t.Fatal("release u1 failed")
+	}
+	if !a.Release("0x" + fmt.Sprintf("%040x", 3)) {
+		t.Fatal("release u3 failed")
+	}
+	// Now shard 0 load=0, shard 1 load=2. Next admit must pick shard 0.
+	sid, ok := a.Admit("0x" + fmt.Sprintf("%040x", 99))
+	if !ok || sid != 0 {
+		t.Fatalf("Admit after release = (%d,%v), want (0,true) — least-loaded must pick emptier shard", sid, ok)
 	}
 }
 

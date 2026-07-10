@@ -103,6 +103,26 @@ func (a *Allocator) Admit(user string) (int, bool) {
 	return best, true
 }
 
+// Release explicitly releases user (called when the user comes online and the
+// client takes over the direct subscription, or when a strategy deactivates),
+// freeing the slot. It returns whether the user was on the books. The address is
+// normalized; an invalid address returns false.
+func (a *Allocator) Release(user string) bool {
+	key, ok := normalizeAddr(user)
+	if !ok {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	sid, exists := a.assign[key]
+	if !exists {
+		return false
+	}
+	delete(a.assign, key)
+	a.load[sid]--
+	return true
+}
+
 // Stats returns the current snapshot. ShardLoad is a copy the caller may retain.
 func (a *Allocator) Stats() Stats {
 	a.mu.Lock()
