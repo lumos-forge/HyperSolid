@@ -5,9 +5,15 @@ import type { StrategyStore } from "../strategies/store";
 import type { Strategy, StrategyKind, GridLimitParams } from "../strategies/types";
 import { validateParams } from "../strategies/validate";
 import type { ActivityStore } from "../strategies/activityStore";
+import type { PushTokenStore } from "../push/pushTokenStore";
 import type { AppConfigPayload } from "../config/appConfig";
 import { resolveGeo, type GeoHeaderConfig } from "./geo";
 import { rungCount, rungBuyPrice, rungSellPrice } from "../strategies/gridLimit";
+
+const EXPO_PUSH_TOKEN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
+function isExpoPushToken(v: unknown): v is string {
+  return typeof v === "string" && EXPO_PUSH_TOKEN.test(v);
+}
 
 export interface AppDeps {
   auth: Auth;
@@ -25,6 +31,8 @@ export interface AppDeps {
   appConfig?: AppConfigPayload;
   /** Header names to read the caller's country/region from on GET /app-config. */
   geoHeaders?: GeoHeaderConfig;
+  /** Device push-token registry (M7 P1). When absent, /push/* routes return 503. */
+  pushTokens?: PushTokenStore;
 }
 
 interface StrategyDto {
@@ -155,6 +163,27 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const owner = ownerOf(req, reply);
     if (!owner) return;
     deps.agents.revoke(owner);
+    return reply.code(204).send();
+  });
+
+  // --- push token registry (M7 P1) ---
+  app.post("/push/register", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.pushTokens) return reply.code(503).send({ error: "push not configured" });
+    const { token, platform } = (req.body ?? {}) as { token?: unknown; platform?: unknown };
+    if (!isExpoPushToken(token)) return reply.code(400).send({ error: "invalid push token" });
+    const plat = platform === "ios" || platform === "android" ? platform : null;
+    deps.pushTokens.register(owner, token, plat, now());
+    return reply.code(204).send();
+  });
+
+  app.post("/push/unregister", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.pushTokens) return reply.code(503).send({ error: "push not configured" });
+    const { token } = (req.body ?? {}) as { token?: unknown };
+    if (typeof token === "string") deps.pushTokens.unregister(owner, token);
     return reply.code(204).send();
   });
 

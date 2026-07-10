@@ -4,6 +4,7 @@ import { Auth } from "../auth/auth";
 import { AgentManager, MemoryAgentStore } from "../agent/agentManager";
 import { MemoryStrategyStore } from "../strategies/store";
 import { MemoryActivityStore } from "../strategies/activityStore";
+import { SqlitePushTokenStore } from "../push/pushTokenStore";
 
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const AGENT_PK = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" as const;
@@ -323,5 +324,72 @@ describe("gridLimit HTTP", () => {
     const id = created.json().id as string;
     const rungs = (await app.inject({ method: "GET", url: `/strategies/${id}/rungs`, headers: auth })).json();
     expect(rungs).toEqual([]);
+  });
+
+  function buildWithPush() {
+    const auth = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
+    const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
+    const store = new MemoryStrategyStore(() => 1000);
+    const pushTokens = SqlitePushTokenStore.open(":memory:");
+    return { app: buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000, pushTokens }), pushTokens };
+  }
+
+  const PUSH_T = "ExponentPushToken[cccccccccccccccccccccc]";
+
+  it("rejects /push/register without a bearer token", async () => {
+    const { app } = buildWithPush();
+    const res = await app.inject({ method: "POST", url: "/push/register", payload: { token: PUSH_T } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("registers a push token for the authed owner", async () => {
+    const { app, pushTokens } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/push/register",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { token: PUSH_T, platform: "ios" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(pushTokens.tokensForOwner(account.address).map((r) => r.token)).toEqual([PUSH_T]);
+    await app.close();
+  });
+
+  it("rejects a malformed push token with 400", async () => {
+    const { app, pushTokens } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/push/register",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { token: "not-a-push-token" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(pushTokens.tokensForOwner(account.address)).toHaveLength(0);
+    await app.close();
+  });
+
+  it("unregister is scoped to the owner and idempotent", async () => {
+    const { app, pushTokens } = buildWithPush();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    await app.inject({ method: "POST", url: "/push/register", headers: auth, payload: { token: PUSH_T } });
+    const other = await app.inject({ method: "POST", url: "/push/unregister", headers: auth, payload: { token: "ExponentPushToken[zzzzzzzzzzzzzzzzzzzzzz]" } });
+    expect(other.statusCode).toBe(204);
+    expect(pushTokens.tokensForOwner(account.address)).toHaveLength(1);
+    const res = await app.inject({ method: "POST", url: "/push/unregister", headers: auth, payload: { token: PUSH_T } });
+    expect(res.statusCode).toBe(204);
+    expect(pushTokens.tokensForOwner(account.address)).toHaveLength(0);
+    await app.close();
+  });
+
+  it("returns 503 when push is not configured", async () => {
+    const app = build();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/register", headers: { authorization: `Bearer ${token}` }, payload: { token: PUSH_T } });
+    expect(res.statusCode).toBe(503);
+    await app.close();
   });
 });
