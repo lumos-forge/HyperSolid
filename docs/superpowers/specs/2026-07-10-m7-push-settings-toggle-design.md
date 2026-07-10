@@ -92,7 +92,8 @@ export function expoPushEnv(): PushEnv {
     getPermissionStatus: async () => toStatus((await Notifications.getPermissionsAsync()).status),
     requestPermission: async () => toStatus((await Notifications.requestPermissionsAsync()).status),
     getExpoPushToken: async () => {
-      const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
+      const c = Constants as unknown as { expoConfig?: { extra?: { eas?: { projectId?: string } } }; easConfig?: { projectId?: string } };
+      const projectId = c.expoConfig?.extra?.eas?.projectId ?? c.easConfig?.projectId;
       const res = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
       return res.data;
     },
