@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 func TestStoreConformance(t *testing.T) {
 	ctx := context.Background()
 	conformance.Run(t, func() ledger.Authorizer {
-		if _, err := testPool.Exec(ctx, "TRUNCATE sw_state, ledger_intents"); err != nil {
+		if _, err := testPool.Exec(ctx, "TRUNCATE sw_state, addr_spend_state, ledger_intents"); err != nil {
 			t.Fatalf("truncate: %v", err)
 		}
 		return pg.New(testPool)
@@ -73,7 +73,7 @@ func TestStoreConformance(t *testing.T) {
 
 func TestConcurrentSameCloidGrantsOneNonce(t *testing.T) {
 	ctx := context.Background()
-	if _, err := testPool.Exec(ctx, "TRUNCATE sw_state, ledger_intents"); err != nil {
+	if _, err := testPool.Exec(ctx, "TRUNCATE sw_state, addr_spend_state, ledger_intents"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	store := pg.New(testPool)
@@ -107,13 +107,54 @@ func TestConcurrentSameCloidGrantsOneNonce(t *testing.T) {
 	}
 }
 
+func TestConcurrentSameAddressAcrossKeysChargesOnce(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, "TRUNCATE sw_state, addr_spend_state, ledger_intents"); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	store := pg.New(pool)
+	reqA := ledger.Request{
+		KeyID: "a", Cloid: "c1", Digest: [32]byte{1}, Fence: 1,
+		Notional: 600, DailyCap: 10_000,
+		AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+		NowMs: 1_700_000_000_000,
+	}
+	reqB := ledger.Request{
+		KeyID: "b", Cloid: "c2", Digest: [32]byte{2}, Fence: 1,
+		Notional: 600, DailyCap: 10_000,
+		AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+		NowMs: 1_700_000_000_000,
+	}
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() { defer wg.Done(); _, errs[0] = store.Authorize(ctx, reqA) }()
+	go func() { defer wg.Done(); _, errs[1] = store.Authorize(ctx, reqB) }()
+	wg.Wait()
+	ok, denied := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ledger.ErrAddressDailyCap):
+			denied++
+		default:
+			t.Fatalf("unexpected err = %v", err)
+		}
+	}
+	if ok != 1 || denied != 1 {
+		t.Fatalf("got ok=%d denied=%d, want 1/1", ok, denied)
+	}
+}
+
 func TestStoreReconcileConformance(t *testing.T) {
 	pool := newPool(t)
 	if err := pg.EnsureSchema(context.Background(), pool); err != nil {
 		t.Fatalf("ensure schema: %v", err)
 	}
 	conformance.RunReconcile(t, func() ledger.Ledger {
-		_, _ = pool.Exec(context.Background(), "TRUNCATE sw_state, ledger_intents")
+		_, _ = pool.Exec(context.Background(), "TRUNCATE sw_state, addr_spend_state, ledger_intents")
 		return pg.New(pool)
 	})
 }
