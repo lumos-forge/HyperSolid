@@ -101,3 +101,65 @@ tests:
             exp_annotations:
               summary: "SLO fast burn for reconciler_success"
               description: "reconciler_success error budget burning fast: 1h and 5m burn rate both exceed 14.4x (about 2% of the 30d budget per hour). Page."
+
+  # Budget healthy: only 200s, no denials → ratio 0 → no budget alerts.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+100x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: BudgetSaturationHigh
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: BudgetSaturationCritical
+        exp_alerts: []
+
+  # Budget high only: 30 denials + 70 ok /min → ratio 0.3 → High (ticket), not Critical.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_budget_denials_total{budget="ip_rate"}'
+        values: '0+30x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+70x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="429"}'
+        values: '0+30x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: BudgetSaturationHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "signer budget saturation high"
+              description: "Over 20% of sign_l1 requests are being denied by rate/quota budgets (6h and 30m both > 20%). Budgets are frequently saturating — open a ticket to investigate."
+      - eval_time: 70m
+        alertname: BudgetSaturationCritical
+        exp_alerts: []
+
+  # Budget critical: 60 denials + 40 ok /min → ratio 0.6 → BOTH High and Critical fire.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_budget_denials_total{budget="ip_rate"}'
+        values: '0+60x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+40x90'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="429"}'
+        values: '0+60x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: BudgetSaturationCritical
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "signer budget saturation critical"
+              description: "Over 50% of sign_l1 requests are being denied by rate/quota budgets (1h and 5m both > 50%). The signer is in a heavily throttled regime — investigate abusive/misconfigured clients or raise budgets. Page."
+      - eval_time: 70m
+        alertname: BudgetSaturationHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "signer budget saturation high"
+              description: "Over 20% of sign_l1 requests are being denied by rate/quota budgets (6h and 30m both > 20%). Budgets are frequently saturating — open a ticket to investigate."
