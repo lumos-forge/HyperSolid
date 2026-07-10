@@ -8,7 +8,9 @@
 package wsshard
 
 import (
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -51,8 +53,55 @@ func New(numShards, maxPerShard int) (*Allocator, error) {
 	}, nil
 }
 
-// Admit stub — replaced in Task 2.
-func (a *Allocator) Admit(user string) (int, bool) { return -1, false }
+// normalizeAddr lowercases/trims addr and validates it as a 20-byte hex EVM
+// address (0x + 40 hex chars). It returns ("", false) for anything else.
+func normalizeAddr(addr string) (string, bool) {
+	a := strings.ToLower(strings.TrimSpace(addr))
+	if len(a) != 42 || !strings.HasPrefix(a, "0x") {
+		return "", false
+	}
+	if _, err := hex.DecodeString(a[2:]); err != nil {
+		return "", false
+	}
+	return a, true
+}
+
+// Admit idempotently admits user. Fail-closed semantics:
+//   - fail-closed allocator (invalid config) or invalid/empty address → (-1, false).
+//   - already admitted → its existing (shardID, true), no new slot.
+//   - not admitted and a shard has room → least-loaded shard (most free slots;
+//     ties broken by lowest index), recorded, returning (shardID, true).
+//   - pool full → (-1, false) and DeniedFull++ (caller falls back to polling).
+func (a *Allocator) Admit(user string) (int, bool) {
+	key, ok := normalizeAddr(user)
+	if !ok {
+		return -1, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.failClosed {
+		return -1, false
+	}
+	if sid, exists := a.assign[key]; exists {
+		return sid, true
+	}
+	best := -1
+	for i := 0; i < a.numShards; i++ {
+		if a.load[i] >= a.maxPerShard {
+			continue
+		}
+		if best == -1 || a.load[i] < a.load[best] {
+			best = i
+		}
+	}
+	if best == -1 {
+		a.deniedFull++
+		return -1, false
+	}
+	a.load[best]++
+	a.assign[key] = best
+	return best, true
+}
 
 // Stats returns the current snapshot. ShardLoad is a copy the caller may retain.
 func (a *Allocator) Stats() Stats {

@@ -49,4 +49,33 @@ func TestNewInvalidConfigFailClosed(t *testing.T) {
 	}
 }
 
+func TestAdmitIdempotentAndNormalized(t *testing.T) {
+	a, _ := New(1, 10)
+	const mixed = "0xAbC0000000000000000000000000000000000001"
+	sid, ok := a.Admit(mixed)
+	if !ok || sid != 0 {
+		t.Fatalf("first Admit = (%d,%v), want (0,true)", sid, ok)
+	}
+	// Same address in different case / with whitespace = same user, same shard, no new slot.
+	sid2, ok2 := a.Admit("  0xabc0000000000000000000000000000000000001  ")
+	if !ok2 || sid2 != 0 {
+		t.Fatalf("idempotent Admit = (%d,%v), want (0,true)", sid2, ok2)
+	}
+	if got := a.Stats().Admitted; got != 1 {
+		t.Fatalf("Admitted = %d, want 1 (idempotent must not consume a new slot)", got)
+	}
+}
+
+func TestAdmitRejectsInvalidAddress(t *testing.T) {
+	a, _ := New(1, 10)
+	for _, bad := range []string{"", "0x", "not-an-address", "0x123", "0xZZ00000000000000000000000000000000000001", "000000000000000000000000000000000000dEaD"} {
+		if sid, ok := a.Admit(bad); ok || sid != -1 {
+			t.Fatalf("Admit(%q) = (%d,%v), want (-1,false)", bad, sid, ok)
+		}
+	}
+	if got := a.Stats().Admitted; got != 0 {
+		t.Fatalf("Admitted = %d, want 0 after only invalid admits", got)
+	}
+}
+
 var _ = sync.Mutex{} // keep sync imported for later tasks
