@@ -19,6 +19,7 @@ type recordKey struct{ keyID, cloid string }
 type Mem struct {
 	mu        sync.Mutex
 	sw        map[string]singlewriter.State
+	addrSpend map[string]SpendState
 	records   map[recordKey]Record
 	updatedAt map[recordKey]int64
 }
@@ -27,6 +28,7 @@ type Mem struct {
 func NewMem() *Mem {
 	return &Mem{
 		sw:        make(map[string]singlewriter.State),
+		addrSpend: make(map[string]SpendState),
 		records:   make(map[recordKey]Record),
 		updatedAt: make(map[recordKey]int64),
 	}
@@ -43,12 +45,19 @@ func (m *Mem) Authorize(_ context.Context, r Request) (Grant, error) {
 	if rec, ok := m.records[rk]; ok {
 		existing = &rec
 	}
-	nextSW, rec, g, err := Decide(m.sw[r.KeyID], existing, r)
+	addr := SpendState{}
+	if r.AddressDailyCap > 0 {
+		addr = m.addrSpend[r.AddressSpendKey]
+	}
+	nextSW, nextAddr, rec, g, err := Decide(m.sw[r.KeyID], addr, existing, r)
 	if err != nil {
 		return Grant{}, err
 	}
 	if !g.Duplicate {
 		m.sw[r.KeyID] = nextSW
+		if r.AddressDailyCap > 0 {
+			m.addrSpend[r.AddressSpendKey] = nextAddr
+		}
 		m.records[rk] = rec
 		m.updatedAt[rk] = time.Now().UnixMilli()
 	}

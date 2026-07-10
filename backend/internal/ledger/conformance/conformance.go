@@ -51,6 +51,74 @@ func Run(t *testing.T, newAuth func() ledger.Authorizer) {
 		}
 	})
 
+	t.Run("same owner across two keys shares address daily cap", func(t *testing.T) {
+		a := newAuth()
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "a", Cloid: "c1", Digest: dig(1), Fence: 1,
+			Notional: 500, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 600,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("first key err = %v", err)
+		}
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "b", Cloid: "c2", Digest: dig(2), Fence: 1,
+			Notional: 200, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 600,
+			NowMs: cfNow,
+		}); !errors.Is(err, ledger.ErrAddressDailyCap) {
+			t.Fatalf("second key err = %v, want ErrAddressDailyCap", err)
+		}
+	})
+
+	t.Run("replay does not recharge the shared address cap", func(t *testing.T) {
+		a := newAuth()
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "a", Cloid: "c1", Digest: dig(1), Fence: 1,
+			Notional: 600, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("first sign err = %v", err)
+		}
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "a", Cloid: "c1", Digest: dig(1), Fence: 1,
+			Notional: 600, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("replay err = %v, want nil", err)
+		}
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "b", Cloid: "c2", Digest: dig(2), Fence: 1,
+			Notional: 300, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("300 should still fit after replay (600+300<=1000), err = %v", err)
+		}
+	})
+
+	t.Run("different owners do not share address daily cap", func(t *testing.T) {
+		a := newAuth()
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "a", Cloid: "c1", Digest: dig(1), Fence: 1,
+			Notional: 1000, DailyCap: 10_000,
+			AddressSpendKey: "0xaaa", AddressDailyCap: 1000,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("owner a err = %v", err)
+		}
+		if _, err := a.Authorize(ctx, Request{
+			KeyID: "b", Cloid: "c2", Digest: dig(2), Fence: 1,
+			Notional: 1000, DailyCap: 10_000,
+			AddressSpendKey: "0xbbb", AddressDailyCap: 1000,
+			NowMs: cfNow,
+		}); err != nil {
+			t.Fatalf("owner b err = %v, want nil (independent address budget)", err)
+		}
+	})
+
 	t.Run("same cloid different digest fails closed and does not disturb the record", func(t *testing.T) {
 		a := newAuth()
 		g1, err := a.Authorize(ctx, Request{KeyID: "k", Cloid: "c1", Digest: dig(1), Fence: 1, NowMs: cfNow})

@@ -78,7 +78,7 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 		return ledger.Grant{}, fmt.Errorf("pg ledger: record select: %w", err)
 	}
 
-	nextSW, rec, grant, derr := ledger.Decide(sw, existing, r)
+	nextSW, _, rec, grant, derr := ledger.Decide(sw, ledger.SpendState{}, existing, r)
 	if derr != nil {
 		return ledger.Grant{}, derr // typed rejection; deferred Rollback undoes the seed
 	}
