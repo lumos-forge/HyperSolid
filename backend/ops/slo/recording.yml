@@ -69,3 +69,13 @@ groups:
         expr: (sum(rate(hypersolid_reconcile_steps_total{outcome="error"}[30d])) or vector(0)) / sum(rate(hypersolid_reconcile_steps_total{outcome=~"ok|error"}[30d]))
         labels:
           slo: reconciler_success
+  - name: budget_saturation
+    rules:
+      - record: budget:denial_ratio:rate5m
+        expr: (sum(rate(hypersolid_budget_denials_total[5m])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[5m]))
+      - record: budget:denial_ratio:rate30m
+        expr: (sum(rate(hypersolid_budget_denials_total[30m])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[30m]))
+      - record: budget:denial_ratio:rate1h
+        expr: (sum(rate(hypersolid_budget_denials_total[1h])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[1h]))
+      - record: budget:denial_ratio:rate6h
+        expr: (sum(rate(hypersolid_budget_denials_total[6h])) or vector(0)) / sum(rate(hypersolid_http_requests_total{endpoint="sign_l1"}[6h]))
