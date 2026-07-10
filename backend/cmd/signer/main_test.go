@@ -736,8 +736,8 @@ func TestSignIPRateLimitSharedAcrossKeysSameOwnerSameIP(t *testing.T) {
 	body2 := `{"keyId":"k2","cloid":"c2","kind":"order","params":{"asset":1,"isBuy":true,"limitPx":"1","sz":"1","reduceOnly":false,"orderType":{"limit":{"tif":"Gtc"}}},"isTestnet":false}`
 	for i, body := range []string{body1, body2, body1} {
 		rr := doSign(body, "1.2.3.4:9999")
-		if i < 2 && rr.Code == http.StatusTooManyRequests {
-			t.Fatalf("request %d unexpectedly 429", i+1)
+		if i < 2 && rr.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want 200", i+1, rr.Code)
 		}
 		if i == 2 {
 			if rr.Code != http.StatusTooManyRequests {
