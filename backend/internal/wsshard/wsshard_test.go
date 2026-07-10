@@ -131,4 +131,35 @@ func TestAdmitPrefersEmptierShardAfterRelease(t *testing.T) {
 	}
 }
 
+func TestAdmitFullPoolDeniesAndCounts(t *testing.T) {
+	a, _ := New(2, 2) // capacity 4
+	admitN(t, a, 4)   // fill to capacity
+	if got := a.Stats().Free; got != 0 {
+		t.Fatalf("Free = %d, want 0 after filling capacity", got)
+	}
+	// Next two distinct users are denied and increment DeniedFull.
+	for i := 5; i <= 6; i++ {
+		if sid, ok := a.Admit("0x" + fmt.Sprintf("%040x", i)); ok || sid != -1 {
+			t.Fatalf("Admit over capacity = (%d,%v), want (-1,false)", sid, ok)
+		}
+	}
+	if got := a.Stats().DeniedFull; got != 2 {
+		t.Fatalf("DeniedFull = %d, want 2", got)
+	}
+	// An already-admitted user is still served (idempotent), not counted as denial.
+	if sid, ok := a.Admit("0x" + fmt.Sprintf("%040x", 1)); !ok || sid < 0 {
+		t.Fatalf("idempotent Admit at capacity = (%d,%v), want (>=0,true)", sid, ok)
+	}
+	if got := a.Stats().DeniedFull; got != 2 {
+		t.Fatalf("DeniedFull = %d after idempotent hit, want 2 (unchanged)", got)
+	}
+	// Releasing one slot lets a new user in again.
+	if !a.Release("0x" + fmt.Sprintf("%040x", 2)) {
+		t.Fatal("release failed")
+	}
+	if sid, ok := a.Admit("0x" + fmt.Sprintf("%040x", 7)); !ok || sid < 0 {
+		t.Fatalf("Admit after freeing a slot = (%d,%v), want (>=0,true)", sid, ok)
+	}
+}
+
 var _ = sync.Mutex{} // keep sync imported for later tasks
