@@ -200,6 +200,13 @@ func (metricsObserver) HLRequest(call string, s float64) { metrics.ObserveReconc
 var _ reconciler.Observer = metricsObserver{}
 var _ reconciler.Tracer = tracing.StepTracer{}
 
+// Bound the grouped owner-address/IP limiter so client-controlled source IP churn
+// cannot grow its bucket set without limit.
+const (
+	ipLimiterIdleTTL    = 30 * time.Minute
+	ipLimiterMaxBuckets = 10_000
+)
+
 // handleSignL1 signs an L1 action with the keystore signer named by keyId. The
 // reject-first policy (Evaluate) runs first; then, if this instance is the leader,
 // the single-writer atomically enforces the fencing token + daily notional cap and
@@ -455,7 +462,7 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 	}))
 	mux.HandleFunc("/v1/digest/l1", loggedRoute("digest_l1", handleDigestL1))
 	keyLimiter := ratelimit.New(nowMs)
-	ipLimiter := ratelimit.New(nowMs)
+	ipLimiter := ratelimit.NewBounded(nowMs, ipLimiterIdleTTL, ipLimiterMaxBuckets)
 	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, keyLimiter, ipLimiter)))
 	mux.HandleFunc("/v1/reconcile", loggedRoute("reconcile", handleReconcile(led)))
 	mux.HandleFunc("/v1/orphans", loggedRoute("orphans", handleOrphans(led)))

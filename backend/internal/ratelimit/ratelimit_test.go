@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeClock is a mutable millisecond clock for deterministic refill tests.
@@ -103,6 +104,40 @@ func TestClockRollbackNoNegativeRefill(t *testing.T) {
 	}
 	if l.Allow("k", 1, 2) {
 		t.Fatalf("rollback must not add negative/extra tokens beyond what remained")
+	}
+}
+
+func TestBoundedLimiterEvictsIdleBuckets(t *testing.T) {
+	now := int64(10_000)
+	l := NewBounded(func() int64 { return now }, 5*time.Second, 10)
+	if !l.Allow("a", 1, 1) {
+		t.Fatal("first key should be allowed")
+	}
+	now += 6_000 // beyond maxIdle
+	for i := 0; i < 254; i++ {
+		l.Allow("warmup", 1, 1)
+	}
+	if !l.Allow("b", 1, 1) {
+		t.Fatal("second key should still be allowed after periodic idle reap")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.buckets["a"]; ok {
+		t.Fatal("idle key a should have been evicted")
+	}
+}
+
+func TestBoundedLimiterDeniesNewBucketWhenFull(t *testing.T) {
+	now := int64(10_000)
+	l := NewBounded(func() int64 { return now }, 0, 2)
+	if !l.Allow("a", 1, 1) {
+		t.Fatal("a should be allowed")
+	}
+	if !l.Allow("b", 1, 1) {
+		t.Fatal("b should be allowed")
+	}
+	if l.Allow("c", 1, 1) {
+		t.Fatal("c should be denied once the bounded bucket set is full")
 	}
 }
 
