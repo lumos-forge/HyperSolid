@@ -38,6 +38,7 @@ import (
 	ledgerpg "github.com/lumos-forge/hypersolid/backend/internal/ledger/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/logging"
 	"github.com/lumos-forge/hypersolid/backend/internal/metrics"
+	"github.com/lumos-forge/hypersolid/backend/internal/obs"
 	"github.com/lumos-forge/hypersolid/backend/internal/policy"
 	"github.com/lumos-forge/hypersolid/backend/internal/ratelimit"
 	"github.com/lumos-forge/hypersolid/backend/internal/reconciler"
@@ -457,10 +458,10 @@ func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return tracing.Middleware(name, metrics.Middleware(name, h))
+		return tracing.Middleware(name, obs.Middleware(name, metrics.Middleware(name, h)))
 	}
 	loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
-		return tracing.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h)))
+		return tracing.Middleware(name, obs.Middleware(name, logging.Middleware(name, metrics.Middleware(name, h))))
 	}
 	mux.HandleFunc("/healthz", route("healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -716,6 +717,9 @@ func run() int {
 		defer cancel()
 		_ = shutdownTracing(sc)
 	}()
+
+	flushSentry, _ := obs.Setup()
+	defer flushSentry(2 * time.Second)
 
 	ks := keystore.New()
 	policies := policy.NewStore()
