@@ -109,6 +109,14 @@ export class StrategyApi {
     return this.request<void>("/agent/revoke", "POST");
   }
 
+  // push registration (M7 P3)
+  registerPush(token: string, platform: string) {
+    return this.request<void>("/push/register", "POST", { token, platform });
+  }
+  unregisterPush(token: string) {
+    return this.request<void>("/push/unregister", "POST", { token });
+  }
+
   // strategies
   listStrategies() {
     return this.request<Strategy[]>("/strategies", "GET");
