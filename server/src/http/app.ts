@@ -171,10 +171,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const owner = ownerOf(req, reply);
     if (!owner) return;
     if (!deps.pushTokens) return reply.code(503).send({ error: "push not configured" });
-    const { token, platform } = (req.body ?? {}) as { token?: unknown; platform?: unknown };
+    const { token, platform, locale } = (req.body ?? {}) as { token?: unknown; platform?: unknown; locale?: unknown };
     if (!isExpoPushToken(token)) return reply.code(400).send({ error: "invalid push token" });
     const plat = platform === "ios" || platform === "android" ? platform : null;
-    deps.pushTokens.register(owner, token, plat, now());
+    const loc = locale === "en" || locale === "zh" ? locale : null;
+    deps.pushTokens.register(owner, token, plat, loc, now());
     return reply.code(204).send();
   });
 

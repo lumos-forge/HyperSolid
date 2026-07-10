@@ -8,7 +8,7 @@ const T3 = "ExponentPushToken[cccccccccccccccccccccc]";
 const OWNER = "0x1111111111111111111111111111111111111111";
 
 function row(token: string): PushTokenRow {
-  return { token, owner: OWNER, platform: "ios", createdAt: 1, updatedAt: 1 };
+  return { token, owner: OWNER, platform: "ios", locale: null, createdAt: 1, updatedAt: 1 };
 }
 
 // Fake store recording deleteToken calls.
