@@ -14,7 +14,7 @@ import { usePushPrefsStore } from "../state/pushPrefsStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
 import { StrategyApi } from "../services/strategyApi";
 import { openStrategySession } from "../wallet/walletSession";
-import { applyPushPreference } from "../services/pushToggle";
+import { applyPushPreference, unregisterForSignOut } from "../services/pushToggle";
 import type { LocalWalletService } from "../wallet/localWallet";
 import { useT } from "../i18n/useT";
 import type { Locale } from "../i18n/messages";
@@ -100,13 +100,14 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
     }
   }
 
+  const makeAuthedApi = async () => {
+    const local = wallet as Partial<LocalWalletService> | null;
+    if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || !baseUrl || !address) return null;
+    const tok = await openStrategySession(new StrategyApi(baseUrl, null), local.getViemAccount(), address);
+    return new StrategyApi(baseUrl, tok);
+  };
+
   async function onToggleNotifications() {
-    const makeAuthedApi = async () => {
-      const local = wallet as Partial<LocalWalletService> | null;
-      if (mode !== "local" || !local || typeof local.getViemAccount !== "function" || !baseUrl || !address) return null;
-      const tok = await openStrategySession(new StrategyApi(baseUrl, null), local.getViemAccount(), address);
-      return new StrategyApi(baseUrl, tok);
-    };
     const { expoPushEnv } = await import("../services/pushEnv");
     const r = await applyPushPreference(!pushEnabled, { env: expoPushEnv(), makeAuthedApi, prevToken: pushToken });
     if (!pushEnabled) {
@@ -187,6 +188,9 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
         text: t("account.signOutSwitch"),
         style: "destructive",
         onPress: async () => {
+          await unregisterForSignOut(makeAuthedApi, pushToken);
+          await setPushEnabled(false);
+          await setPushToken(null);
           try {
             await manager.signOut();
             reset();
