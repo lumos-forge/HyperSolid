@@ -186,7 +186,7 @@ loggedRoute := func(name string, h http.HandlerFunc) http.HandlerFunc {
 5. **Recover 无 panic → no-op**；**有 panic → 捕获后 re-panic**：`func(){ defer obs.Recover(); panic("x") }()` 用外层 `recover()` 断言 re-panic 值为 "x"。
 6. **并发中间件无竞态**：多 goroutine 并发打 panic 请求，`go test -race` 无竞态、每个响应都是 500。
 
-> Mock transport：`sentry.ClientOptions{Transport: mock}` 会被 sentry-go 直接采用（`setupTransport` 对非 nil 自定义 Transport 一律保留，即便 DSN 为空也不回退 noopTransport，故测试无需真实 DSN/网络）。mock 需实现 sentry-go `Transport` 接口的 4 个方法：`Configure(ClientOptions)`、`SendEvent(*Event)`、`Flush(time.Duration) bool`、`FlushWithContext(context.Context) bool`；`SendEvent` 记录收到的 `*sentry.Event` 供断言。注意：因测试会用自定义 Transport 调 `sentry.Init` 装配全局 hub，测试需在 `t.Cleanup` 中 `sentry.Init(sentry.ClientOptions{})` 复位，避免污染后续测试的全局 hub。
+> Mock transport：`sentry.ClientOptions{Transport: mock}` 会被 sentry-go 直接采用（`setupTransport` 对非 nil 自定义 Transport 一律保留，即便 DSN 为空也不回退 noopTransport，故测试无需真实 DSN/网络）。mock 需实现 sentry-go `Transport` 接口的 5 个方法：`Configure(ClientOptions)`、`SendEvent(*Event)`、`Flush(time.Duration) bool`、`FlushWithContext(context.Context) bool`、`Close()`；`SendEvent` 记录收到的 `*sentry.Event` 供断言。注意：（a）因测试会用自定义 Transport 调 `sentry.Init` 装配全局 hub，测试需在 `t.Cleanup` 中 `sentry.Init(sentry.ClientOptions{})` 复位，避免污染后续测试的全局 hub；（b）`Hub.Recover` 对 `error` 值走 `EventFromException`（填充 `event.Exception`），对 `string` 走 `EventFromMessage`，故断言 `Exception` 的用例须 panic 一个 `error`。
 
 ## 8. 验证命令
 

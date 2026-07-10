@@ -19,8 +19,9 @@
 - `sentry.Flush(timeout time.Duration) bool`.
 - `sentry.Event` has field `Request *sentry.Request` (json `request,omitempty`) and `Exception []sentry.Exception`.
 - `BeforeSend func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event`.
-- `sentry.Transport` interface has 4 methods: `Flush(time.Duration) bool`, `FlushWithContext(context.Context) bool`, `Configure(sentry.ClientOptions)`, `SendEvent(*sentry.Event)`.
+- `sentry.Transport` interface has 5 methods: `Flush(time.Duration) bool`, `FlushWithContext(context.Context) bool`, `Configure(sentry.ClientOptions)`, `SendEvent(*sentry.Event)`, `Close()`.
 - A non-nil custom `Transport` is honored by `setupTransport` even when `Dsn == ""` (it does NOT fall back to noopTransport), so tests inject a mock transport with no real DSN/network.
+- `Hub.Recover(v)` branches on the value: an `error` → `EventFromException` (populates `event.Exception` + stack); a `string`/other → `EventFromMessage` (populates `event.Message`, leaves `Exception` empty). Tests that assert on `event.Exception` must panic with an `error` (e.g. `errors.New(...)`).
 
 ---
 
@@ -328,6 +329,7 @@ First, update the test file's import block to:
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -348,9 +350,10 @@ type mockTransport struct {
 	events []*sentry.Event
 }
 
-func (m *mockTransport) Configure(sentry.ClientOptions)           {}
+func (m *mockTransport) Configure(sentry.ClientOptions)        {}
 func (m *mockTransport) Flush(time.Duration) bool                 { return true }
 func (m *mockTransport) FlushWithContext(context.Context) bool    { return true }
+func (m *mockTransport) Close()                                   {}
 func (m *mockTransport) SendEvent(e *sentry.Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -392,7 +395,7 @@ func TestMiddlewareReportsPanicScrubbedAndTagged(t *testing.T) {
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
 
 	h := Middleware("sign_l1", func(http.ResponseWriter, *http.Request) {
-		panic("kaboom")
+		panic(errors.New("kaboom")) // error → event.Exception; a string would map to Message
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", nil).WithContext(ctx)
