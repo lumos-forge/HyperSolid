@@ -83,6 +83,15 @@ func (s *Store) Authorize(ctx context.Context, r ledger.Request) (ledger.Grant, 
 	}
 
 	addr := ledger.SpendState{}
+	// Duplicate replay is a pure read of the existing intent: return the original
+	// nonce without touching the shared address-spend row, so a harmless replay
+	// cannot block unrelated fresh authorizations on the same owner address.
+	if existing != nil {
+		if existing.Digest != r.Digest {
+			return ledger.Grant{}, ledger.ErrCloidReuse
+		}
+		return ledger.Grant{Nonce: existing.Nonce, Duplicate: true}, nil
+	}
 	if r.AddressDailyCap > 0 {
 		if _, err := tx.Exec(ctx, addrSeedSQL, r.AddressSpendKey); err != nil {
 			return ledger.Grant{}, fmt.Errorf("pg ledger: addr seed: %w", err)
