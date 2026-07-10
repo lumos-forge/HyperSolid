@@ -1,5 +1,6 @@
 import type { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
-import type { PushTokenStore } from "./pushTokenStore";
+import type { PushTokenStore, PushTokenRow } from "./pushTokenStore";
+import { toPushLocale, type PushLocale } from "./messages";
 
 // Expo push token format (matches Expo.isExpoPushToken). Used as the default
 // validator so this module needs only expo-server-sdk's (erased) types — no
@@ -49,25 +50,33 @@ export class Notifier {
     this.isValid = deps.isValidToken ?? ((t) => EXPO_PUSH_TOKEN.test(t));
   }
 
-  async notify(owner: string, n: Notification): Promise<NotifyResult> {
+  async notify(owner: string, render: (locale: PushLocale) => Notification): Promise<NotifyResult> {
     const result: NotifyResult = { tokens: 0, sent: 0, errors: 0, pruned: 0 };
-    let tokens: string[];
+    let rows: PushTokenRow[];
     try {
-      tokens = this.store.tokensForOwner(owner).map((r) => r.token).filter((t) => this.isValid(t));
+      rows = this.store.tokensForOwner(owner).filter((r) => this.isValid(r.token));
     } catch (err) {
       this.log("push tokensForOwner failed", err);
       return result;
     }
-    result.tokens = tokens.length;
-    if (tokens.length === 0) return result;
+    result.tokens = rows.length;
+    if (rows.length === 0) return result;
 
-    const messages: ExpoPushMessage[] = tokens.map((to) => ({
-      to,
-      sound: "default",
-      title: n.title,
-      body: n.body,
-      data: n.data,
-    }));
+    const cache = new Map<PushLocale, Notification>();
+    const renderFor = (loc: PushLocale): Notification => {
+      let n = cache.get(loc);
+      if (!n) {
+        n = render(loc);
+        cache.set(loc, n);
+      }
+      return n;
+    };
+
+    const tokens = rows.map((r) => r.token);
+    const messages: ExpoPushMessage[] = rows.map((r) => {
+      const n = renderFor(toPushLocale(r.locale));
+      return { to: r.token, sound: "default", title: n.title, body: n.body, data: n.data };
+    });
 
     let chunks: ExpoPushMessage[][];
     try {
