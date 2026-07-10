@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1091,6 +1092,40 @@ func TestSignSameOwnerDifferentAddressCapConfigFailsClosed(t *testing.T) {
 	}
 	if out.Error != "address daily cap exceeded" {
 		t.Fatalf("error = %q, want %q", out.Error, "address daily cap exceeded")
+	}
+}
+
+func TestSignInvalidAddressDailyCapsFailClosed(t *testing.T) {
+	cases := []float64{-1, math.NaN(), math.Inf(1)}
+	for _, cap := range cases {
+		ks := keystore.New()
+		_ = ks.Add("k1", bytes.Repeat([]byte{1}, 32))
+		policies := policy.NewStore()
+		policies.Set("k1", policy.Config{
+			AllowedKinds:                map[string]bool{"order": true},
+			MaxNotionalUsdc:             1e12,
+			DailyMaxNotionalUsdc:        1e12,
+			OwnerAddress:                "0x1111111111111111111111111111111111111111",
+			AddressDailyMaxNotionalUsdc: cap,
+		})
+		h := leaderMux(ks, policies, func() int64 { return 1700000000000 })
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sign/l1", strings.NewReader(`{"keyId":"k1","cloid":"c1","kind":"order","params":{"asset":1,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "1.2.3.4:9999"
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("cap=%v status=%d, want 403", cap, rr.Code)
+		}
+		var out struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+			t.Fatalf("cap=%v decode err=%v", cap, err)
+		}
+		if out.Error != "address daily cap exceeded" {
+			t.Fatalf("cap=%v error=%q, want %q", cap, out.Error, "address daily cap exceeded")
+		}
 	}
 }
 

@@ -37,7 +37,7 @@ func Decide(sw singlewriter.State, addr SpendState, existing *Record, r Request)
 	if r.AddressDailyCap < 0 {
 		return sw, addr, Record{}, Grant{}, ErrAddressDailyCap
 	}
-	if r.AddressDailyCap > 0 {
+	if r.AddressDailyCap != 0 {
 		nextAddr, err = DecideSpend(addr, r.Notional, r.AddressDailyCap, r.NowMs)
 		if err != nil {
 			return sw, addr, Record{}, Grant{}, err

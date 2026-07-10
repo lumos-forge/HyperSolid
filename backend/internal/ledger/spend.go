@@ -13,7 +13,7 @@ func DecideSpend(s SpendState, notional, dailyCap float64, nowMs int64) (SpendSt
 	if math.IsNaN(notional) || math.IsInf(notional, 0) || notional < 0 {
 		return s, ErrAddressDailyCap
 	}
-	if dailyCap < 0 {
+	if math.IsNaN(dailyCap) || math.IsInf(dailyCap, 0) || dailyCap < 0 {
 		return s, ErrAddressDailyCap
 	}
 	day := nowMs / spendDayMs

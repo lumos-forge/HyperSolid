@@ -282,7 +282,7 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			writeErr(w, http.StatusServiceUnavailable, "not leader")
 			return
 		}
-		if cfg.AddressDailyMaxNotionalUsdc > 0 && !ownerOK {
+		if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
 			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
 			return
 		}

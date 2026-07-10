@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/lumos-forge/hypersolid/backend/internal/singlewriter"
@@ -71,5 +72,19 @@ func TestDecidePassesThroughSingleWriterErrors(t *testing.T) {
 	}
 	if _, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{KeyID: "k", Cloid: "c1", Fence: 1, Notional: 2000, DailyCap: 1000, NowMs: tNow}); !errors.Is(err, singlewriter.ErrDailyCap) {
 		t.Fatalf("err = %v, want ErrDailyCap", err)
+	}
+}
+
+func TestDecideAddressCapRejectsInvalidValues(t *testing.T) {
+	for _, cap := range []float64{-1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		_, _, _, _, err := Decide(singlewriter.State{}, SpendState{}, nil, Request{
+			KeyID: "k", Cloid: "c1", Digest: [32]byte{1}, Fence: 1,
+			Notional: 1, DailyCap: 0,
+			AddressSpendKey: "0xaaa", AddressDailyCap: cap,
+			NowMs: tNow,
+		})
+		if !errors.Is(err, ErrAddressDailyCap) {
+			t.Fatalf("cap=%v err=%v, want ErrAddressDailyCap", cap, err)
+		}
 	}
 }
