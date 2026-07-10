@@ -176,3 +176,29 @@ func TestScrubRequestDropsRequest(t *testing.T) {
 		t.Fatalf("Request = %+v, want nil after scrub", out.Request)
 	}
 }
+
+func TestRecoverNoPanicIsNoOp(t *testing.T) {
+	// Calling Recover with no panic in flight must do nothing and not panic.
+	func() {
+		defer Recover()
+	}()
+}
+
+func TestRecoverRepanicsAfterReporting(t *testing.T) {
+	mt := initMockSentry(t)
+	var got interface{}
+	func() {
+		defer func() { got = recover() }() // catch the re-panic
+		defer Recover()
+		panic("escaped")
+	}()
+	if got != "escaped" {
+		t.Fatalf("re-panic value = %v, want %q", got, "escaped")
+	}
+	if !sentry.Flush(2 * time.Second) {
+		t.Fatal("sentry flush timed out")
+	}
+	if n := len(mt.captured()); n != 1 {
+		t.Fatalf("captured %d events, want 1", n)
+	}
+}

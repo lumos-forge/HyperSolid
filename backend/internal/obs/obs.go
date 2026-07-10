@@ -92,3 +92,16 @@ func reportPanic(ctx context.Context, name string, rec interface{}) {
 		sentry.CurrentHub().Recover(rec)
 	})
 }
+
+// Recover is for a deferred call at the top of a goroutine (e.g. main or a
+// background loop). It recovers a panic that escaped, reports it to Sentry,
+// flushes, and re-panics so the original crash behavior (stack print, non-zero
+// exit) is preserved. It is a no-op when there is no panic in flight, and the
+// report/flush are safe no-ops when Sentry is uninitialized.
+func Recover() {
+	if rec := recover(); rec != nil {
+		sentry.CurrentHub().Recover(rec)
+		sentry.Flush(2 * time.Second)
+		panic(rec)
+	}
+}
