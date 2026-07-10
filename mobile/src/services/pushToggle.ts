@@ -32,3 +32,18 @@ export async function applyPushPreference(enable: boolean, deps: PushToggleDeps)
     return { ok: false, reason: "error" };
   }
 }
+
+/** Best-effort unregister for sign-out: mint a session and unregister the token if present.
+ *  Never throws — sign-out must proceed regardless of push cleanup. */
+export async function unregisterForSignOut(
+  makeAuthedApi: () => Promise<AuthedApi | null>,
+  prevToken: string | null,
+): Promise<void> {
+  try {
+    if (!prevToken) return;
+    const api = await makeAuthedApi();
+    if (api) await unregisterDeviceForPush(api, prevToken);
+  } catch {
+    // best-effort
+  }
+}

@@ -1,4 +1,4 @@
-import { applyPushPreference } from "./pushToggle";
+import { applyPushPreference, unregisterForSignOut } from "./pushToggle";
 import type { PushEnv, PermStatus } from "./pushRegistration";
 
 function envFake(over: Partial<PushEnv> & { permSeq?: PermStatus[] } = {}): PushEnv {
@@ -57,5 +57,33 @@ describe("applyPushPreference", () => {
   it("never throws when makeAuthedApi rejects", async () => {
     const r = await applyPushPreference(true, { env: envFake(), makeAuthedApi: async () => { throw new Error("mint"); }, prevToken: null });
     expect(r).toEqual({ ok: false, reason: "error" });
+  });
+});
+
+describe("unregisterForSignOut", () => {
+  it("unregisters the previous token via a minted session", async () => {
+    const api = apiFake();
+    await unregisterForSignOut(async () => api, "ExponentPushToken[old]");
+    expect(api.calls.unregister).toEqual(["ExponentPushToken[old]"]);
+  });
+
+  it("does nothing when there is no previous token", async () => {
+    const api = apiFake();
+    let minted = false;
+    await unregisterForSignOut(async () => { minted = true; return api; }, null);
+    expect(minted).toBe(false);
+    expect(api.calls.unregister).toHaveLength(0);
+  });
+
+  it("does not unregister when no session is available", async () => {
+    const api = apiFake();
+    await unregisterForSignOut(async () => null, "ExponentPushToken[old]");
+    expect(api.calls.unregister).toHaveLength(0);
+  });
+
+  it("never throws when makeAuthedApi rejects", async () => {
+    await expect(
+      unregisterForSignOut(async () => { throw new Error("mint"); }, "ExponentPushToken[old]"),
+    ).resolves.toBeUndefined();
   });
 });
