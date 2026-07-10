@@ -21,3 +21,21 @@ groups:
         annotations:
           summary: "SLO slow burn for {{ $labels.slo }}"
           description: "{{ $labels.slo }} error budget burning: 6h and 30m burn rate both exceed 6x (about 5% of the 30d budget per 6h). Open a ticket."
+  - name: budget_alerts
+    rules:
+      - alert: BudgetSaturationCritical
+        expr: budget:denial_ratio:rate1h > 0.5 and on() budget:denial_ratio:rate5m > 0.5
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "signer budget saturation critical"
+          description: "Over 50% of sign_l1 requests are being denied by rate/quota budgets (1h and 5m both > 50%). The signer is in a heavily throttled regime — investigate abusive/misconfigured clients or raise budgets. Page."
+      - alert: BudgetSaturationHigh
+        expr: budget:denial_ratio:rate6h > 0.2 and on() budget:denial_ratio:rate30m > 0.2
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "signer budget saturation high"
+          description: "Over 20% of sign_l1 requests are being denied by rate/quota budgets (6h and 30m both > 20%). Budgets are frequently saturating — open a ticket to investigate."

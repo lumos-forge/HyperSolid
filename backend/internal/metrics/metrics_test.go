@@ -150,3 +150,33 @@ func TestObserveReconcileHL(t *testing.T) {
 		}
 	}
 }
+
+func TestObserveBudgetDenial(t *testing.T) {
+	before := BudgetDenialValue(BudgetIPRate)
+	ObserveBudgetDenial(BudgetIPRate)
+	ObserveBudgetDenial(BudgetIPRate)
+	if got := BudgetDenialValue(BudgetIPRate) - before; got != 2 {
+		t.Fatalf("ip_rate delta = %v, want 2", got)
+	}
+
+	beforeKey := BudgetDenialValue(BudgetKeyRate)
+	ObserveBudgetDenial(BudgetKeyRate)
+	if got := BudgetDenialValue(BudgetKeyRate) - beforeKey; got != 1 {
+		t.Fatalf("key_rate delta = %v, want 1", got)
+	}
+
+	// Exposition must expose the labeled series once incremented.
+	body := scrape(t)
+	if !strings.Contains(body, `hypersolid_budget_denials_total{budget="ip_rate"}`) {
+		t.Fatalf("missing ip_rate series in exposition:\n%s", body)
+	}
+	if !strings.Contains(body, `hypersolid_budget_denials_total{budget="key_rate"}`) {
+		t.Fatalf("missing key_rate series in exposition:\n%s", body)
+	}
+}
+
+func TestBudgetDenialValueUnknownIsZero(t *testing.T) {
+	if got := BudgetDenialValue("address_cap"); got < 0 {
+		t.Fatalf("address_cap value = %v, want >= 0", got)
+	}
+}

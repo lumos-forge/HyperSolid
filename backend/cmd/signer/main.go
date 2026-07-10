@@ -64,6 +64,14 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// denyBudget records a budget denial metric, then writes the error response. The
+// caller must return immediately after. It centralizes the "count then reject"
+// pattern for the signer's rate/quota budgets.
+func denyBudget(w http.ResponseWriter, code int, msg, budget string) {
+	metrics.ObserveBudgetDenial(budget)
+	writeErr(w, code, msg)
+}
+
 func handleDigestL1(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -233,36 +241,36 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 		ownerAddr, ownerOK := normalizeOwnerAddress(cfg.OwnerAddress)
 		if ownerOK {
 			if policies.OwnerIPBudgetConflict(ownerAddr) && policies.KeyOwnerIPBudgetConflict(req.KeyID) {
-				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				denyBudget(w, http.StatusTooManyRequests, "ip rate limit exceeded", metrics.BudgetIPRate)
 				return
 			}
 		}
 		if cfg.IPRatePerSec != 0 || cfg.IPRateBurst != 0 {
 			if !ownerOK {
-				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				denyBudget(w, http.StatusTooManyRequests, "ip rate limit exceeded", metrics.BudgetIPRate)
 				return
 			}
 			if cfg.IPRatePerSec == 0 {
-				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				denyBudget(w, http.StatusTooManyRequests, "ip rate limit exceeded", metrics.BudgetIPRate)
 				return
 			}
 			ip, ok := canonicalRemoteIP(r.RemoteAddr)
 			if !ok || !ipLimiter.Allow(ownerIPKey(ownerAddr, ip), cfg.IPRatePerSec, cfg.IPRateBurst) {
-				writeErr(w, http.StatusTooManyRequests, "ip rate limit exceeded")
+				denyBudget(w, http.StatusTooManyRequests, "ip rate limit exceeded", metrics.BudgetIPRate)
 				return
 			}
 		}
 		if !keyLimiter.Allow(req.KeyID, cfg.RatePerSec, cfg.RateBurst) {
-			writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+			denyBudget(w, http.StatusTooManyRequests, "rate limit exceeded", metrics.BudgetKeyRate)
 			return
 		}
 		intent := intentFor(req.Kind, req.Params)
 		if cfg.AddressDailyMaxNotionalUsdc != 0 && !ownerOK {
-			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			denyBudget(w, http.StatusForbidden, "address daily cap exceeded", metrics.BudgetAddressCap)
 			return
 		}
 		if intent.NotionalUsdc != 0 && ownerOK && policies.OwnerAddressBudgetConflict(ownerAddr) {
-			writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+			denyBudget(w, http.StatusForbidden, "address daily cap exceeded", metrics.BudgetAddressCap)
 			return
 		}
 		addressSpendKey := ""
@@ -318,11 +326,11 @@ func handleSignL1(ks *keystore.Keystore, policies *policy.Store, auth ledger.Aut
 			case errors.Is(err, ledger.ErrCloidReuse):
 				writeErr(w, http.StatusConflict, "cloid reuse mismatch")
 			case errors.Is(err, ledger.ErrAddressDailyCap):
-				writeErr(w, http.StatusForbidden, "address daily cap exceeded")
+				denyBudget(w, http.StatusForbidden, "address daily cap exceeded", metrics.BudgetAddressCap)
 			case errors.Is(err, singlewriter.ErrFenced):
 				writeErr(w, http.StatusConflict, "fenced")
 			case errors.Is(err, singlewriter.ErrDailyCap):
-				writeErr(w, http.StatusForbidden, "daily cap exceeded")
+				denyBudget(w, http.StatusForbidden, "daily cap exceeded", metrics.BudgetKeyDailyCap)
 			case errors.Is(err, singlewriter.ErrInvalidNotional):
 				writeErr(w, http.StatusForbidden, "invalid notional")
 			case errors.Is(err, singlewriter.ErrInvalidClock):

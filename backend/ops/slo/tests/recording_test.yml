@@ -69,3 +69,19 @@ tests:
         exp_samples:
           - labels: 'slo:burn_rate:rate5m{slo="reconciler_success"}'
             value: 0
+
+  # Budget saturation: 20 denials + 80 ok + 20 (429) per min → denial_ratio 0.2.
+  - interval: 1m
+    input_series:
+      - series: 'hypersolid_budget_denials_total{budget="ip_rate"}'
+        values: '0+20x60'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="200"}'
+        values: '0+80x60'
+      - series: 'hypersolid_http_requests_total{endpoint="sign_l1",code="429"}'
+        values: '0+20x60'
+    promql_expr_test:
+      - expr: budget:denial_ratio:rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: 'budget:denial_ratio:rate5m'
+            value: 0.2 # promtool-exact (reconcile after first run)
