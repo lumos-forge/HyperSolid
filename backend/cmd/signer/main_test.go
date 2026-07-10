@@ -1697,3 +1697,25 @@ func TestHealthzEmitsNoAccessLog(t *testing.T) {
 		t.Fatalf("healthz must not emit an access log, got %q", buf.String())
 	}
 }
+
+func TestHealthzThroughObsWrapper(t *testing.T) {
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), func() int64 { return 0 }))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("healthz status = %d, want 200", res.StatusCode)
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("healthz body not JSON: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("status = %q, want ok", body.Status)
+	}
+}
