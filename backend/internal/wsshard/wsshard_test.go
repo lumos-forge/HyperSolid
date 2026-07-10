@@ -186,4 +186,76 @@ func TestAssignmentLookup(t *testing.T) {
 	}
 }
 
-var _ = sync.Mutex{} // keep sync imported for later tasks
+func TestStatsShardLoadIsCopy(t *testing.T) {
+	a, _ := New(2, 10)
+	a.Admit("0x" + fmt.Sprintf("%040x", 1))
+	s := a.Stats()
+	s.ShardLoad[0] = 999 // mutate the returned slice
+	if got := a.Stats().ShardLoad[0]; got == 999 {
+		t.Fatal("Stats().ShardLoad must be a copy; caller mutation leaked into allocator")
+	}
+}
+
+func TestInvariantsUnderMixedOps(t *testing.T) {
+	a, _ := New(4, 5) // capacity 20
+	// Admit 20, release every other, admit 10 more; invariants must always hold.
+	for i := 1; i <= 20; i++ {
+		a.Admit("0x" + fmt.Sprintf("%040x", i))
+	}
+	for i := 1; i <= 20; i += 2 {
+		a.Release("0x" + fmt.Sprintf("%040x", i))
+	}
+	for i := 100; i < 110; i++ {
+		a.Admit("0x" + fmt.Sprintf("%040x", i))
+	}
+	s := a.Stats()
+	sum := 0
+	for i, l := range s.ShardLoad {
+		if l < 0 || l > s.MaxPerShard {
+			t.Fatalf("ShardLoad[%d] = %d out of [0,%d]", i, l, s.MaxPerShard)
+		}
+		sum += l
+	}
+	if sum != s.Admitted {
+		t.Fatalf("sum(ShardLoad)=%d != Admitted=%d", sum, s.Admitted)
+	}
+	if s.Free != s.Capacity-s.Admitted {
+		t.Fatalf("Free=%d != Capacity-Admitted=%d", s.Free, s.Capacity-s.Admitted)
+	}
+}
+
+func TestConcurrentAdmitReleaseStats(t *testing.T) {
+	a, _ := New(8, 10) // capacity 80
+	var wg sync.WaitGroup
+	for g := 0; g < 16; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				addr := "0x" + fmt.Sprintf("%040x", g*1000+i%50)
+				switch i % 3 {
+				case 0:
+					a.Admit(addr)
+				case 1:
+					a.Release(addr)
+				default:
+					_ = a.Stats()
+					_, _ = a.Assignment(addr)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	// Final invariant: sum of shard loads equals Admitted, none over cap.
+	s := a.Stats()
+	sum := 0
+	for i, l := range s.ShardLoad {
+		if l < 0 || l > s.MaxPerShard {
+			t.Fatalf("post-race ShardLoad[%d]=%d out of [0,%d]", i, l, s.MaxPerShard)
+		}
+		sum += l
+	}
+	if sum != s.Admitted {
+		t.Fatalf("post-race sum(ShardLoad)=%d != Admitted=%d", sum, s.Admitted)
+	}
+}
