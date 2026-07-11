@@ -8,6 +8,8 @@ import { SqliteActivityStore } from "./strategies/activityStore";
 import { SqlitePushTokenStore } from "./push/pushTokenStore";
 import { SqlitePushPrefStore } from "./push/pushPrefStore";
 import { SqliteQuietHoursStore } from "./push/pushQuietHoursStore";
+import { SqlitePushReceiptStore } from "./push/pushReceiptStore";
+import { pollPushReceipts } from "./push/receiptPoller";
 import { Expo } from "expo-server-sdk";
 import { Notifier } from "./push/notifier";
 import { NotifyingActivityStore } from "./push/notifyingActivityStore";
@@ -77,7 +79,9 @@ export async function main(): Promise<void> {
   const pushTokens = SqlitePushTokenStore.open(dbPath);
   const pushPrefs = SqlitePushPrefStore.open(dbPath);
   const quietHours = SqliteQuietHoursStore.open(dbPath);
-  const notifier = new Notifier({ expo: new Expo(), store: pushTokens, prefs: pushPrefs, quietHours });
+  const pushReceipts = SqlitePushReceiptStore.open(dbPath);
+  const expoClient = new Expo();
+  const notifier = new Notifier({ expo: expoClient, store: pushTokens, prefs: pushPrefs, quietHours, receipts: pushReceipts });
   const activity = new NotifyingActivityStore(SqliteActivityStore.open(dbPath), notifier);
 
   const transport = makeTransport(isTestnet);
@@ -174,6 +178,14 @@ export async function main(): Promise<void> {
   }, tickMs);
   timer.unref?.();
 
+  const receiptPollMs = Number(process.env.RECEIPT_POLL_MS ?? 15 * 60 * 1000);
+  const receiptTimer = setInterval(() => {
+    void pollPushReceipts({ expo: expoClient, receipts: pushReceipts, tokens: pushTokens, now }).catch(() => {
+      /* pollPushReceipts is itself fail-safe; guard just in case */
+    });
+  }, receiptPollMs);
+  receiptTimer.unref?.();
+
   const app = buildApp({ auth, agents, store, activity, pushTokens, pushPrefs, quietHours, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
@@ -181,6 +193,7 @@ export async function main(): Promise<void> {
 
   const shutdown = async () => {
     clearInterval(timer);
+    clearInterval(receiptTimer);
     if (deadManEnabled) {
       await deadManClearAll({ activeOwners, executor: deadManExecutor });
     }
