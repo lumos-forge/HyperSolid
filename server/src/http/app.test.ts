@@ -5,6 +5,7 @@ import { AgentManager, MemoryAgentStore } from "../agent/agentManager";
 import { MemoryStrategyStore } from "../strategies/store";
 import { MemoryActivityStore } from "../strategies/activityStore";
 import { SqlitePushTokenStore } from "../push/pushTokenStore";
+import { SqlitePushPrefStore } from "../push/pushPrefStore";
 
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const AGENT_PK = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" as const;
@@ -331,7 +332,8 @@ describe("gridLimit HTTP", () => {
     const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);
     const store = new MemoryStrategyStore(() => 1000);
     const pushTokens = SqlitePushTokenStore.open(":memory:");
-    return { app: buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000, pushTokens }), pushTokens };
+    const pushPrefs = SqlitePushPrefStore.open(":memory:");
+    return { app: buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000, pushTokens, pushPrefs }), pushTokens, pushPrefs };
   }
 
   const PUSH_T = "ExponentPushToken[cccccccccccccccccccccc]";
@@ -406,6 +408,49 @@ describe("gridLimit HTTP", () => {
     const token = await tokenFor(app);
     await app.inject({ method: "POST", url: "/push/register", headers: { authorization: `Bearer ${token}` }, payload: { token: PUSH_T, locale: "fr" } });
     expect(pushTokens.tokensForOwner(account.address)[0].locale).toBeNull();
+    await app.close();
+  });
+
+  it("returns default prefs (all on) for a fresh owner", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "GET", url: "/push/prefs", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ fills: true, alerts: true });
+    await app.close();
+  });
+
+  it("persists a category toggle via POST and reflects it in GET", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const post = await app.inject({ method: "POST", url: "/push/prefs", headers: auth, payload: { fills: false } });
+    expect(post.statusCode).toBe(204);
+    const res = await app.inject({ method: "GET", url: "/push/prefs", headers: auth });
+    expect(res.json()).toEqual({ fills: false, alerts: true });
+    await app.close();
+  });
+
+  it("rejects a non-boolean pref value with 400", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/prefs", headers: { authorization: `Bearer ${token}` }, payload: { fills: "yes" } });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects /push/prefs without a bearer token", async () => {
+    const { app } = buildWithPush();
+    const res = await app.inject({ method: "GET", url: "/push/prefs" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns 503 for /push/prefs when push is not configured", async () => {
+    const app = build();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "GET", url: "/push/prefs", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(503);
     await app.close();
   });
 });

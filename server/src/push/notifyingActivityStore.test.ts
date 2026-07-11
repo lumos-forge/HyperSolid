@@ -15,11 +15,11 @@ function innerFake(): ActivityStore & { recorded: Omit<Activity, "id">[] } {
 }
 
 function notifierFake(opts: { throwSync?: boolean } = {}) {
-  const calls: { owner: string; render: (locale: "en" | "zh") => Notification }[] = [];
+  const calls: { owner: string; category: string; render: (locale: "en" | "zh") => Notification }[] = [];
   return {
     calls,
-    async notify(owner: string, render: (locale: "en" | "zh") => Notification) {
-      calls.push({ owner, render });
+    async notify(owner: string, category: string, render: (locale: "en" | "zh") => Notification) {
+      calls.push({ owner, category, render });
       if (opts.throwSync) throw new Error("boom");
       return { tokens: 0, sent: 0, errors: 0, pruned: 0 };
     },
@@ -45,6 +45,7 @@ describe("NotifyingActivityStore", () => {
     const row = store.record(A);
     expect(notifier.calls).toHaveLength(1);
     expect(notifier.calls[0].owner).toBe(row.owner); // lowercased by inner
+    expect(notifier.calls[0].category).toBe("fills");
     expect(notifier.calls[0].render("en")).toEqual(fillNotification(row, "en"));
     expect(notifier.calls[0].render("zh")).toEqual(fillNotification(row, "zh"));
   });

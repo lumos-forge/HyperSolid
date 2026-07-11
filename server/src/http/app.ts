@@ -6,6 +6,7 @@ import type { Strategy, StrategyKind, GridLimitParams } from "../strategies/type
 import { validateParams } from "../strategies/validate";
 import type { ActivityStore } from "../strategies/activityStore";
 import type { PushTokenStore } from "../push/pushTokenStore";
+import type { PushPrefStore } from "../push/pushPrefStore";
 import type { AppConfigPayload } from "../config/appConfig";
 import { resolveGeo, type GeoHeaderConfig } from "./geo";
 import { rungCount, rungBuyPrice, rungSellPrice } from "../strategies/gridLimit";
@@ -33,6 +34,7 @@ export interface AppDeps {
   geoHeaders?: GeoHeaderConfig;
   /** Device push-token registry (M7 P1). When absent, /push/* routes return 503. */
   pushTokens?: PushTokenStore;
+  pushPrefs?: PushPrefStore;
 }
 
 interface StrategyDto {
@@ -185,6 +187,29 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!deps.pushTokens) return reply.code(503).send({ error: "push not configured" });
     const { token } = (req.body ?? {}) as { token?: unknown };
     if (typeof token === "string") deps.pushTokens.unregister(owner, token);
+    return reply.code(204).send();
+  });
+
+  app.get("/push/prefs", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.pushPrefs) return reply.code(503).send({ error: "push not configured" });
+    return deps.pushPrefs.get(owner);
+  });
+
+  app.post("/push/prefs", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.pushPrefs) return reply.code(503).send({ error: "push not configured" });
+    const body = (req.body ?? {}) as { fills?: unknown; alerts?: unknown };
+    const prefs: { fills?: boolean; alerts?: boolean } = {};
+    for (const key of ["fills", "alerts"] as const) {
+      const v = body[key];
+      if (v === undefined) continue;
+      if (typeof v !== "boolean") return reply.code(400).send({ error: `invalid ${key}` });
+      prefs[key] = v;
+    }
+    deps.pushPrefs.set(owner, prefs, now());
     return reply.code(204).send();
   });
 

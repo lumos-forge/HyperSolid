@@ -16,7 +16,7 @@ export class NotifyingActivityStore implements ActivityStore {
     try {
       // fire-and-forget: swallow both a synchronous throw and an async rejection
       // so a broken notifier can never break activity recording.
-      void Promise.resolve(this.notifier.notify(row.owner, (locale: PushLocale) => fillNotification(row, locale))).catch(() => {});
+      void Promise.resolve(this.notifier.notify(row.owner, "fills", (locale: PushLocale) => fillNotification(row, locale))).catch(() => {});
     } catch {
       // notifier threw synchronously (non-async broken impl)
     }

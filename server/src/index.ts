@@ -6,6 +6,7 @@ import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
 import { SqliteActivityStore } from "./strategies/activityStore";
 import { SqlitePushTokenStore } from "./push/pushTokenStore";
+import { SqlitePushPrefStore } from "./push/pushPrefStore";
 import { Expo } from "expo-server-sdk";
 import { Notifier } from "./push/notifier";
 import { NotifyingActivityStore } from "./push/notifyingActivityStore";
@@ -73,7 +74,8 @@ export async function main(): Promise<void> {
   const agents = new AgentManager(SqliteAgentStore.open(dbPath, agentEncKey), generatePrivateKey);
   const store: StrategyStore = SqliteStrategyStore.open(dbPath, now);
   const pushTokens = SqlitePushTokenStore.open(dbPath);
-  const notifier = new Notifier({ expo: new Expo(), store: pushTokens });
+  const pushPrefs = SqlitePushPrefStore.open(dbPath);
+  const notifier = new Notifier({ expo: new Expo(), store: pushTokens, prefs: pushPrefs });
   const activity = new NotifyingActivityStore(SqliteActivityStore.open(dbPath), notifier);
 
   const transport = makeTransport(isTestnet);
@@ -155,11 +157,11 @@ export async function main(): Promise<void> {
           if (ev.kind === "alert") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm failing for ${owner}: ${ev.consecutiveFailures} consecutive unprotected heartbeats`);
-            void notifier.notify(owner, (l) => deadManAlertNotification(ev, l)).catch(() => {});
+            void notifier.notify(owner, "alerts", (l) => deadManAlertNotification(ev, l)).catch(() => {});
           } else if (ev.kind === "recovered") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm recovered for ${owner}`);
-            void notifier.notify(owner, (l) => deadManRecoveredNotification(l)).catch(() => {});
+            void notifier.notify(owner, "alerts", (l) => deadManRecoveredNotification(l)).catch(() => {});
           }
         },
       }).catch((e) =>
@@ -170,7 +172,7 @@ export async function main(): Promise<void> {
   }, tickMs);
   timer.unref?.();
 
-  const app = buildApp({ auth, agents, store, activity, pushTokens, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
+  const app = buildApp({ auth, agents, store, activity, pushTokens, pushPrefs, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);
