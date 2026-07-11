@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, Linking } from "react-native";
 import appJson from "../../app.json";
 import * as Clipboard from "expo-clipboard";
@@ -15,6 +15,7 @@ import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
 import { StrategyApi } from "../services/strategyApi";
 import { openStrategySession } from "../wallet/walletSession";
 import { applyPushPreference, unregisterForSignOut } from "../services/pushToggle";
+import { fetchPushCategoryPrefs, setPushCategoryPrefs, type PushCategoryPrefs } from "../services/pushCategoryPrefs";
 import type { LocalWalletService } from "../wallet/localWallet";
 import { useT } from "../i18n/useT";
 import type { Locale } from "../i18n/messages";
@@ -82,6 +83,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const [pinBusy, setPinBusy] = useState(false);
   const [revealedSecret, setRevealedSecret] = useState<{ kind: "mnemonic" | "key"; value: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [categoryPrefs, setCategoryPrefs] = useState<PushCategoryPrefs | null>(null);
 
   const autoLockLabel = (m: number) => (m === 0 ? t("account.autoLockImmediate") : t("account.autoLockMin", { min: m }));
 
@@ -126,6 +128,30 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
       await setPushEnabled(false);
       await setPushToken(null);
       useToastStore.getState().show(t("settings.pushDisabled"), "success");
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    if (!pushEnabled) {
+      setCategoryPrefs(null);
+      return;
+    }
+    void fetchPushCategoryPrefs(makeAuthedApi).then((p) => {
+      if (alive) setCategoryPrefs(p);
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushEnabled]);
+
+  async function onToggleCategory(cat: "fills" | "alerts") {
+    if (!categoryPrefs) return;
+    const next = !categoryPrefs[cat];
+    setCategoryPrefs({ ...categoryPrefs, [cat]: next });
+    const ok = await setPushCategoryPrefs(makeAuthedApi, { [cat]: next });
+    if (!ok) {
+      setCategoryPrefs((p) => (p ? { ...p, [cat]: !next } : p));
+      useToastStore.getState().show(t("settings.pushPrefsFailed"), "error");
     }
   }
 
@@ -249,6 +275,12 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
           <SectionLabel theme={theme}>{t("settings.security")}</SectionLabel>
           <SettingRow theme={theme} icon="shield" name={t("account.security")} value={biometricEnabled ? t("account.faceIdOn") : t("account.faceIdOff")} onPress={onToggleBiometric} />
           <SettingRow theme={theme} icon="alert" name={t("settings.notifications")} value={pushEnabled ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={onToggleNotifications} />
+          {pushEnabled && categoryPrefs && (
+            <>
+              <SettingRow theme={theme} icon="alert" name={t("settings.notifyFills")} value={categoryPrefs.fills ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("fills")} />
+              <SettingRow theme={theme} icon="alert" name={t("settings.notifyAlerts")} value={categoryPrefs.alerts ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("alerts")} />
+            </>
+          )}
           <SettingRow theme={theme} icon="lock" name={t("account.autoLock")} value={autoLockLabel(autoLockMinutes)} onPress={() => setPicker("autolock")} />
           <SettingRow theme={theme} icon="key" name={t("account.changePin")} value="" onPress={openChangePin} />
 
