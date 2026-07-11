@@ -155,11 +155,11 @@ export async function main(): Promise<void> {
           if (ev.kind === "alert") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm failing for ${owner}: ${ev.consecutiveFailures} consecutive unprotected heartbeats`);
-            void notifier.notify(owner, (l) => deadManAlertNotification(ev, l)).catch(() => {});
+            void notifier.notify(owner, "alerts", (l) => deadManAlertNotification(ev, l)).catch(() => {});
           } else if (ev.kind === "recovered") {
             // eslint-disable-next-line no-console
             console.error(`dead-man arm recovered for ${owner}`);
-            void notifier.notify(owner, (l) => deadManRecoveredNotification(l)).catch(() => {});
+            void notifier.notify(owner, "alerts", (l) => deadManRecoveredNotification(l)).catch(() => {});
           }
         },
       }).catch((e) =>

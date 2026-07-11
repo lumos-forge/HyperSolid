@@ -1,6 +1,7 @@
 import type { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import type { PushTokenStore, PushTokenRow } from "./pushTokenStore";
 import { toPushLocale, type PushLocale } from "./messages";
+import type { PushCategory, PushPrefStore } from "./pushPrefStore";
 
 // Expo push token format (matches Expo.isExpoPushToken). Used as the default
 // validator so this module needs only expo-server-sdk's (erased) types — no
@@ -23,6 +24,8 @@ export interface ExpoLike {
 export interface NotifierDeps {
   expo: ExpoLike;
   store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
+  /** Optional per-owner category gate; when absent, all categories send. */
+  prefs?: Pick<PushPrefStore, "isEnabled">;
   /** Failure log sink; defaults to console.error. */
   logger?: (msg: string, err?: unknown) => void;
   /** Token validator; defaults to the Expo push-token format regex. */
@@ -40,18 +43,29 @@ export interface NotifyResult {
 export class Notifier {
   private readonly expo: ExpoLike;
   private readonly store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
+  private readonly prefs?: Pick<PushPrefStore, "isEnabled">;
   private readonly log: (msg: string, err?: unknown) => void;
   private readonly isValid: (token: string) => boolean;
 
   constructor(deps: NotifierDeps) {
     this.expo = deps.expo;
     this.store = deps.store;
+    this.prefs = deps.prefs;
     this.log = deps.logger ?? ((msg, err) => console.error(msg, err));
     this.isValid = deps.isValidToken ?? ((t) => EXPO_PUSH_TOKEN.test(t));
   }
 
-  async notify(owner: string, render: (locale: PushLocale) => Notification): Promise<NotifyResult> {
+  async notify(owner: string, category: PushCategory, render: (locale: PushLocale) => Notification): Promise<NotifyResult> {
     const result: NotifyResult = { tokens: 0, sent: 0, errors: 0, pruned: 0 };
+    if (this.prefs) {
+      let enabled = true;
+      try {
+        enabled = this.prefs.isEnabled(owner, category);
+      } catch (err) {
+        this.log("push prefs lookup failed", err); // fail-open: send anyway
+      }
+      if (!enabled) return result; // category disabled → skip entirely
+    }
     let rows: PushTokenRow[];
     try {
       rows = this.store.tokensForOwner(owner).filter((r) => this.isValid(r.token));
