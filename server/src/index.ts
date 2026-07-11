@@ -7,6 +7,7 @@ import { SqliteStrategyStore } from "./strategies/sqliteStore";
 import { SqliteActivityStore } from "./strategies/activityStore";
 import { SqlitePushTokenStore } from "./push/pushTokenStore";
 import { SqlitePushPrefStore } from "./push/pushPrefStore";
+import { SqliteQuietHoursStore } from "./push/pushQuietHoursStore";
 import { Expo } from "expo-server-sdk";
 import { Notifier } from "./push/notifier";
 import { NotifyingActivityStore } from "./push/notifyingActivityStore";
@@ -75,7 +76,8 @@ export async function main(): Promise<void> {
   const store: StrategyStore = SqliteStrategyStore.open(dbPath, now);
   const pushTokens = SqlitePushTokenStore.open(dbPath);
   const pushPrefs = SqlitePushPrefStore.open(dbPath);
-  const notifier = new Notifier({ expo: new Expo(), store: pushTokens, prefs: pushPrefs });
+  const quietHours = SqliteQuietHoursStore.open(dbPath);
+  const notifier = new Notifier({ expo: new Expo(), store: pushTokens, prefs: pushPrefs, quietHours });
   const activity = new NotifyingActivityStore(SqliteActivityStore.open(dbPath), notifier);
 
   const transport = makeTransport(isTestnet);
@@ -172,7 +174,7 @@ export async function main(): Promise<void> {
   }, tickMs);
   timer.unref?.();
 
-  const app = buildApp({ auth, agents, store, activity, pushTokens, pushPrefs, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
+  const app = buildApp({ auth, agents, store, activity, pushTokens, pushPrefs, quietHours, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);

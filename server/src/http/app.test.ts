@@ -6,6 +6,7 @@ import { MemoryStrategyStore } from "../strategies/store";
 import { MemoryActivityStore } from "../strategies/activityStore";
 import { SqlitePushTokenStore } from "../push/pushTokenStore";
 import { SqlitePushPrefStore } from "../push/pushPrefStore";
+import { SqliteQuietHoursStore } from "../push/pushQuietHoursStore";
 
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const AGENT_PK = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" as const;
@@ -333,7 +334,8 @@ describe("gridLimit HTTP", () => {
     const store = new MemoryStrategyStore(() => 1000);
     const pushTokens = SqlitePushTokenStore.open(":memory:");
     const pushPrefs = SqlitePushPrefStore.open(":memory:");
-    return { app: buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000, pushTokens, pushPrefs }), pushTokens, pushPrefs };
+    const quietHours = SqliteQuietHoursStore.open(":memory:");
+    return { app: buildApp({ auth, agents, store, now: () => 1000, agentTtlMs: 90 * 24 * 3600 * 1000, pushTokens, pushPrefs, quietHours }), pushTokens, pushPrefs, quietHours };
   }
 
   const PUSH_T = "ExponentPushToken[cccccccccccccccccccccc]";
@@ -450,6 +452,65 @@ describe("gridLimit HTTP", () => {
     const app = build();
     const token = await tokenFor(app);
     const res = await app.inject({ method: "GET", url: "/push/prefs", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
+  it("returns disabled quiet-hours by default", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "GET", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ enabled: false, start: 0, end: 0, tz: "UTC" });
+    await app.close();
+  });
+
+  it("persists a quiet-hours config via POST and reflects it in GET", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const post = await app.inject({ method: "POST", url: "/push/quiet-hours", headers: auth, payload: { enabled: true, start: 1380, end: 420, tz: "Asia/Shanghai" } });
+    expect(post.statusCode).toBe(204);
+    const res = await app.inject({ method: "GET", url: "/push/quiet-hours", headers: auth });
+    expect(res.json()).toEqual({ enabled: true, start: 1380, end: 420, tz: "Asia/Shanghai" });
+    await app.close();
+  });
+
+  it("rejects an out-of-range start with 400", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` }, payload: { enabled: true, start: 1440, end: 0, tz: "UTC" } });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects an invalid timezone with 400", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` }, payload: { enabled: true, start: 0, end: 60, tz: "Not/AZone" } });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects a non-boolean enabled with 400", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` }, payload: { enabled: "yes", start: 0, end: 60, tz: "UTC" } });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects /push/quiet-hours without a bearer token", async () => {
+    const { app } = buildWithPush();
+    const res = await app.inject({ method: "GET", url: "/push/quiet-hours" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns 503 for /push/quiet-hours when not configured", async () => {
+    const app = build();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "GET", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(503);
     await app.close();
   });

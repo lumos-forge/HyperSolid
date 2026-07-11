@@ -26,6 +26,10 @@ export interface NotifierDeps {
   store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
   /** Optional per-owner category gate; when absent, all categories send. */
   prefs?: Pick<PushPrefStore, "isEnabled">;
+  /** Optional quiet-hours gate; only fills are suppressed. */
+  quietHours?: { isQuietNow(owner: string, nowMs: number): boolean };
+  /** Clock for quiet-hours evaluation; defaults to Date.now. */
+  now?: () => number;
   /** Failure log sink; defaults to console.error. */
   logger?: (msg: string, err?: unknown) => void;
   /** Token validator; defaults to the Expo push-token format regex. */
@@ -44,6 +48,8 @@ export class Notifier {
   private readonly expo: ExpoLike;
   private readonly store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
   private readonly prefs?: Pick<PushPrefStore, "isEnabled">;
+  private readonly quietHours?: { isQuietNow(owner: string, nowMs: number): boolean };
+  private readonly now: () => number;
   private readonly log: (msg: string, err?: unknown) => void;
   private readonly isValid: (token: string) => boolean;
 
@@ -51,6 +57,8 @@ export class Notifier {
     this.expo = deps.expo;
     this.store = deps.store;
     this.prefs = deps.prefs;
+    this.quietHours = deps.quietHours;
+    this.now = deps.now ?? (() => Date.now());
     this.log = deps.logger ?? ((msg, err) => console.error(msg, err));
     this.isValid = deps.isValidToken ?? ((t) => EXPO_PUSH_TOKEN.test(t));
   }
@@ -65,6 +73,13 @@ export class Notifier {
         this.log("push prefs lookup failed", err); // fail-open: send anyway
       }
       if (!enabled) return result; // category disabled → skip entirely
+    }
+    if (category === "fills" && this.quietHours) {
+      try {
+        if (this.quietHours.isQuietNow(owner, this.now())) return result; // quiet → skip fills
+      } catch (err) {
+        this.log("push quiet-hours lookup failed", err); // fail-open: send anyway
+      }
     }
     let rows: PushTokenRow[];
     try {

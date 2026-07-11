@@ -7,6 +7,7 @@ import { validateParams } from "../strategies/validate";
 import type { ActivityStore } from "../strategies/activityStore";
 import type { PushTokenStore } from "../push/pushTokenStore";
 import type { PushPrefStore } from "../push/pushPrefStore";
+import type { QuietHoursStore } from "../push/pushQuietHoursStore";
 import type { AppConfigPayload } from "../config/appConfig";
 import { resolveGeo, type GeoHeaderConfig } from "./geo";
 import { rungCount, rungBuyPrice, rungSellPrice } from "../strategies/gridLimit";
@@ -35,6 +36,7 @@ export interface AppDeps {
   /** Device push-token registry (M7 P1). When absent, /push/* routes return 503. */
   pushTokens?: PushTokenStore;
   pushPrefs?: PushPrefStore;
+  quietHours?: QuietHoursStore;
 }
 
 interface StrategyDto {
@@ -210,6 +212,32 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       prefs[key] = v;
     }
     deps.pushPrefs.set(owner, prefs, now());
+    return reply.code(204).send();
+  });
+
+  app.get("/push/quiet-hours", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.quietHours) return reply.code(503).send({ error: "push not configured" });
+    return deps.quietHours.get(owner);
+  });
+
+  app.post("/push/quiet-hours", async (req, reply) => {
+    const owner = ownerOf(req, reply);
+    if (!owner) return;
+    if (!deps.quietHours) return reply.code(503).send({ error: "push not configured" });
+    const b = (req.body ?? {}) as { enabled?: unknown; start?: unknown; end?: unknown; tz?: unknown };
+    if (typeof b.enabled !== "boolean") return reply.code(400).send({ error: "invalid enabled" });
+    const inRange = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1439;
+    if (!inRange(b.start)) return reply.code(400).send({ error: "invalid start" });
+    if (!inRange(b.end)) return reply.code(400).send({ error: "invalid end" });
+    if (typeof b.tz !== "string" || b.tz.length === 0) return reply.code(400).send({ error: "invalid tz" });
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: b.tz });
+    } catch {
+      return reply.code(400).send({ error: "invalid tz" });
+    }
+    deps.quietHours.set(owner, { enabled: b.enabled, start: b.start, end: b.end, tz: b.tz }, now());
     return reply.code(204).send();
   });
 
