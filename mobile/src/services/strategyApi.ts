@@ -122,6 +122,12 @@ export class StrategyApi {
   setPushPrefs(prefs: { fills?: boolean; alerts?: boolean }) {
     return this.request<void>("/push/prefs", "POST", prefs);
   }
+  getQuietHours() {
+    return this.request<{ enabled: boolean; start: number; end: number; tz: string }>("/push/quiet-hours", "GET");
+  }
+  setQuietHours(qh: { enabled: boolean; start: number; end: number; tz: string }) {
+    return this.request<void>("/push/quiet-hours", "POST", qh);
+  }
 
   // strategies
   listStrategies() {
