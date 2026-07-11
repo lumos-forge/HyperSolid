@@ -16,6 +16,7 @@ import { StrategyApi } from "../services/strategyApi";
 import { openStrategySession } from "../wallet/walletSession";
 import { applyPushPreference, unregisterForSignOut } from "../services/pushToggle";
 import { fetchPushCategoryPrefs, setPushCategoryPrefs, type PushCategoryPrefs } from "../services/pushCategoryPrefs";
+import { fetchQuietHours, saveQuietHours, deviceTimeZone, type QuietHours } from "../services/pushQuietHours";
 import type { LocalWalletService } from "../wallet/localWallet";
 import { useT } from "../i18n/useT";
 import type { Locale } from "../i18n/messages";
@@ -45,7 +46,8 @@ const APP_VERSION = (appJson as { expo?: { version?: string } }).expo?.version ?
 const PRIVACY_URL = "https://hypersolid.app/privacy";
 const TERMS_URL = "https://hypersolid.app/terms";
 
-type Picker = "none" | "network" | "theme" | "locale" | "autolock";
+type Picker = "none" | "network" | "theme" | "locale" | "autolock" | "qh_start" | "qh_end";
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` }));
 
 /** Wallet settings sub-page (Wallet › gear): grouped app prefs + security + backup + sign-out. */
 export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
@@ -84,6 +86,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const [revealedSecret, setRevealedSecret] = useState<{ kind: "mnemonic" | "key"; value: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [categoryPrefs, setCategoryPrefs] = useState<PushCategoryPrefs | null>(null);
+  const [quietHours, setQuietHours] = useState<QuietHours | null>(null);
 
   const autoLockLabel = (m: number) => (m === 0 ? t("account.autoLockImmediate") : t("account.autoLockMin", { min: m }));
 
@@ -154,6 +157,42 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
       useToastStore.getState().show(t("settings.pushPrefsFailed"), "error");
     }
   }
+
+  useEffect(() => {
+    let alive = true;
+    if (!pushEnabled) {
+      setQuietHours(null);
+      return;
+    }
+    void fetchQuietHours(makeAuthedApi).then((q) => {
+      if (alive) setQuietHours(q);
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushEnabled]);
+
+  async function writeQuietHours(next: QuietHours) {
+    const prev = quietHours;
+    setQuietHours(next);
+    const ok = await saveQuietHours(makeAuthedApi, next);
+    if (!ok) {
+      setQuietHours(prev);
+      useToastStore.getState().show(t("settings.pushPrefsFailed"), "error");
+    }
+  }
+
+  function onToggleQuiet() {
+    if (!quietHours) return;
+    void writeQuietHours({ ...quietHours, enabled: !quietHours.enabled, tz: deviceTimeZone() });
+  }
+
+  function onPickQuietHour(which: "start" | "end", hour: number) {
+    if (!quietHours) return;
+    void writeQuietHours({ ...quietHours, [which]: hour * 60, tz: deviceTimeZone() });
+    setPicker("none");
+  }
+
+  const fmtHour = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:00`;
 
   function openChangePin() {
     setOldPin("");
@@ -281,6 +320,17 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
               <SettingRow theme={theme} icon="alert" name={t("settings.notifyAlerts")} value={categoryPrefs.alerts ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("alerts")} />
             </>
           )}
+          {pushEnabled && quietHours && (
+            <>
+              <SettingRow theme={theme} icon="lock" name={t("settings.quietHours")} value={quietHours.enabled ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={onToggleQuiet} />
+              {quietHours.enabled && (
+                <>
+                  <SettingRow theme={theme} icon="lock" name={t("settings.quietStart")} value={fmtHour(quietHours.start)} onPress={() => setPicker("qh_start")} />
+                  <SettingRow theme={theme} icon="lock" name={t("settings.quietEnd")} value={fmtHour(quietHours.end)} onPress={() => setPicker("qh_end")} />
+                </>
+              )}
+            </>
+          )}
           <SettingRow theme={theme} icon="lock" name={t("account.autoLock")} value={autoLockLabel(autoLockMinutes)} onPress={() => setPicker("autolock")} />
           <SettingRow theme={theme} icon="key" name={t("account.changePin")} value="" onPress={openChangePin} />
 
@@ -339,6 +389,26 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
         sections={[{ options: AUTO_LOCK_OPTIONS.map((m) => ({ value: String(m), label: autoLockLabel(m) })) }]}
         theme={theme}
         testIDPrefix="autolock"
+      />
+      <SheetSelect<string>
+        visible={picker === "qh_start"}
+        onClose={() => setPicker("none")}
+        title={t("settings.quietStart")}
+        value={String(Math.floor((quietHours?.start ?? 0) / 60))}
+        onSelect={(v) => onPickQuietHour("start", Number(v))}
+        sections={[{ options: HOUR_OPTIONS }]}
+        theme={theme}
+        testIDPrefix="qh-start"
+      />
+      <SheetSelect<string>
+        visible={picker === "qh_end"}
+        onClose={() => setPicker("none")}
+        title={t("settings.quietEnd")}
+        value={String(Math.floor((quietHours?.end ?? 0) / 60))}
+        onSelect={(v) => onPickQuietHour("end", Number(v))}
+        sections={[{ options: HOUR_OPTIONS }]}
+        theme={theme}
+        testIDPrefix="qh-end"
       />
     </ScreenScaffold>
   );

@@ -112,4 +112,21 @@ describe("StrategyApi", () => {
     const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
     expect(JSON.parse(init.body as string)).toEqual({ fills: false });
   });
+
+  it("fetches quiet hours via GET", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({ enabled: true, start: 1320, end: 480, tz: "Asia/Shanghai" }));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    const qh = await api.getQuietHours();
+    expect(qh).toEqual({ enabled: true, start: 1320, end: 480, tz: "Asia/Shanghai" });
+    expect(fetchMock).toHaveBeenCalledWith("https://api/push/quiet-hours", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("sets quiet hours via POST with the full body", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({}));
+    const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
+    await api.setQuietHours({ enabled: true, start: 1320, end: 480, tz: "UTC" });
+    expect(fetchMock).toHaveBeenCalledWith("https://api/push/quiet-hours", expect.objectContaining({ method: "POST" }));
+    const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({ enabled: true, start: 1320, end: 480, tz: "UTC" });
+  });
 });
