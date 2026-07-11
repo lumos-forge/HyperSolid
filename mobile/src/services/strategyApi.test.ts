@@ -74,13 +74,13 @@ describe("StrategyApi", () => {
   it("registers a push token with platform in the body", async () => {
     const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({}));
     const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
-    await api.registerPush("ExponentPushToken[x]", "ios");
+    await api.registerPush("ExponentPushToken[x]", "ios", "zh");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api/push/register",
       expect.objectContaining({ method: "POST" }),
     );
     const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
-    expect(JSON.parse(init.body as string)).toEqual({ token: "ExponentPushToken[x]", platform: "ios" });
+    expect(JSON.parse(init.body as string)).toEqual({ token: "ExponentPushToken[x]", platform: "ios", locale: "zh" });
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 

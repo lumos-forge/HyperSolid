@@ -6,6 +6,7 @@ function envFake(over: Partial<PushEnv> & { permSeq?: PermStatus[] } = {}): Push
   return {
     isDevice: over.isDevice ?? true,
     platform: over.platform ?? "ios",
+    locale: over.locale ?? "en",
     getPermissionStatus: over.getPermissionStatus ?? (async () => permSeq[Math.min(i, permSeq.length - 1)]),
     requestPermission: over.requestPermission ?? (async () => { i = 1; return permSeq[Math.min(i, permSeq.length - 1)]; }),
     getExpoPushToken: over.getExpoPushToken ?? (async () => "ExponentPushToken[tok]"),
@@ -13,11 +14,11 @@ function envFake(over: Partial<PushEnv> & { permSeq?: PermStatus[] } = {}): Push
 }
 
 function apiFake(opts: { registerThrows?: boolean; unregisterThrows?: boolean } = {}) {
-  const calls: { register: [string, string][]; unregister: string[] } = { register: [], unregister: [] };
+  const calls: { register: [string, string, string][]; unregister: string[] } = { register: [], unregister: [] };
   return {
     calls,
-    async registerPush(token: string, platform: string) {
-      calls.register.push([token, platform]);
+    async registerPush(token: string, platform: string, locale: string) {
+      calls.register.push([token, platform, locale]);
       if (opts.registerThrows) throw new Error("net");
     },
     async unregisterPush(token: string) {
@@ -37,9 +38,9 @@ describe("registerDeviceForPush", () => {
 
   it("registers when permission is already granted", async () => {
     const api = apiFake();
-    const r = await registerDeviceForPush(api, envFake({ permSeq: ["granted"], platform: "ios" }));
+    const r = await registerDeviceForPush(api, envFake({ permSeq: ["granted"], platform: "ios", locale: "zh" }));
     expect(r).toEqual({ ok: true, token: "ExponentPushToken[tok]" });
-    expect(api.calls.register).toEqual([["ExponentPushToken[tok]", "ios"]]);
+    expect(api.calls.register).toEqual([["ExponentPushToken[tok]", "ios", "zh"]]);
   });
 
   it("requests permission when undetermined then registers", async () => {
