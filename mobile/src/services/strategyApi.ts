@@ -116,6 +116,12 @@ export class StrategyApi {
   unregisterPush(token: string) {
     return this.request<void>("/push/unregister", "POST", { token });
   }
+  getPushPrefs() {
+    return this.request<{ fills: boolean; alerts: boolean }>("/push/prefs", "GET");
+  }
+  setPushPrefs(prefs: { fills?: boolean; alerts?: boolean }) {
+    return this.request<void>("/push/prefs", "POST", prefs);
+  }
 
   // strategies
   listStrategies() {
