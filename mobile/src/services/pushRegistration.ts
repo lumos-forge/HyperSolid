@@ -8,6 +8,8 @@ export type PermStatus = "granted" | "denied" | "undetermined";
 export interface PushEnv {
   isDevice: boolean;
   platform: string;
+  /** Active UI locale reported to the server so push is localized for this device. */
+  locale: string;
   getPermissionStatus(): Promise<PermStatus>;
   requestPermission(): Promise<PermStatus>;
   getExpoPushToken(): Promise<string>;
@@ -28,7 +30,7 @@ export async function registerDeviceForPush(
     if (status !== "granted") status = await env.requestPermission();
     if (status !== "granted") return { ok: false, reason: "permission_denied" };
     const token = await env.getExpoPushToken();
-    await api.registerPush(token, env.platform);
+    await api.registerPush(token, env.platform, env.locale);
     return { ok: true, token };
   } catch {
     return { ok: false, reason: "error" };

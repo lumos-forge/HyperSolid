@@ -3,6 +3,7 @@ import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import type { PushEnv, PermStatus } from "./pushRegistration";
+import { useLocaleStore } from "../state/localeStore";
 
 function toStatus(s: string): PermStatus {
   return s === "granted" ? "granted" : s === "denied" ? "denied" : "undetermined";
@@ -14,6 +15,7 @@ export function expoPushEnv(): PushEnv {
   return {
     isDevice: Device.isDevice,
     platform: Platform.OS,
+    locale: useLocaleStore.getState().locale,
     getPermissionStatus: async () => toStatus((await Notifications.getPermissionsAsync()).status),
     requestPermission: async () => toStatus((await Notifications.requestPermissionsAsync()).status),
     getExpoPushToken: async () => {

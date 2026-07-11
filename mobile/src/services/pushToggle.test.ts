@@ -7,6 +7,7 @@ function envFake(over: Partial<PushEnv> & { permSeq?: PermStatus[] } = {}): Push
   return {
     isDevice: over.isDevice ?? true,
     platform: over.platform ?? "ios",
+    locale: over.locale ?? "en",
     getPermissionStatus: over.getPermissionStatus ?? (async () => permSeq[Math.min(i, permSeq.length - 1)]),
     requestPermission: over.requestPermission ?? (async () => { i = 1; return permSeq[Math.min(i, permSeq.length - 1)]; }),
     getExpoPushToken: over.getExpoPushToken ?? (async () => "ExponentPushToken[tok]"),
@@ -14,10 +15,10 @@ function envFake(over: Partial<PushEnv> & { permSeq?: PermStatus[] } = {}): Push
 }
 
 function apiFake() {
-  const calls: { register: [string, string][]; unregister: string[] } = { register: [], unregister: [] };
+  const calls: { register: [string, string, string][]; unregister: string[] } = { register: [], unregister: [] };
   return {
     calls,
-    async registerPush(token: string, platform: string) { calls.register.push([token, platform]); },
+    async registerPush(token: string, platform: string, locale: string) { calls.register.push([token, platform, locale]); },
     async unregisterPush(token: string) { calls.unregister.push(token); },
   };
 }
@@ -27,7 +28,7 @@ describe("applyPushPreference", () => {
     const api = apiFake();
     const r = await applyPushPreference(true, { env: envFake(), makeAuthedApi: async () => api, prevToken: null });
     expect(r).toEqual({ ok: true, token: "ExponentPushToken[tok]" });
-    expect(api.calls.register).toEqual([["ExponentPushToken[tok]", "ios"]]);
+    expect(api.calls.register).toEqual([["ExponentPushToken[tok]", "ios", "en"]]);
   });
 
   it("enables without a session → no_session, no registration", async () => {

@@ -110,8 +110,8 @@ export class StrategyApi {
   }
 
   // push registration (M7 P3)
-  registerPush(token: string, platform: string) {
-    return this.request<void>("/push/register", "POST", { token, platform });
+  registerPush(token: string, platform: string, locale: string) {
+    return this.request<void>("/push/register", "POST", { token, platform, locale });
   }
   unregisterPush(token: string) {
     return this.request<void>("/push/unregister", "POST", { token });
