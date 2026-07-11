@@ -182,4 +182,39 @@ describe("Notifier.notify", () => {
     expect(res.sent).toBe(1);
     expect(logs.length).toBeGreaterThan(0);
   });
+
+  it("suppresses fills during quiet hours", async () => {
+    const store = fakeStore([T1, T2]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const quietHours = { isQuietNow: () => true };
+    const res = await new Notifier({ expo, store, quietHours, now: () => 0 }).notify(OWNER, "fills", () => N);
+    expect(res).toEqual({ tokens: 0, sent: 0, errors: 0, pruned: 0 });
+    expect(expo.sends).toHaveLength(0);
+  });
+
+  it("sends fills outside quiet hours", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const quietHours = { isQuietNow: () => false };
+    const res = await new Notifier({ expo, store, quietHours, now: () => 0 }).notify(OWNER, "fills", () => N);
+    expect(res.sent).toBe(1);
+  });
+
+  it("always sends alerts even during quiet hours", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const quietHours = { isQuietNow: () => true };
+    const res = await new Notifier({ expo, store, quietHours, now: () => 0 }).notify(OWNER, "alerts", () => N);
+    expect(res.sent).toBe(1);
+  });
+
+  it("fails open (sends fills) when the quiet-hours check throws", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const quietHours = { isQuietNow: () => { throw new Error("db"); } };
+    const logs: string[] = [];
+    const res = await new Notifier({ expo, store, quietHours, now: () => 0, logger: (m) => logs.push(m) }).notify(OWNER, "fills", () => N);
+    expect(res.sent).toBe(1);
+    expect(logs.length).toBeGreaterThan(0);
+  });
 });
