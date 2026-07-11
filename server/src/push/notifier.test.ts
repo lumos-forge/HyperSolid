@@ -217,4 +217,31 @@ describe("Notifier.notify", () => {
     expect(res.sent).toBe(1);
     expect(logs.length).toBeGreaterThan(0);
   });
+
+  it("records a receipt id and token for each ok ticket", async () => {
+    const store = fakeStore([T1, T2]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const recorded: Array<[string, string]> = [];
+    const receipts = { record: (id: string, token: string) => { recorded.push([id, token]); } };
+    const res = await new Notifier({ expo, store, receipts, now: () => 7 }).notify(OWNER, "fills", () => N);
+    expect(res.sent).toBe(2);
+    expect(recorded).toEqual([["r", T1], ["r", T2]]);
+  });
+
+  it("still sends when no receipts store is injected", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const res = await new Notifier({ expo, store }).notify(OWNER, "fills", () => N);
+    expect(res.sent).toBe(1);
+  });
+
+  it("swallows a throwing receipts.record and still counts the send", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const receipts = { record: () => { throw new Error("db"); } };
+    const logs: string[] = [];
+    const res = await new Notifier({ expo, store, receipts, logger: (m) => logs.push(m) }).notify(OWNER, "fills", () => N);
+    expect(res.sent).toBe(1);
+    expect(logs.length).toBeGreaterThan(0);
+  });
 });

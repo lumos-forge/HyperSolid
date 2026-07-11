@@ -2,6 +2,7 @@ import type { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import type { PushTokenStore, PushTokenRow } from "./pushTokenStore";
 import { toPushLocale, type PushLocale } from "./messages";
 import type { PushCategory, PushPrefStore } from "./pushPrefStore";
+import type { PushReceiptStore } from "./pushReceiptStore";
 
 // Expo push token format (matches Expo.isExpoPushToken). Used as the default
 // validator so this module needs only expo-server-sdk's (erased) types — no
@@ -30,6 +31,8 @@ export interface NotifierDeps {
   quietHours?: { isQuietNow(owner: string, nowMs: number): boolean };
   /** Clock for quiet-hours evaluation; defaults to Date.now. */
   now?: () => number;
+  /** Optional delayed-receipt registry; ok tickets are recorded for later polling. */
+  receipts?: Pick<PushReceiptStore, "record">;
   /** Failure log sink; defaults to console.error. */
   logger?: (msg: string, err?: unknown) => void;
   /** Token validator; defaults to the Expo push-token format regex. */
@@ -49,6 +52,7 @@ export class Notifier {
   private readonly store: Pick<PushTokenStore, "tokensForOwner" | "deleteToken">;
   private readonly prefs?: Pick<PushPrefStore, "isEnabled">;
   private readonly quietHours?: { isQuietNow(owner: string, nowMs: number): boolean };
+  private readonly receipts?: Pick<PushReceiptStore, "record">;
   private readonly now: () => number;
   private readonly log: (msg: string, err?: unknown) => void;
   private readonly isValid: (token: string) => boolean;
@@ -58,6 +62,7 @@ export class Notifier {
     this.store = deps.store;
     this.prefs = deps.prefs;
     this.quietHours = deps.quietHours;
+    this.receipts = deps.receipts;
     this.now = deps.now ?? (() => Date.now());
     this.log = deps.logger ?? ((msg, err) => console.error(msg, err));
     this.isValid = deps.isValidToken ?? ((t) => EXPO_PUSH_TOKEN.test(t));
@@ -132,6 +137,13 @@ export class Notifier {
         const ticket = tickets[i];
         const token = chunkTokens[i];
         if (ticket.status === "ok") {
+          if (this.receipts && ticket.id && token) {
+            try {
+              this.receipts.record(ticket.id, token, this.now());
+            } catch (err) {
+              this.log("push receipt record failed", err); // fail-safe
+            }
+          }
           result.sent++;
           continue;
         }
