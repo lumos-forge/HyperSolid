@@ -418,7 +418,7 @@ describe("gridLimit HTTP", () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: "GET", url: "/push/prefs", headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ fills: true, alerts: true });
+    expect(res.json()).toEqual({ fills: true, alerts: true, lifecycle: true });
     await app.close();
   });
 
@@ -429,7 +429,7 @@ describe("gridLimit HTTP", () => {
     const post = await app.inject({ method: "POST", url: "/push/prefs", headers: auth, payload: { fills: false } });
     expect(post.statusCode).toBe(204);
     const res = await app.inject({ method: "GET", url: "/push/prefs", headers: auth });
-    expect(res.json()).toEqual({ fills: false, alerts: true });
+    expect(res.json()).toEqual({ fills: false, alerts: true, lifecycle: true });
     await app.close();
   });
 
@@ -512,6 +512,25 @@ describe("gridLimit HTTP", () => {
     const token = await tokenFor(app);
     const res = await app.inject({ method: "GET", url: "/push/quiet-hours", headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
+  it("persists a lifecycle toggle via POST and reflects it in GET", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const auth = { authorization: `Bearer ${token}` };
+    const post = await app.inject({ method: "POST", url: "/push/prefs", headers: auth, payload: { lifecycle: false } });
+    expect(post.statusCode).toBe(204);
+    const res = await app.inject({ method: "GET", url: "/push/prefs", headers: auth });
+    expect(res.json()).toEqual({ fills: true, alerts: true, lifecycle: false });
+    await app.close();
+  });
+
+  it("rejects a non-boolean lifecycle with 400", async () => {
+    const { app } = buildWithPush();
+    const token = await tokenFor(app);
+    const res = await app.inject({ method: "POST", url: "/push/prefs", headers: { authorization: `Bearer ${token}` }, payload: { lifecycle: "yes" } });
+    expect(res.statusCode).toBe(400);
     await app.close();
   });
 });

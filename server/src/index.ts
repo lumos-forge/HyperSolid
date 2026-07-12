@@ -4,6 +4,7 @@ import { AgentManager } from "./agent/agentManager";
 import { SqliteAgentStore } from "./agent/sqliteAgentStore";
 import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
+import { NotifyingStrategyStore } from "./strategies/notifyingStrategyStore";
 import { SqliteActivityStore } from "./strategies/activityStore";
 import { SqlitePushTokenStore } from "./push/pushTokenStore";
 import { SqlitePushPrefStore } from "./push/pushPrefStore";
@@ -82,6 +83,7 @@ export async function main(): Promise<void> {
   const pushReceipts = SqlitePushReceiptStore.open(dbPath);
   const expoClient = new Expo();
   const notifier = new Notifier({ expo: expoClient, store: pushTokens, prefs: pushPrefs, quietHours, receipts: pushReceipts });
+  const notifyingStore = new NotifyingStrategyStore(store, notifier);
   const activity = new NotifyingActivityStore(SqliteActivityStore.open(dbPath), notifier);
 
   const transport = makeTransport(isTestnet);
@@ -137,7 +139,7 @@ export async function main(): Promise<void> {
   }
   const timer = setInterval(() => {
     void tick(
-      store,
+      notifyingStore,
       placer,
       { maxNotionalUsdc, perCoinMaxNotionalUsdc, dailyMaxNotionalUsdc, maxOpenOrders },
       killSwitch,
@@ -186,7 +188,7 @@ export async function main(): Promise<void> {
   }, receiptPollMs);
   receiptTimer.unref?.();
 
-  const app = buildApp({ auth, agents, store, activity, pushTokens, pushPrefs, quietHours, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
+  const app = buildApp({ auth, agents, store: notifyingStore, activity, pushTokens, pushPrefs, quietHours, now, version: VERSION, logger: process.env.LOG_REQUESTS === "1", appConfig: appConfigFromEnv(process.env), geoHeaders: geoHeadersFromEnv(process.env) });
   await app.listen({ port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`strategy backend listening on :${port} (testnet=${isTestnet})`);
