@@ -9,6 +9,9 @@ import type { PushReceiptStore } from "./pushReceiptStore";
 // runtime import of the ESM package, keeping it trivially unit-testable.
 const EXPO_PUSH_TOKEN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 
+// Non-safety categories that quiet hours may suppress. `alerts` always sends.
+const QUIETABLE = new Set<PushCategory>(["fills", "lifecycle"]);
+
 export interface Notification {
   title: string;
   body: string;
@@ -79,7 +82,7 @@ export class Notifier {
       }
       if (!enabled) return result; // category disabled → skip entirely
     }
-    if (category === "fills" && this.quietHours) {
+    if (QUIETABLE.has(category) && this.quietHours) {
       try {
         if (this.quietHours.isQuietNow(owner, this.now())) return result; // quiet → skip fills
       } catch (err) {
