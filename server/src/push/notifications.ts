@@ -1,5 +1,6 @@
 import type { Notification } from "./notifier";
 import type { Activity } from "../strategies/activityStore";
+import type { Strategy } from "../strategies/types";
 import { pushMessages, type PushLocale } from "./messages";
 
 function fmt(n: number): string {
@@ -33,5 +34,16 @@ export function deadManRecoveredNotification(locale: PushLocale): Notification {
     title: m.deadmanRecoveredTitle,
     body: m.deadmanRecoveredBody,
     data: { kind: "deadman_recovered" },
+  };
+}
+
+/** Strategy-completed notification, localized. */
+export function strategyCompletedNotification(s: Strategy, locale: PushLocale): Notification {
+  const m = pushMessages[locale];
+  const coin = (s.params as { coin?: string }).coin ?? "";
+  return {
+    title: m.lifecycleTitle,
+    body: m.lifecycleBody(coin, s.kind),
+    data: { kind: "strategy_completed", strategyId: s.id, strategyKind: s.kind, coin },
   };
 }

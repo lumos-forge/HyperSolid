@@ -14,6 +14,8 @@ export const pushMessages = {
     deadmanAlertBody: (n: number) => `${n} consecutive unprotected heartbeats — check your agent authorization.`,
     deadmanRecoveredTitle: "Strategy protection restored",
     deadmanRecoveredBody: "Your automated strategies are protected again.",
+    lifecycleTitle: "Strategy completed",
+    lifecycleBody: (coin: string, kind: string) => `Your ${coin} ${kind} strategy finished.`,
   },
   zh: {
     fillTitle: "订单成交",
@@ -22,6 +24,8 @@ export const pushMessages = {
     deadmanAlertBody: (n: number) => `连续 ${n} 次心跳未受保护——请检查 agent 授权。`,
     deadmanRecoveredTitle: "策略保护已恢复",
     deadmanRecoveredBody: "你的自动策略重新受到保护。",
+    lifecycleTitle: "策略已完成",
+    lifecycleBody: (coin: string, kind: string) => `你的 ${coin} ${kind} 策略已完成。`,
   },
 } as const;
 

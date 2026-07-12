@@ -1,10 +1,11 @@
 import Database from "better-sqlite3";
 
-export type PushCategory = "fills" | "alerts";
+export type PushCategory = "fills" | "alerts" | "lifecycle";
 
 export interface PushPrefs {
   fills: boolean;
   alerts: boolean;
+  lifecycle: boolean;
 }
 
 export interface PushPrefStore {
@@ -16,7 +17,7 @@ export interface PushPrefStore {
   set(owner: string, prefs: Partial<PushPrefs>, now: number): void;
 }
 
-const CATEGORIES: PushCategory[] = ["fills", "alerts"];
+const CATEGORIES: PushCategory[] = ["fills", "alerts", "lifecycle"];
 
 function migrate(db: Database.Database): void {
   db.exec(`
@@ -57,6 +58,7 @@ export class SqlitePushPrefStore implements PushPrefStore {
     return {
       fills: map.get("fills") ?? true,
       alerts: map.get("alerts") ?? true,
+      lifecycle: map.get("lifecycle") ?? true,
     };
   }
 
