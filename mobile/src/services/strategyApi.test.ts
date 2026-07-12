@@ -97,20 +97,20 @@ describe("StrategyApi", () => {
   });
 
   it("fetches push prefs via GET", async () => {
-    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({ fills: true, alerts: false }));
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({ fills: true, alerts: false, lifecycle: true }));
     const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
     const prefs = await api.getPushPrefs();
-    expect(prefs).toEqual({ fills: true, alerts: false });
+    expect(prefs).toEqual({ fills: true, alerts: false, lifecycle: true });
     expect(fetchMock).toHaveBeenCalledWith("https://api/push/prefs", expect.objectContaining({ method: "GET" }));
   });
 
   it("sets push prefs via POST with the partial body", async () => {
     const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => res({}));
     const api = new StrategyApi("https://api", "tok", fetchMock as unknown as typeof fetch);
-    await api.setPushPrefs({ fills: false });
+    await api.setPushPrefs({ lifecycle: false });
     expect(fetchMock).toHaveBeenCalledWith("https://api/push/prefs", expect.objectContaining({ method: "POST" }));
     const init = (fetchMock.mock.calls[0][1] ?? {}) as RequestInit;
-    expect(JSON.parse(init.body as string)).toEqual({ fills: false });
+    expect(JSON.parse(init.body as string)).toEqual({ lifecycle: false });
   });
 
   it("fetches quiet hours via GET", async () => {
