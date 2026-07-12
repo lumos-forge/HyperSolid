@@ -203,9 +203,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const owner = ownerOf(req, reply);
     if (!owner) return;
     if (!deps.pushPrefs) return reply.code(503).send({ error: "push not configured" });
-    const body = (req.body ?? {}) as { fills?: unknown; alerts?: unknown };
-    const prefs: { fills?: boolean; alerts?: boolean } = {};
-    for (const key of ["fills", "alerts"] as const) {
+    const body = (req.body ?? {}) as { fills?: unknown; alerts?: unknown; lifecycle?: unknown };
+    const prefs: { fills?: boolean; alerts?: boolean; lifecycle?: boolean } = {};
+    for (const key of ["fills", "alerts", "lifecycle"] as const) {
       const v = body[key];
       if (v === undefined) continue;
       if (typeof v !== "boolean") return reply.code(400).send({ error: `invalid ${key}` });

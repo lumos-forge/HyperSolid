@@ -1,4 +1,4 @@
-import { fillNotification, deadManAlertNotification, deadManRecoveredNotification } from "./notifications";
+import { fillNotification, deadManAlertNotification, deadManRecoveredNotification, strategyCompletedNotification } from "./notifications";
 import type { Activity } from "../strategies/activityStore";
 
 function fill(over: Partial<Activity> = {}): Activity {
@@ -28,5 +28,15 @@ describe("notification catalog", () => {
   it("deadManRecoveredNotification en/zh", () => {
     expect(deadManRecoveredNotification("en").data).toEqual({ kind: "deadman_recovered" });
     expect(deadManRecoveredNotification("zh").title).toBe("策略保护已恢复");
+  });
+
+  it("strategyCompletedNotification en/zh", () => {
+    const s = { id: "s1", kind: "twap", owner: "0xabc", params: { coin: "ETH" } } as any;
+    const en = strategyCompletedNotification(s, "en");
+    expect(en.title).toBe("Strategy completed");
+    expect(en.body).toBe("Your ETH twap strategy finished.");
+    expect(en.data).toEqual({ kind: "strategy_completed", strategyId: "s1", strategyKind: "twap", coin: "ETH" });
+    expect(strategyCompletedNotification(s, "zh").title).toBe("策略已完成");
+    expect(strategyCompletedNotification(s, "zh").body).toBe("你的 ETH twap 策略已完成。");
   });
 });

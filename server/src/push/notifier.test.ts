@@ -244,4 +244,13 @@ describe("Notifier.notify", () => {
     expect(res.sent).toBe(1);
     expect(logs.length).toBeGreaterThan(0);
   });
+
+  it("suppresses lifecycle during quiet hours", async () => {
+    const store = fakeStore([T1]);
+    const expo = fakeExpo({ tickets: okTickets });
+    const quietHours = { isQuietNow: () => true };
+    const res = await new Notifier({ expo, store, quietHours, now: () => 0 }).notify(OWNER, "lifecycle", () => N);
+    expect(res).toEqual({ tokens: 0, sent: 0, errors: 0, pruned: 0 });
+    expect(expo.sends).toHaveLength(0);
+  });
 });
