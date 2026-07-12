@@ -147,7 +147,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushEnabled]);
 
-  async function onToggleCategory(cat: "fills" | "alerts") {
+  async function onToggleCategory(cat: "fills" | "alerts" | "lifecycle") {
     if (!categoryPrefs) return;
     const next = !categoryPrefs[cat];
     setCategoryPrefs({ ...categoryPrefs, [cat]: next });
@@ -318,6 +318,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
             <>
               <SettingRow theme={theme} icon="alert" name={t("settings.notifyFills")} value={categoryPrefs.fills ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("fills")} />
               <SettingRow theme={theme} icon="alert" name={t("settings.notifyAlerts")} value={categoryPrefs.alerts ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("alerts")} />
+              <SettingRow theme={theme} icon="alert" name={t("settings.notifyLifecycle")} value={categoryPrefs.lifecycle ? t("settings.notificationsOn") : t("settings.notificationsOff")} onPress={() => onToggleCategory("lifecycle")} />
             </>
           )}
           {pushEnabled && quietHours && (
