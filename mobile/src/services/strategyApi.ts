@@ -117,9 +117,9 @@ export class StrategyApi {
     return this.request<void>("/push/unregister", "POST", { token });
   }
   getPushPrefs() {
-    return this.request<{ fills: boolean; alerts: boolean }>("/push/prefs", "GET");
+    return this.request<{ fills: boolean; alerts: boolean; lifecycle: boolean }>("/push/prefs", "GET");
   }
-  setPushPrefs(prefs: { fills?: boolean; alerts?: boolean }) {
+  setPushPrefs(prefs: { fills?: boolean; alerts?: boolean; lifecycle?: boolean }) {
     return this.request<void>("/push/prefs", "POST", prefs);
   }
   getQuietHours() {

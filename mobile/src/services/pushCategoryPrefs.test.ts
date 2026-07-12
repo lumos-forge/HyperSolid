@@ -1,14 +1,14 @@
 import { fetchPushCategoryPrefs, setPushCategoryPrefs } from "./pushCategoryPrefs";
 
-function apiFake(opts: { prefs?: { fills: boolean; alerts: boolean }; getThrows?: boolean; setThrows?: boolean } = {}) {
-  const calls: { set: Array<Partial<{ fills: boolean; alerts: boolean }>> } = { set: [] };
+function apiFake(opts: { prefs?: { fills: boolean; alerts: boolean; lifecycle: boolean }; getThrows?: boolean; setThrows?: boolean } = {}) {
+  const calls: { set: Array<Partial<{ fills: boolean; alerts: boolean; lifecycle: boolean }>> } = { set: [] };
   return {
     calls,
     async getPushPrefs() {
       if (opts.getThrows) throw new Error("net");
-      return opts.prefs ?? { fills: true, alerts: true };
+      return opts.prefs ?? { fills: true, alerts: true, lifecycle: true };
     },
-    async setPushPrefs(prefs: Partial<{ fills: boolean; alerts: boolean }>) {
+    async setPushPrefs(prefs: Partial<{ fills: boolean; alerts: boolean; lifecycle: boolean }>) {
       calls.set.push(prefs);
       if (opts.setThrows) throw new Error("net");
     },
@@ -17,9 +17,9 @@ function apiFake(opts: { prefs?: { fills: boolean; alerts: boolean }; getThrows?
 
 describe("fetchPushCategoryPrefs", () => {
   it("returns prefs on success", async () => {
-    const api = apiFake({ prefs: { fills: true, alerts: false } });
+    const api = apiFake({ prefs: { fills: true, alerts: false, lifecycle: true } });
     const r = await fetchPushCategoryPrefs(async () => api);
-    expect(r).toEqual({ fills: true, alerts: false });
+    expect(r).toEqual({ fills: true, alerts: false, lifecycle: true });
   });
 
   it("returns null when there is no session", async () => {
@@ -40,6 +40,13 @@ describe("setPushCategoryPrefs", () => {
     const ok = await setPushCategoryPrefs(async () => api, { fills: false });
     expect(ok).toBe(true);
     expect(api.calls.set).toEqual([{ fills: false }]);
+  });
+
+  it("forwards a lifecycle toggle", async () => {
+    const api = apiFake();
+    const ok = await setPushCategoryPrefs(async () => api, { lifecycle: false });
+    expect(ok).toBe(true);
+    expect(api.calls.set).toEqual([{ lifecycle: false }]);
   });
 
   it("returns false when there is no session", async () => {

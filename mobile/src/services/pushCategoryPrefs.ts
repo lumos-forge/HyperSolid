@@ -3,6 +3,7 @@ import type { StrategyApi } from "./strategyApi";
 export interface PushCategoryPrefs {
   fills: boolean;
   alerts: boolean;
+  lifecycle: boolean;
 }
 
 type AuthedApi = Pick<StrategyApi, "getPushPrefs" | "setPushPrefs">;
