@@ -5,6 +5,7 @@ import { AgentScreen } from "./AgentScreen";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
+import { useMarketStore } from "../state/marketStore";
 
 const AGENT = "0x" + "9".repeat(40);
 
@@ -34,9 +35,15 @@ jest.mock("../wallet/walletSession", () => ({ openStrategySession: (...a: unknow
 jest.mock("../services/exchange", () => ({
   ExchangeService: jest.fn().mockImplementation(() => ({ approveAgent: mockApproveAgent })),
 }));
-jest.mock("../lib/hyperliquid/client", () => ({ createExchangeClient: jest.fn(() => ({})) }));
+jest.mock("../lib/hyperliquid/client", () => ({
+  createExchangeClient: jest.fn(() => ({})),
+  createInfoClient: jest.fn(() => ({})),
+  createSubsClient: jest.fn(() => ({})),
+}));
+jest.mock("../hooks/useLiveMarkets", () => ({ useLiveMarkets: jest.fn() }));
 
 const localWallet = { getViemAccount: () => ({ signMessage: jest.fn() }), getAddress: () => AGENT } as never;
+const ethTicker = { coin: "ETH", midPx: 2950, prevDayPx: 2900, changePct: 1.7, funding: 0, dayNtlVlm: 0, maxLeverage: 20, szDecimals: 4 };
 
 describe("AgentScreen", () => {
   beforeEach(() => {
@@ -46,6 +53,7 @@ describe("AgentScreen", () => {
     mockApiFake.agentStatus.mockResolvedValue({ approved: false });
     mockApiFake.listStrategies.mockResolvedValue([]);
     mockApiFake.getRecentActivity.mockResolvedValue([]);
+    useMarketStore.setState({ tickers: [] });
     useEnvStore.setState({ network: "testnet" });
     useWalletStore.setState({ mode: "local", wallet: localWallet, address: AGENT });
     useRuntimeConfigStore.setState({
@@ -270,6 +278,28 @@ describe("AgentScreen", () => {
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));
     await waitFor(() => expect(screen.getByTestId("strategy-cg1")).toBeTruthy());
     expect(screen.queryByTestId("cancel-cg1")).toBeNull();
+  });
+
+  it("shows the live mark and distance on a conditional row", async () => {
+    useMarketStore.setState({ tickers: [ethTicker] });
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "cd1", type: "conditional", status: "running", params: { coin: "ETH", side: "buy", sizeUsdc: 100, triggerPrice: 3000, triggerDirection: "above" } },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("cond-status-cd1")).toBeTruthy());
+    expect(screen.getByText(/Mark 2,950\.0 · To trigger \+1\.7%/)).toBeTruthy();
+  });
+
+  it("omits the conditional status line when there is no mark", async () => {
+    useMarketStore.setState({ tickers: [] });
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "cd2", type: "conditional", status: "running", params: { coin: "ETH", side: "buy", sizeUsdc: 100, triggerPrice: 3000, triggerDirection: "above" } },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-cd2")).toBeTruthy());
+    expect(screen.queryByTestId("cond-status-cd2")).toBeNull();
   });
 
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
