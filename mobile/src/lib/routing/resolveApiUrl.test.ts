@@ -1,5 +1,6 @@
 import { resolveApiUrl } from "./resolveApiUrl";
 import { resolveWsUrl } from "./resolveApiUrl";
+import { markCooldown, _resetCooldowns } from "./proxyCooldown";
 import { useRoutingStore } from "../../state/routingStore";
 import { useRoutingEnvStore } from "../../state/routingEnvStore";
 import { useRuntimeConfigStore } from "../../state/runtimeConfigStore";
@@ -8,6 +9,7 @@ import { useWalletStore } from "../../state/walletStore";
 const POOL = ["https://p0.example", "https://p1.example"];
 
 beforeEach(() => {
+  _resetCooldowns();
   useRoutingStore.setState({ mode: "auto" });
   useRoutingEnvStore.setState({ proxyRecommended: false, detected: true });
   useRuntimeConfigStore.setState({ proxyPool: POOL });
@@ -47,5 +49,22 @@ describe("resolveWsUrl", () => {
   it("keeps private WS direct even in proxy mode", () => {
     useRoutingStore.setState({ mode: "proxy" });
     expect(resolveWsUrl("mainnet", "privateWs")).toBe("wss://api.hyperliquid.xyz/ws");
+  });
+});
+
+describe("routing degrades a cooling proxy to direct", () => {
+  it("resolveApiUrl falls back to direct when the chosen proxy is cooling", () => {
+    useRoutingStore.setState({ mode: "proxy" });
+    const proxy = resolveApiUrl("mainnet", "readInfo");
+    expect(POOL).toContain(proxy);
+    markCooldown(proxy);
+    expect(resolveApiUrl("mainnet", "readInfo")).toBe("https://api.hyperliquid.xyz");
+  });
+  it("resolveWsUrl falls back to the direct wss when the chosen proxy is cooling", () => {
+    useRoutingStore.setState({ mode: "proxy" });
+    const proxyWs = resolveWsUrl("mainnet", "publicWs");
+    const proxyBase = proxyWs.replace(/^wss/, "https").replace(/\/ws$/, "");
+    markCooldown(proxyBase);
+    expect(resolveWsUrl("mainnet", "publicWs")).toBe("wss://api.hyperliquid.xyz/ws");
   });
 });
