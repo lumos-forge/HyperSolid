@@ -51,4 +51,9 @@ describe("loadAppConfig", () => {
     const without = jest.fn(async () => jsonResponse({})) as unknown as typeof fetch;
     expect((await loadAppConfig("https://api.example.com", without)).proxyPool).toEqual([]);
   });
+
+  it("normalizes trailing slashes on proxy pool entries (cooldown-key consistency)", async () => {
+    const fetchImpl = jest.fn(async () => jsonResponse({ proxyPool: ["https://p0.example/", "https://p1.example"] })) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", fetchImpl)).proxyPool).toEqual(["https://p0.example", "https://p1.example"]);
+  });
 });

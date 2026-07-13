@@ -32,7 +32,7 @@ export async function loadAppConfig(
     },
     strategyApiBaseUrl: raw.strategyApiBaseUrl ?? null,
     geo: raw.geo ?? null,
-    proxyPool: raw.proxyPool ?? [],
+    proxyPool: (raw.proxyPool ?? []).map((u) => u.replace(/\/$/, "")),
   };
 }
 

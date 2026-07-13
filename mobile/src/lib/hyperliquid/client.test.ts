@@ -1,9 +1,11 @@
 import { HttpTransport } from "@nktkas/hyperliquid";
 import { WebSocketTransport } from "@nktkas/hyperliquid";
 import { InfoClient } from "@nktkas/hyperliquid";
+import { SubscriptionClient } from "@nktkas/hyperliquid";
 import { createInfoClient, createExchangeClient } from "./client";
 import { createSubsClient, createTwapSubsClient } from "./client";
 import { RoutingHttpTransport } from "./routingHttpTransport";
+import { RoutingWsTransport } from "./routingWsTransport";
 import { useRoutingStore } from "../../state/routingStore";
 import { useRoutingEnvStore } from "../../state/routingEnvStore";
 import { useRuntimeConfigStore } from "../../state/runtimeConfigStore";
@@ -57,5 +59,10 @@ describe("client WS routing", () => {
     wsMock.mockClear();
     createTwapSubsClient("mainnet");
     expect(wsMock.mock.calls.at(-1)![0].url).toBe("wss://api.hyperliquid.xyz/ws");
+  });
+  it("gives the public subs client a RoutingWsTransport", () => {
+    createSubsClient("mainnet");
+    const cfg = (SubscriptionClient as unknown as jest.Mock).mock.calls.at(-1)![0];
+    expect(cfg.transport).toBeInstanceOf(RoutingWsTransport);
   });
 });
