@@ -5,17 +5,21 @@ import { useRoutingStore } from "../../state/routingStore";
 import { useRoutingEnvStore } from "../../state/routingEnvStore";
 import { useRuntimeConfigStore } from "../../state/runtimeConfigStore";
 import { useWalletStore } from "../../state/walletStore";
+import { isCoolingDown } from "./proxyCooldown";
 
 /** Shared M8 routing decision: the routed HL base URL for a traffic class. */
 function routedBase(network: Network, traffic: TrafficType): string {
-  return selectRoute({
+  const directBase = hlRestBase(network);
+  const r = selectRoute({
     mode: useRoutingStore.getState().mode,
     traffic,
     userId: useWalletStore.getState().address ?? "",
     pool: useRuntimeConfigStore.getState().proxyPool,
-    directBase: hlRestBase(network),
+    directBase,
     proxyRecommended: useRoutingEnvStore.getState().proxyRecommended,
-  }).baseUrl;
+  });
+  if (r.viaProxy && isCoolingDown(r.baseUrl)) return directBase;
+  return r.baseUrl;
 }
 
 /** Resolve the HL HTTP base URL for a traffic class, applying the M8 routing decision from
