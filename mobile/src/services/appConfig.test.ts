@@ -44,4 +44,11 @@ describe("loadAppConfig", () => {
     const cfg = await loadAppConfig("https://api.example.com", fetchImpl);
     expect(cfg.geo).toBeNull();
   });
+
+  it("parses a server-delivered proxy pool (defaults to empty)", async () => {
+    const withPool = jest.fn(async () => jsonResponse({ proxyPool: ["https://p0.example"] })) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", withPool)).proxyPool).toEqual(["https://p0.example"]);
+    const without = jest.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", without)).proxyPool).toEqual([]);
+  });
 });

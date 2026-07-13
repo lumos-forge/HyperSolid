@@ -7,12 +7,13 @@ import {
 } from "@nktkas/hyperliquid";
 import type { Network } from "../../state/envStore";
 import { resolveIsTestnet } from "./network";
+import { resolveApiUrl } from "../routing/resolveApiUrl";
 import type { DetailInfoLike, DetailSubsLike, InfoLike, PositionsInfoLike, SubsLike, FillsInfoLike, OrdersInfoLike, FundingsInfoLike, OrderStatusInfoLike, RawOrderStatus } from "./types";
 import type { ExchangeLike } from "../../services/exchange";
 import type { TwapInfoLike, TwapSubsLike } from "./twap";
 
 export function createInfoClient(network: Network): InfoLike {
-  const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
+  const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") });
   return new InfoClient({ transport }) as unknown as InfoLike;
 }
 
@@ -23,7 +24,7 @@ export function createSubsClient(network: Network): SubsLike {
 
 export function createDetailInfoClient(network: Network): DetailInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     candleSnapshot(args: {
       coin: string;
@@ -54,7 +55,7 @@ export function createDetailSubsClient(network: Network): DetailSubsLike {
 
 export function createPositionsInfoClient(network: Network): PositionsInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     clearinghouseState(args: { user: string }): Promise<unknown>;
   };
@@ -65,7 +66,7 @@ export function createPositionsInfoClient(network: Network): PositionsInfoLike {
 
 export function createFillsInfoClient(network: Network): FillsInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     userFills(args: { user: string }): Promise<unknown>;
     userFillsByTime(args: { user: string; startTime: number; endTime: number }): Promise<unknown>;
@@ -79,7 +80,7 @@ export function createFillsInfoClient(network: Network): FillsInfoLike {
 
 export function createOrdersInfoClient(network: Network): OrdersInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     openOrders(args: { user: string }): Promise<unknown>;
   };
@@ -90,7 +91,7 @@ export function createOrdersInfoClient(network: Network): OrdersInfoLike {
 
 export function createTwapInfoClient(network: Network): TwapInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     twapHistory(args: { user: string }): Promise<unknown>;
     userTwapSliceFills(args: { user: string }): Promise<unknown>;
@@ -118,7 +119,7 @@ export function createTwapSubsClient(network: Network): TwapSubsLike {
 
 export function createFundingsInfoClient(network: Network): FundingsInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     userFunding(args: { user: string; startTime: number; endTime?: number }): Promise<unknown>;
   };
@@ -130,7 +131,7 @@ export function createFundingsInfoClient(network: Network): FundingsInfoLike {
 
 export function createOrderStatusInfoClient(network: Network): OrderStatusInfoLike {
   const info = new InfoClient({
-    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "readInfo") }),
   }) as unknown as {
     orderStatus(args: { user: string; oid: number | `0x${string}` }): Promise<RawOrderStatus>;
   };
@@ -144,6 +145,6 @@ export function createOrderStatusInfoClient(network: Network): OrderStatusInfoLi
  * `wallet` is the viem account from LocalWalletService.getViemAccount().
  */
 export function createExchangeClient(network: Network, wallet: unknown): ExchangeLike {
-  const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network) });
+  const transport = new HttpTransport({ isTestnet: resolveIsTestnet(network), apiUrl: resolveApiUrl(network, "signedExchange") });
   return new ExchangeClient({ wallet: wallet as never, transport }) as unknown as ExchangeLike;
 }

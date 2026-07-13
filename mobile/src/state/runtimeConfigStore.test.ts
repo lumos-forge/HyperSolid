@@ -19,6 +19,7 @@ describe("runtimeConfigStore", () => {
       withdrawFeeUsdc: { mainnet: null, testnet: null },
       strategyApiBaseUrl: null,
       geo: null,
+      proxyPool: [],
     });
     expect(arbitrumRpcFor("mainnet")).toBe("https://rpc.mainnet/key");
     expect(arbitrumRpcFor("testnet")).toBe("https://rpc.testnet/key");
@@ -31,6 +32,7 @@ describe("runtimeConfigStore", () => {
       withdrawFeeUsdc: { mainnet: 2.5, testnet: null },
       strategyApiBaseUrl: null,
       geo: null,
+      proxyPool: [],
     });
     expect(withdrawFeeFor("mainnet")).toBe(2.5);
     expect(withdrawFeeFor("testnet")).toBe(DEFAULT_WITHDRAW_FEE_USDC);
@@ -43,6 +45,7 @@ describe("runtimeConfigStore", () => {
       withdrawFeeUsdc: { mainnet: null, testnet: null },
       strategyApiBaseUrl: "https://api.example.com",
       geo: null,
+      proxyPool: [],
     });
     expect(useRuntimeConfigStore.getState().strategyApiBaseUrl).toBe("https://api.example.com");
   });
