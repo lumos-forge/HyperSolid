@@ -53,6 +53,7 @@ func TestBuildHandlerPostgresEndToEnd(t *testing.T) {
 		holderID:    "a",
 		leaseTTL:    15 * time.Second,
 		renewEvery:  50 * time.Millisecond,
+		signerKEK:   bytes.Repeat([]byte{0x2a}, 32),
 	}
 	h, cleanup, err := buildHandler(ctx, cfg, ks, policies)
 	if err != nil {

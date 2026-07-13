@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,7 @@ import (
 	"github.com/lumos-forge/hypersolid/backend/internal/hl"
 	"github.com/lumos-forge/hypersolid/backend/internal/hlinfo"
 	"github.com/lumos-forge/hypersolid/backend/internal/keystore"
+	keystorepg "github.com/lumos-forge/hypersolid/backend/internal/keystore/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/leader"
 	leasepg "github.com/lumos-forge/hypersolid/backend/internal/lease/pg"
 	"github.com/lumos-forge/hypersolid/backend/internal/ledger"
@@ -500,6 +502,7 @@ type config struct {
 	reconcileAccounts []reconciler.Account
 	reconcileInterval time.Duration
 	hlTimeout         time.Duration
+	signerKEK         []byte
 }
 
 // normalizeOwnerAddress lowercases and validates a 20-byte hex EVM address.
@@ -580,6 +583,11 @@ func configFromEnv() config {
 		cfg.holderID = defaultHolderID()
 	}
 	cfg.hlInfoURL = os.Getenv("SIGNER_HL_INFO_URL")
+	if raw := os.Getenv("SIGNER_KEK"); raw != "" {
+		if b, err := base64.StdEncoding.DecodeString(raw); err == nil {
+			cfg.signerKEK = b
+		}
+	}
 	cfg.reconcileAccounts = parseAccounts(os.Getenv("SIGNER_RECONCILE_ACCOUNTS"))
 	cfg.reconcileInterval = 15 * time.Second
 	if d, err := time.ParseDuration(os.Getenv("SIGNER_RECONCILE_INTERVAL")); err == nil && d > 0 {
@@ -631,6 +639,20 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 			pool.Close()
 			return nil, nil, fmt.Errorf("signer: lease schema: %w", err)
 		}
+		if len(cfg.signerKEK) != 32 {
+			pool.Close()
+			return nil, nil, fmt.Errorf("signer: SIGNER_KEK must be 32 bytes (base64) when a DB is configured")
+		}
+		if err := keystorepg.EnsureSchema(ctx, pool); err != nil {
+			pool.Close()
+			return nil, nil, fmt.Errorf("signer: keystore schema: %w", err)
+		}
+		keyManager := keystore.NewManager(ks, keystorepg.New(pool), cfg.signerKEK)
+		if err := keyManager.Load(ctx); err != nil {
+			pool.Close()
+			return nil, nil, fmt.Errorf("signer: keystore load: %w", err)
+		}
+		_ = keyManager // held for Phase 1b (provisioning endpoints)
 		ld := leader.New(leasepg.New(pool), cfg.leaseName, cfg.holderID, cfg.leaseTTL)
 		leaderCtx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
