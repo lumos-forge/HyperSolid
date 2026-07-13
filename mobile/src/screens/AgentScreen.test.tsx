@@ -35,12 +35,7 @@ jest.mock("../wallet/walletSession", () => ({ openStrategySession: (...a: unknow
 jest.mock("../services/exchange", () => ({
   ExchangeService: jest.fn().mockImplementation(() => ({ approveAgent: mockApproveAgent })),
 }));
-jest.mock("../lib/hyperliquid/client", () => ({
-  createExchangeClient: jest.fn(() => ({})),
-  createInfoClient: jest.fn(() => ({})),
-  createSubsClient: jest.fn(() => ({})),
-}));
-jest.mock("../hooks/useLiveMarkets", () => ({ useLiveMarkets: jest.fn() }));
+jest.mock("../lib/hyperliquid/client", () => ({ createExchangeClient: jest.fn(() => ({})) }));
 
 const localWallet = { getViemAccount: () => ({ signMessage: jest.fn() }), getAddress: () => AGENT } as never;
 const ethTicker = { coin: "ETH", midPx: 2950, prevDayPx: 2900, changePct: 1.7, funding: 0, dayNtlVlm: 0, maxLeverage: 20, szDecimals: 4 };
