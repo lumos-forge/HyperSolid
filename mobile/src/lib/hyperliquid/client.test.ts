@@ -1,5 +1,7 @@
 import { HttpTransport } from "@nktkas/hyperliquid";
+import { WebSocketTransport } from "@nktkas/hyperliquid";
 import { createInfoClient, createExchangeClient } from "./client";
+import { createSubsClient, createTwapSubsClient } from "./client";
 import { useRoutingStore } from "../../state/routingStore";
 import { useRoutingEnvStore } from "../../state/routingEnvStore";
 import { useRuntimeConfigStore } from "../../state/runtimeConfigStore";
@@ -34,5 +36,24 @@ describe("client routing", () => {
     createExchangeClient("mainnet", {});
     const opts = httpMock.mock.calls.at(-1)![0];
     expect(opts.apiUrl).toBe("https://api.hyperliquid.xyz");
+  });
+});
+
+const wsMock = WebSocketTransport as unknown as jest.Mock;
+
+describe("client WS routing", () => {
+  it("routes public subscriptions through a proxy wss host in proxy mode", () => {
+    wsMock.mockClear();
+    createSubsClient("mainnet");
+    const url: string = wsMock.mock.calls.at(-1)![0].url;
+    expect(url.startsWith("wss://")).toBe(true);
+    expect(url.endsWith("/ws")).toBe(true);
+    const host = url.slice("wss://".length, -"/ws".length);
+    expect(POOL.map((p) => p.replace("https://", ""))).toContain(host);
+  });
+  it("keeps the private twap subscription on the direct wss endpoint", () => {
+    wsMock.mockClear();
+    createTwapSubsClient("mainnet");
+    expect(wsMock.mock.calls.at(-1)![0].url).toBe("wss://api.hyperliquid.xyz/ws");
   });
 });

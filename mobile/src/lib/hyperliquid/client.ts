@@ -7,7 +7,7 @@ import {
 } from "@nktkas/hyperliquid";
 import type { Network } from "../../state/envStore";
 import { resolveIsTestnet } from "./network";
-import { resolveApiUrl } from "../routing/resolveApiUrl";
+import { resolveApiUrl, resolveWsUrl } from "../routing/resolveApiUrl";
 import type { DetailInfoLike, DetailSubsLike, InfoLike, PositionsInfoLike, SubsLike, FillsInfoLike, OrdersInfoLike, FundingsInfoLike, OrderStatusInfoLike, RawOrderStatus } from "./types";
 import type { ExchangeLike } from "../../services/exchange";
 import type { TwapInfoLike, TwapSubsLike } from "./twap";
@@ -18,7 +18,7 @@ export function createInfoClient(network: Network): InfoLike {
 }
 
 export function createSubsClient(network: Network): SubsLike {
-  const transport = new WebSocketTransport({ isTestnet: resolveIsTestnet(network) });
+  const transport = new WebSocketTransport({ isTestnet: resolveIsTestnet(network), url: resolveWsUrl(network, "publicWs") });
   return new SubscriptionClient({ transport }) as unknown as SubsLike;
 }
 
@@ -41,7 +41,7 @@ export function createDetailInfoClient(network: Network): DetailInfoLike {
 
 export function createDetailSubsClient(network: Network): DetailSubsLike {
   const subs = new SubscriptionClient({
-    transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network), url: resolveWsUrl(network, "publicWs") }),
   }) as unknown as {
     l2Book(args: { coin: string; nSigFigs?: number }, cb: (b: unknown) => void): Promise<unknown>;
     trades(args: { coin: string }, cb: (t: unknown) => void): Promise<unknown>;
@@ -107,7 +107,7 @@ export function createTwapInfoClient(network: Network): TwapInfoLike {
 
 export function createTwapSubsClient(network: Network): TwapSubsLike {
   const subs = new SubscriptionClient({
-    transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network) }),
+    transport: new WebSocketTransport({ isTestnet: resolveIsTestnet(network), url: resolveWsUrl(network, "privateWs") }),
   }) as unknown as {
     userTwapSliceFills(args: { user: string }, cb: (e: unknown) => void): Promise<unknown>;
   };
