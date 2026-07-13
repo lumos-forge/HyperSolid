@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams } from "./types";
+import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams } from "./types";
 import type { RungState } from "./gridLimit";
 
 /** Persistence boundary for strategies. */
@@ -30,6 +30,7 @@ function build(owner: string, kind: StrategyKind, params: StrategyParams, now: n
   if (kind === "twap") return { ...base, kind, params: params as TwapParams, nextRunAt: now, filledTotalUsdc: 0, slicesDone: 0 };
   if (kind === "grid") return { ...base, kind, params: params as GridParams, filledTotalUsdc: 0, actionsDone: 0 };
   if (kind === "gridLimit") return { ...base, kind, params: params as GridLimitParams, filledTotalUsdc: 0 };
+  if (kind === "trailing") return { ...base, kind, params: params as TrailingParams };
   return { ...base, kind, params: params as TpslParams };
 }
 
