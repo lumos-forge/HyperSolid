@@ -30,6 +30,8 @@ import { useRoutingStore } from "./src/state/routingStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
 import { reconcilePendingIntents } from "./src/services/ledgerRecovery";
 import { hydrateRuntimeConfig } from "./src/services/appConfig";
+import { detectRoutingEnv } from "./src/services/routingEnv";
+import { useRuntimeConfigStore } from "./src/state/runtimeConfigStore";
 import { useAutoLock } from "./src/wallet/useAutoLock";
 import { unlockSession, unlockWithPin, recoverFromLock } from "./src/wallet/sessionController";
 import { BiometricGate } from "./src/wallet/biometricGate";
@@ -58,7 +60,13 @@ export default function App() {
   // startup; the backend base URL is not secret. Deposits block clearly until the RPC arrives.
   useEffect(() => {
     const baseUrl = process.env.EXPO_PUBLIC_APP_CONFIG_URL;
-    if (baseUrl) void hydrateRuntimeConfig(baseUrl);
+    void (async () => {
+      if (baseUrl) await hydrateRuntimeConfig(baseUrl);
+      void detectRoutingEnv({
+        network: useEnvStore.getState().network,
+        geoCountry: useRuntimeConfigStore.getState().geo?.country,
+      });
+    })();
   }, []);
 
   // Persistent intent ledger (spec §6.2): one SQLite DB, hydrated/scoped by wallet × network so a
