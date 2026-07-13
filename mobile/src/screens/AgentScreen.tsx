@@ -16,11 +16,9 @@ import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslP
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
-import { createExchangeClient, createInfoClient, createSubsClient } from "../lib/hyperliquid/client";
+import { createExchangeClient } from "../lib/hyperliquid/client";
 import { formatPrice } from "../components/PriceText";
 import { pctToTrigger } from "../lib/pctToTrigger";
-import { MarketDataService } from "../services/marketData";
-import { useLiveMarkets } from "../hooks/useLiveMarkets";
 import { useMarketStore } from "../state/marketStore";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { useStrategyController } from "../hooks/useStrategyController";
@@ -149,11 +147,6 @@ function StrategyPanel({
     const id = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(id);
   }, []);
-  const marketData = useMemo(
-    () => new MarketDataService(createInfoClient(network), createSubsClient(network)),
-    [network],
-  );
-  useLiveMarkets(marketData);
   const tickers = useMarketStore((s) => s.tickers);
   const approve = useMemo(() => {
     const svc = new ExchangeService(createExchangeClient(network, account), buildAssetIndex({ universe: [] }));
