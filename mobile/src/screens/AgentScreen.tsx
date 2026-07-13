@@ -16,7 +16,12 @@ import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslP
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
-import { createExchangeClient } from "../lib/hyperliquid/client";
+import { createExchangeClient, createInfoClient, createSubsClient } from "../lib/hyperliquid/client";
+import { formatPrice } from "../components/PriceText";
+import { pctToTrigger } from "../lib/pctToTrigger";
+import { MarketDataService } from "../services/marketData";
+import { useLiveMarkets } from "../hooks/useLiveMarkets";
+import { useMarketStore } from "../state/marketStore";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { useStrategyController } from "../hooks/useStrategyController";
 import type { LocalWalletService } from "../wallet/localWallet";
@@ -144,6 +149,12 @@ function StrategyPanel({
     const id = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(id);
   }, []);
+  const marketData = useMemo(
+    () => new MarketDataService(createInfoClient(network), createSubsClient(network)),
+    [network],
+  );
+  useLiveMarkets(marketData);
+  const tickers = useMarketStore((s) => s.tickers);
   const approve = useMemo(() => {
     const svc = new ExchangeService(createExchangeClient(network, account), buildAssetIndex({ universe: [] }));
     return (req: { agentAddress: string; agentName?: string }) => svc.approveAgent(req);
@@ -307,7 +318,7 @@ function StrategyPanel({
       {ctrl.strategies.length === 0 ? (
         <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.noStrategies")}</Text>
       ) : (
-        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} now={now} onToggle={() => void ctrl.toggle(s)} onCancel={() => void ctrl.cancel(s.id)} getRungs={(id) => api.getRungs(id)} />)
+        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} now={now} mark={s.type === "conditional" ? tickers.find((tk) => tk.coin === (s.params as ConditionalParams).coin)?.midPx : undefined} onToggle={() => void ctrl.toggle(s)} onCancel={() => void ctrl.cancel(s.id)} getRungs={(id) => api.getRungs(id)} />)
       )}
 
       <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.recentActivity")}</Text>
@@ -573,9 +584,9 @@ function RungLine({ theme, id, r }: { theme: ThemeTokens; id: string; r: Rung })
 }
 
 function StrategyRow({
-  theme, strategy, now, onToggle, onCancel, getRungs,
+  theme, strategy, now, mark, onToggle, onCancel, getRungs,
 }: {
-  theme: ThemeTokens; strategy: Strategy; now: number; onToggle: () => void; onCancel: () => void; getRungs?: (id: string) => Promise<Rung[]>;
+  theme: ThemeTokens; strategy: Strategy; now: number; mark?: number; onToggle: () => void; onCancel: () => void; getRungs?: (id: string) => Promise<Rung[]>;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -635,10 +646,16 @@ function StrategyRow({
       { text: t("agent.cancelConfirmBack"), style: "cancel" },
       { text: t("agent.cancelConfirmOk"), style: "destructive", onPress: () => onCancel() },
     ]);
+  const fmtSignedPct = (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
+  const condStatus =
+    strategy.type === "conditional" && mark != null
+      ? `${t("agent.condNow")} ${formatPrice(mark)} · ${t("agent.condDistance")} ${fmtSignedPct(pctToTrigger(mark, (strategy.params as ConditionalParams).triggerPrice))}`
+      : null;
   const info = (
     <>
       <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
       <Text style={[styles.hint, { color: theme.muted }]}>{sub}</Text>
+      {condStatus ? <Text style={[styles.hint, { color: theme.muted }]} testID={`cond-status-${strategy.id}`}>{condStatus}</Text> : null}
     </>
   );
   return (
