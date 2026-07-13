@@ -5,6 +5,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { useWalletStore } from "../state/walletStore";
 import { useEnvStore } from "../state/envStore";
 import { useLocaleStore } from "../state/localeStore";
+import { useRoutingStore } from "../state/routingStore";
 import type { WalletManager } from "../wallet/walletManager";
 
 jest.mock("expo-clipboard", () => ({ setStringAsync: jest.fn(async () => true) }));
@@ -15,6 +16,7 @@ describe("SettingsScreen", () => {
   beforeEach(() => {
     useEnvStore.setState({ network: "mainnet" });
     useLocaleStore.setState({ locale: "en" });
+    useRoutingStore.setState({ mode: "auto" });
     useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
   });
 
@@ -32,6 +34,13 @@ describe("SettingsScreen", () => {
     fireEvent.press(screen.getByText("Language"));
     fireEvent.press(screen.getByTestId("locale-opt-zh"));
     expect(useLocaleStore.getState().locale).toBe("zh");
+  });
+
+  it("changes the network routing mode", () => {
+    render(<SettingsScreen />);
+    fireEvent.press(screen.getByText("Network routing"));
+    fireEvent.press(screen.getByTestId("routing-opt-direct"));
+    expect(useRoutingStore.getState().mode).toBe("direct");
   });
 
   it("reveals the recovery phrase via Export & backup", async () => {

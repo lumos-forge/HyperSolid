@@ -9,6 +9,7 @@ import { useWalletStore } from "../state/walletStore";
 import { useEnvStore, type Network } from "../state/envStore";
 import { useThemeStore } from "../state/themeStore";
 import { useLocaleStore } from "../state/localeStore";
+import { useRoutingStore, ROUTING_MODES, type RoutingMode } from "../state/routingStore";
 import { useLockPrefsStore, AUTO_LOCK_OPTIONS } from "../state/lockPrefsStore";
 import { usePushPrefsStore } from "../state/pushPrefsStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
@@ -46,7 +47,7 @@ const APP_VERSION = (appJson as { expo?: { version?: string } }).expo?.version ?
 const PRIVACY_URL = "https://hypersolid.app/privacy";
 const TERMS_URL = "https://hypersolid.app/terms";
 
-type Picker = "none" | "network" | "theme" | "locale" | "autolock" | "qh_start" | "qh_end";
+type Picker = "none" | "network" | "theme" | "locale" | "autolock" | "qh_start" | "qh_end" | "routing";
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` }));
 
 /** Wallet settings sub-page (Wallet › gear): grouped app prefs + security + backup + sign-out. */
@@ -61,6 +62,8 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const setTheme = useThemeStore((s) => s.setTheme);
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
+  const routingMode = useRoutingStore((s) => s.mode);
+  const setRoutingMode = useRoutingStore((s) => s.setMode);
   const biometricEnabled = useLockPrefsStore((s) => s.biometricEnabled);
   const setBiometricEnabled = useLockPrefsStore((s) => s.setBiometricEnabled);
   const autoLockMinutes = useLockPrefsStore((s) => s.autoLockMinutes);
@@ -78,6 +81,8 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const gate = useMemo(() => deps?.gate ?? new BiometricGate(LocalAuthentication), [deps]);
 
   const [picker, setPicker] = useState<Picker>("none");
+  const routingLabel = (m: RoutingMode) =>
+    t(m === "auto" ? "settings.routingAuto" : m === "direct" ? "settings.routingDirect" : "settings.routingProxy");
   const [sheet, setSheet] = useState<"none" | "changepin">("none");
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -306,6 +311,7 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
 
       <SectionLabel theme={theme}>{t("settings.prefs")}</SectionLabel>
       <SettingRow theme={theme} icon="swap" name={t("account.network")} value={network} onPress={() => setPicker("network")} />
+      <SettingRow theme={theme} icon="swap" name={t("settings.routing")} value={routingLabel(routingMode)} onPress={() => setPicker("routing")} />
       <SettingRow theme={theme} icon="grid" name={t("account.theme")} value={THEME_LABEL[themeName]} onPress={() => setPicker("theme")} />
       <SettingRow theme={theme} icon="repeat" name={t("settings.language")} value={LOCALE_LABEL[locale]} onPress={() => setPicker("locale")} />
 
@@ -360,6 +366,16 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
         sections={[{ options: [{ value: "mainnet", label: "mainnet" }, { value: "testnet", label: "testnet" }] }]}
         theme={theme}
         testIDPrefix="network"
+      />
+      <SheetSelect<RoutingMode>
+        visible={picker === "routing"}
+        onClose={() => setPicker("none")}
+        title={t("settings.routingTitle")}
+        value={routingMode}
+        onSelect={(v) => { setRoutingMode(v); setPicker("none"); }}
+        sections={[{ options: ROUTING_MODES.map((m) => ({ value: m, label: routingLabel(m) })) }]}
+        theme={theme}
+        testIDPrefix="routing"
       />
       <SheetSelect<ThemeName>
         visible={picker === "theme"}

@@ -47,6 +47,11 @@ export const messages = {
     "common.setUpWallet": "Set up wallet",
 
     "settings.language": "Language",
+    "settings.routing": "Network routing",
+    "settings.routingTitle": "Network routing",
+    "settings.routingAuto": "Auto",
+    "settings.routingDirect": "Direct",
+    "settings.routingProxy": "Proxy",
     "settings.notifications": "Notifications",
     "settings.notificationsOn": "On",
     "settings.notificationsOff": "Off",
@@ -562,6 +567,11 @@ export const messages = {
     "common.setUpWallet": "去创建钱包",
 
     "settings.language": "语言",
+    "settings.routing": "网络路由",
+    "settings.routingTitle": "网络路由",
+    "settings.routingAuto": "自动",
+    "settings.routingDirect": "直连",
+    "settings.routingProxy": "代理",
     "settings.notifications": "通知",
     "settings.notificationsOn": "开",
     "settings.notificationsOff": "关",
