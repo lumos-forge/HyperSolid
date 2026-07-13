@@ -1,4 +1,4 @@
-import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams, ConditionalParams } from "./types";
+import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams, ConditionalParams, ScheduledParams } from "./types";
 
 type Result = { ok: true; params: StrategyParams } | { ok: false; error: string };
 
@@ -74,6 +74,13 @@ export function validateParams(kind: StrategyKind, params: unknown): Result {
     if (!positiveNumber(c.triggerPrice)) return { ok: false, error: "triggerPrice must be > 0" };
     if (c.triggerDirection !== "above" && c.triggerDirection !== "below") return { ok: false, error: "triggerDirection must be above or below" };
     return { ok: true, params: { coin, side: c.side, sizeUsdc: c.sizeUsdc, triggerPrice: c.triggerPrice, triggerDirection: c.triggerDirection, ...(deadMan ? { deadMan: true } : {}) } };
+  }
+  if (kind === "scheduled") {
+    const c = p as unknown as ScheduledParams;
+    if (c.side !== "buy" && c.side !== "sell") return { ok: false, error: "scheduled side must be buy or sell" };
+    if (!positiveNumber(c.sizeUsdc)) return { ok: false, error: "sizeUsdc must be > 0" };
+    if (!positiveInteger(c.runAt)) return { ok: false, error: "runAt must be a positive epoch-ms timestamp" };
+    return { ok: true, params: { coin, side: c.side, sizeUsdc: c.sizeUsdc, runAt: c.runAt, ...(deadMan ? { deadMan: true } : {}) } };
   }
   return { ok: false, error: "unknown strategy kind" };
 }

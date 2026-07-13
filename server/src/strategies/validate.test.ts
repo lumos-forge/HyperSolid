@@ -160,3 +160,23 @@ describe("validateParams conditional", () => {
     expect(validateParams("conditional", { side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" }).ok).toBe(false);
   });
 });
+
+describe("validateParams scheduled", () => {
+  it("accepts a valid scheduled config", () => {
+    const r = validateParams("scheduled", { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 1893456000000 });
+    expect(r).toEqual({ ok: true, params: { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 1893456000000 } });
+  });
+
+  it("carries deadMan through", () => {
+    const r = validateParams("scheduled", { coin: "ETH", side: "sell", sizeUsdc: 50, runAt: 1893456000000, deadMan: true });
+    expect(r).toEqual({ ok: true, params: { coin: "ETH", side: "sell", sizeUsdc: 50, runAt: 1893456000000, deadMan: true } });
+  });
+
+  it("rejects a bad side / size / runAt / coin", () => {
+    expect(validateParams("scheduled", { coin: "BTC", side: "long", sizeUsdc: 100, runAt: 1893456000000 }).ok).toBe(false);
+    expect(validateParams("scheduled", { coin: "BTC", side: "buy", sizeUsdc: 0, runAt: 1893456000000 }).ok).toBe(false);
+    expect(validateParams("scheduled", { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 0 }).ok).toBe(false);
+    expect(validateParams("scheduled", { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 1.5 }).ok).toBe(false);
+    expect(validateParams("scheduled", { side: "buy", sizeUsdc: 100, runAt: 1893456000000 }).ok).toBe(false);
+  });
+});
