@@ -885,4 +885,17 @@ describe("conditional entry", () => {
     await tick(store, placer, { maxNotionalUsdc: 1e9, dailyMaxNotionalUsdc: 100 }, false, 0, activity, marks);
     expect(placer.calls).toHaveLength(0); // 60 + 100 > 100
   });
+
+  it("uses a restart-stable cloid so a replay dedupes instead of double-opening", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const calls: any[] = [];
+    // Placement fails, so the strategy stays running and re-fires on the next tick.
+    const placer = { place: async (r: any) => { calls.push(r); return { ok: false }; } };
+    store.create("0xo", "conditional", cond());
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 111, undefined, marks);
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 222, undefined, marks); // different `now`
+    expect(calls).toHaveLength(2);
+    expect(calls[0].cloid).toBe(calls[1].cloid); // stable across ticks/restarts
+  });
 });

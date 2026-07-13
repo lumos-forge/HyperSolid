@@ -198,7 +198,7 @@ export async function tick(
         const spentToday = activity.notionalSince(s.owner, dayStartUtcMs(now));
         if (spentToday + notionalUsdc > limits.dailyMaxNotionalUsdc) continue;
       }
-      const cloid = cloidFor(s.id, now);
+      const cloid = cloidForKey(s.id, "conditional");
       const res = await placer.place({ owner: s.owner, coin: p.coin, sizeUsdc: notionalUsdc, cloid, side: p.side, reduceOnly: false });
       if (res.ok) {
         if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
