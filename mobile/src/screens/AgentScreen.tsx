@@ -307,7 +307,7 @@ function StrategyPanel({
       {ctrl.strategies.length === 0 ? (
         <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.noStrategies")}</Text>
       ) : (
-        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} now={now} onToggle={() => void ctrl.toggle(s)} getRungs={(id) => api.getRungs(id)} />)
+        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} now={now} onToggle={() => void ctrl.toggle(s)} onCancel={() => void ctrl.cancel(s.id)} getRungs={(id) => api.getRungs(id)} />)
       )}
 
       <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.recentActivity")}</Text>
@@ -573,9 +573,9 @@ function RungLine({ theme, id, r }: { theme: ThemeTokens; id: string; r: Rung })
 }
 
 function StrategyRow({
-  theme, strategy, now, onToggle, getRungs,
+  theme, strategy, now, onToggle, onCancel, getRungs,
 }: {
-  theme: ThemeTokens; strategy: Strategy; now: number; onToggle: () => void; getRungs?: (id: string) => Promise<Rung[]>;
+  theme: ThemeTokens; strategy: Strategy; now: number; onToggle: () => void; onCancel: () => void; getRungs?: (id: string) => Promise<Rung[]>;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -630,6 +630,11 @@ function StrategyRow({
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";
+  const confirmCancel = () =>
+    Alert.alert(t("agent.cancelConfirmTitle"), t("agent.cancelConfirmBody"), [
+      { text: t("agent.cancelConfirmBack"), style: "cancel" },
+      { text: t("agent.cancelConfirmOk"), style: "destructive", onPress: () => onCancel() },
+    ]);
   const info = (
     <>
       <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
@@ -649,12 +654,17 @@ function StrategyRow({
         {completed || canceling ? (
           <Text style={[styles.hint, { color: theme.faint }]}>{t(canceling ? "agent.statusCanceling" : "agent.statusCompleted")}</Text>
         ) : (
-          <Toggle
-            theme={theme}
-            value={strategy.status === "running"}
-            onValueChange={onToggle}
-            accessibilityLabel={`toggle-${strategy.id}`}
-          />
+          <View style={styles.rowActions}>
+            <Pressable onPress={confirmCancel} accessibilityRole="button" testID={`cancel-${strategy.id}`}>
+              <Text style={[styles.cancelBtnText, { color: theme.down }]}>{t("agent.cancelStrategyBtn")}</Text>
+            </Pressable>
+            <Toggle
+              theme={theme}
+              value={strategy.status === "running"}
+              onValueChange={onToggle}
+              accessibilityLabel={`toggle-${strategy.id}`}
+            />
+          </View>
         )}
       </View>
       {isGl && expanded ? (
@@ -732,6 +742,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontFamily: fonts.mono.medium, fontSize: 14 },
   rowCard: { padding: 14, marginBottom: 8 },
   rowTop: { flexDirection: "row", alignItems: "center" },
+  rowActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  cancelBtnText: { fontSize: 13, fontWeight: "600" },
   rungBox: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "transparent", paddingTop: 8 },
   rungLine: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
   deadManRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 },

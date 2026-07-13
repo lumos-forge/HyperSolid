@@ -1,4 +1,5 @@
 import React from "react";
+import { Alert } from "react-native";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { AgentScreen } from "./AgentScreen";
 import { useWalletStore } from "../state/walletStore";
@@ -17,6 +18,7 @@ const mockApiFake = {
   listStrategies: jest.fn(async () => [] as unknown[]),
   createStrategy: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "running" })),
   setStrategyStatus: jest.fn(async () => ({ id: "s1", type: "dca", params: {}, status: "paused" })),
+  deleteStrategy: jest.fn(async () => undefined),
   killSwitch: jest.fn(async () => undefined),
   getRecentActivity: jest.fn(async () => [] as unknown[]),
   getRungs: jest.fn(async () => [
@@ -242,6 +244,32 @@ describe("AgentScreen", () => {
     await waitFor(() => expect(screen.getByTestId("strategy-sc2")).toBeTruthy());
     expect(screen.getByText("Buy 100")).toBeTruthy();
     expect(screen.queryByText(/left/)).toBeNull();
+  });
+
+  it("cancels a strategy after confirming the dialog", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "c1", type: "dca", status: "running", params: { coin: "BTC", side: "buy", quoteAmountUsdc: 50, intervalHours: 24 } },
+    ]);
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("cancel-c1")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("cancel-c1"));
+    const buttons = alertSpy.mock.calls[0][2] as Array<{ text: string; style?: string; onPress?: () => void }>;
+    const confirm = buttons.find((b) => b.style === "destructive")!;
+    confirm.onPress!();
+    await waitFor(() => expect(mockApiFake.deleteStrategy).toHaveBeenCalledWith("c1"));
+    alertSpy.mockRestore();
+  });
+
+  it("shows no cancel button on a canceling strategy row", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "cg1", type: "gridLimit", status: "canceling", params: { coin: "BTC", lowerPrice: 100, upperPrice: 200, levels: 6, perLevelUsdc: 50 } },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-cg1")).toBeTruthy());
+    expect(screen.queryByTestId("cancel-cg1")).toBeNull();
   });
 
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
