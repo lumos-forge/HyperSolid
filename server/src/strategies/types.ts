@@ -1,4 +1,4 @@
-export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing";
+export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing" | "conditional";
 export type StrategyStatus = "running" | "paused" | "completed" | "canceling";
 
 /** Fields common to every strategy's params. */
@@ -31,6 +31,15 @@ export interface TrailingParams extends StrategyParamsCommon {
   /** Callback rate: retrace percent from the favorable extreme that triggers the close. 0 < trailPct < 100. */
   trailPct: number;
 }
+export interface ConditionalParams extends StrategyParamsCommon {
+  coin: string;
+  side: "buy" | "sell";
+  /** Notional (USDC) to open at market when the trigger fires. */
+  sizeUsdc: number;
+  triggerPrice: number;
+  /** "above": fire when mark >= triggerPrice (breakout). "below": fire when mark <= triggerPrice (dip). */
+  triggerDirection: "above" | "below";
+}
 export interface GridParams extends StrategyParamsCommon {
   coin: string;
   lowerPrice: number;
@@ -53,7 +62,7 @@ export interface GridLimitParams extends StrategyParamsCommon {
   /** longOnly (default): resting long grid. symmetric: two-sided long/short resting grid. */
   mode?: "longOnly" | "symmetric";
 }
-export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams | TrailingParams;
+export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams | TrailingParams | ConditionalParams;
 
 interface StrategyBase {
   id: string;
@@ -78,4 +87,5 @@ export type Strategy =
   | (StrategyBase & { kind: "tpsl"; params: TpslParams })
   | (StrategyBase & { kind: "grid"; params: GridParams })
   | (StrategyBase & { kind: "gridLimit"; params: GridLimitParams })
-  | (StrategyBase & { kind: "trailing"; params: TrailingParams });
+  | (StrategyBase & { kind: "trailing"; params: TrailingParams })
+  | (StrategyBase & { kind: "conditional"; params: ConditionalParams });
