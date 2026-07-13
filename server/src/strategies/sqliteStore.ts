@@ -19,6 +19,7 @@ function toStrategy(row: Row): Strategy {
   if (row.kind === "grid") return { ...base, kind: "grid", params, filledTotalUsdc: row.filled_total_usdc, actionsDone: row.actions_done, lastLevel: row.last_level ?? undefined };
   if (row.kind === "gridLimit") return { ...base, kind: "gridLimit", params, filledTotalUsdc: row.filled_total_usdc };
   if (row.kind === "trailing") return { ...base, kind: "trailing", params, trailPeak: row.trail_peak ?? undefined };
+  if (row.kind === "conditional") return { ...base, kind: "conditional", params };
   return { ...base, kind: "dca", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc };
 }
 
@@ -71,7 +72,7 @@ export class SqliteStrategyStore implements StrategyStore {
   create(owner: string, kind: StrategyKind, params: StrategyParams): Strategy {
     const now = this.now();
     const id = randomUUID();
-    const scheduled = kind === "tpsl" || kind === "grid" || kind === "gridLimit" || kind === "trailing" ? 0 : now;
+    const scheduled = kind === "tpsl" || kind === "grid" || kind === "gridLimit" || kind === "trailing" || kind === "conditional" ? 0 : now;
     this.db
       .prepare(
         "INSERT INTO strategies (id, owner, status, params, kind, next_run_at, filled_total_usdc, slices_done, triggered_at, created_at, last_level, actions_done) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
