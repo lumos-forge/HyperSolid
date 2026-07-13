@@ -11,7 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type TrailingParams, type ConditionalParams, type Activity, type Rung } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type TrailingParams, type ConditionalParams, type ScheduledParams, type Activity, type Rung } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
@@ -22,7 +22,7 @@ import type { LocalWalletService } from "../wallet/localWallet";
 import type { Account } from "viem";
 
 const AGENT_VALIDITY_MS = 90 * 24 * 3600 * 1000;
-type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing" | "conditional";
+type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing" | "conditional" | "scheduled";
 
 function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -166,6 +166,9 @@ function StrategyPanel({
   const [condSize, setCondSize] = useState("");
   const [condTrigger, setCondTrigger] = useState("");
   const [condDir, setCondDir] = useState<"above" | "below">("above");
+  const [schedSide, setSchedSide] = useState<"buy" | "sell">("buy");
+  const [schedSize, setSchedSize] = useState("");
+  const [schedDelay, setSchedDelay] = useState("");
 
   const [glLower, setGlLower] = useState("");
   const [glUpper, setGlUpper] = useState("");
@@ -246,6 +249,14 @@ function StrategyPanel({
     setCondSize(""); setCondTrigger("");
   }
 
+  async function onCreateScheduled() {
+    const size = Number(schedSize), hrs = Number(schedDelay);
+    if (!(size > 0) || !(hrs > 0)) { Alert.alert(t("agent.invalidParams"), t("agent.invalidScheduled")); return; }
+    const runAt = Math.round(Date.now() + hrs * 3600000);
+    await ctrl.createScheduled({ coin: coin.toUpperCase(), side: schedSide, sizeUsdc: size, runAt, ...(deadMan ? { deadMan: true } : {}) });
+    setSchedSize(""); setSchedDelay("");
+  }
+
   return (
     <>
       <SurfaceCard theme={theme} testID="agent-card" style={styles.card}>
@@ -302,7 +313,7 @@ function StrategyPanel({
 
       <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.template")}</Text>
       <View style={styles.segment} testID="template-picker">
-        {(["dca", "twap", "tpsl", "grid", "gridLimit", "trailing", "conditional"] as Template[]).map((k) => (
+        {(["dca", "twap", "tpsl", "grid", "gridLimit", "trailing", "conditional", "scheduled"] as Template[]).map((k) => (
           <Pressable
             key={k}
             testID={`template-${k}`}
@@ -318,7 +329,8 @@ function StrategyPanel({
                 : k === "grid" ? "agent.templateGrid"
                 : k === "gridLimit" ? "agent.templateGridLimit"
                 : k === "trailing" ? "agent.templateTrailing"
-                : "agent.templateConditional",
+                : k === "conditional" ? "agent.templateConditional"
+                : "agent.templateScheduled",
               )}
             </Text>
           </Pressable>
@@ -427,6 +439,29 @@ function StrategyPanel({
           </View>
           <Pressable onPress={onCreateConditional} accessibilityRole="button" testID="cond-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
             <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createConditional")}</Text>
+          </Pressable>
+        </SurfaceCard>
+      )}
+
+      {template === "scheduled" && (
+        <SurfaceCard theme={theme} rule={false} testID="new-scheduled" style={styles.card}>
+          <Text style={[styles.title, { color: theme.text }]}>{t("agent.newScheduled")}</Text>
+          <Field theme={theme} label={t("agent.coin")} value={coin} onChangeText={setCoin} autoCap testID="scheduled-coin" />
+          <View style={styles.sideRow}>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.side")}</Text>
+            <View style={styles.sideBtns}>
+              {(["buy", "sell"] as const).map((sd) => (
+                <Pressable key={sd} testID={`sched-side-${sd}`} accessibilityRole="button" onPress={() => setSchedSide(sd)}
+                  style={[styles.sideBtn, { borderColor: theme.line }, schedSide === sd && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: schedSide === sd ? theme.text : theme.muted }]}>{t(sd === "buy" ? "agent.buy" : "agent.sell")}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <Field theme={theme} label={t("agent.condSize")} value={schedSize} onChangeText={setSchedSize} keyboard testID="sched-size" />
+          <Field theme={theme} label={t("agent.schedDelay")} value={schedDelay} onChangeText={setSchedDelay} keyboard testID="sched-delay" />
+          <Pressable onPress={onCreateScheduled} accessibilityRole="button" testID="sched-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
+            <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createScheduled")}</Text>
           </Pressable>
         </SurfaceCard>
       )}
@@ -554,6 +589,7 @@ function StrategyRow({
     : strategy.type === "gridLimit" ? t("agent.strategyGridLimit", { coin: (strategy.params as GridLimitParams).coin })
     : strategy.type === "trailing" ? t("agent.strategyTrailing", { coin: (strategy.params as TrailingParams).coin })
     : strategy.type === "conditional" ? t("agent.strategyConditional", { coin: (strategy.params as ConditionalParams).coin })
+    : strategy.type === "scheduled" ? t("agent.strategyScheduled", { coin: (strategy.params as ScheduledParams).coin })
     : t("agent.strategyDca", { coin: (strategy.params as DcaParams).coin });
   const sub =
     strategy.type === "twap"
@@ -575,6 +611,8 @@ function StrategyRow({
       ? `${(strategy.params as TrailingParams).trailPct}%`
       : strategy.type === "conditional"
       ? `${t((strategy.params as ConditionalParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ConditionalParams).sizeUsdc} @ ${t((strategy.params as ConditionalParams).triggerDirection === "above" ? "agent.condAbove" : "agent.condBelow")} ${(strategy.params as ConditionalParams).triggerPrice}`
+      : strategy.type === "scheduled"
+      ? `${t((strategy.params as ScheduledParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ScheduledParams).sizeUsdc}`
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";
