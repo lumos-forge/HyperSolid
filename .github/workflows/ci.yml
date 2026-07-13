@@ -45,6 +45,25 @@ jobs:
       - name: Unit tests
         run: npx jest --ci
 
+  workers:
+    name: workers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npx jest --ci
+
   backend:
     name: backend
     runs-on: ubuntu-latest
