@@ -10,6 +10,8 @@ export interface AppRuntimeConfig {
   strategyApiBaseUrl: string | null;
   /** Server-delivered caller geo (from the request IP); null when unknown → gate fails open. */
   geo: { country?: string; region?: string } | null;
+  /** Server-delivered M8 proxy base URLs (Cloudflare Workers pool); empty until delivered. */
+  proxyPool: string[];
 }
 
 interface RuntimeConfigState extends AppRuntimeConfig {
@@ -28,12 +30,14 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>((set) => ({
   withdrawFeeUsdc: { mainnet: null, testnet: null },
   strategyApiBaseUrl: null,
   geo: null,
+  proxyPool: [],
   setConfig: (cfg) =>
     set({
       arbitrumRpc: cfg.arbitrumRpc,
       withdrawFeeUsdc: cfg.withdrawFeeUsdc,
       strategyApiBaseUrl: cfg.strategyApiBaseUrl,
       geo: cfg.geo,
+      proxyPool: cfg.proxyPool,
     }),
 }));
 

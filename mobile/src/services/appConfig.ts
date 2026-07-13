@@ -6,6 +6,7 @@ interface RawAppConfig {
   withdrawFeeUsdc?: { mainnet?: number | null; testnet?: number | null };
   strategyApiBaseUrl?: string | null;
   geo?: { country?: string; region?: string };
+  proxyPool?: string[];
 }
 
 /**
@@ -31,6 +32,7 @@ export async function loadAppConfig(
     },
     strategyApiBaseUrl: raw.strategyApiBaseUrl ?? null,
     geo: raw.geo ?? null,
+    proxyPool: raw.proxyPool ?? [],
   };
 }
 
