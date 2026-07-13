@@ -144,4 +144,14 @@ describe("gridLimit persistence (sqlite)", () => {
       params: { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" },
     });
   });
+
+  it("round-trips a scheduled strategy", () => {
+    const store = SqliteStrategyStore.open(":memory:", () => 1000);
+    const s = store.create("0xOwner", "scheduled", { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 1893456000000 });
+    expect(store.get(s.id)).toMatchObject({
+      kind: "scheduled",
+      status: "running",
+      params: { coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 1893456000000 },
+    });
+  });
 });
