@@ -1,0 +1,8 @@
+name = "hypersolid-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# Optional per-deployment upstream overrides (defaults: mainnet/testnet Hyperliquid).
+# [vars]
+# HL_MAINNET_HOST = "api.hyperliquid.xyz"
+# HL_TESTNET_HOST = "api.hyperliquid-testnet.xyz"
