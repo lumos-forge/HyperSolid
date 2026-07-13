@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams } from "./types";
+import type { Strategy, StrategyKind, StrategyParams, StrategyStatus, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams } from "./types";
 import type { RungState } from "./gridLimit";
 
 /** Persistence boundary for strategies. */
@@ -21,6 +21,8 @@ export interface StrategyStore {
   setGridLimitRung(id: string, rung: RungState): void;
   /** Increment realized notional/pnl (used by gridLimit take-profit + generic accounting). */
   addFilledUsdc(id: string, usdc: number): void;
+  /** Trailing stop: persist the favorable mark extreme. */
+  setTrailPeak(id: string, peak: number): void;
   remove(id: string): void;
 }
 
@@ -30,6 +32,7 @@ function build(owner: string, kind: StrategyKind, params: StrategyParams, now: n
   if (kind === "twap") return { ...base, kind, params: params as TwapParams, nextRunAt: now, filledTotalUsdc: 0, slicesDone: 0 };
   if (kind === "grid") return { ...base, kind, params: params as GridParams, filledTotalUsdc: 0, actionsDone: 0 };
   if (kind === "gridLimit") return { ...base, kind, params: params as GridLimitParams, filledTotalUsdc: 0 };
+  if (kind === "trailing") return { ...base, kind, params: params as TrailingParams };
   return { ...base, kind, params: params as TpslParams };
 }
 
@@ -95,6 +98,11 @@ export class MemoryStrategyStore implements StrategyStore {
   addFilledUsdc(id: string, usdc: number): void {
     const s = this.byId.get(id);
     if (s) s.filledTotalUsdc = (s.filledTotalUsdc ?? 0) + usdc;
+  }
+
+  setTrailPeak(id: string, peak: number): void {
+    const s = this.byId.get(id);
+    if (s) s.trailPeak = peak;
   }
 
   remove(id: string): void {

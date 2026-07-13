@@ -118,3 +118,25 @@ describe("validateParams deadMan opt-in", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("validateParams trailing", () => {
+  it("accepts a valid trailing config", () => {
+    const r = validateParams("trailing", { coin: "BTC", trailPct: 5 });
+    expect(r).toEqual({ ok: true, params: { coin: "BTC", trailPct: 5 } });
+  });
+
+  it("carries deadMan through", () => {
+    const r = validateParams("trailing", { coin: "BTC", trailPct: 5, deadMan: true });
+    expect(r).toEqual({ ok: true, params: { coin: "BTC", trailPct: 5, deadMan: true } });
+  });
+
+  it("rejects a non-positive or out-of-range trailPct", () => {
+    expect(validateParams("trailing", { coin: "BTC", trailPct: 0 }).ok).toBe(false);
+    expect(validateParams("trailing", { coin: "BTC", trailPct: 100 }).ok).toBe(false);
+    expect(validateParams("trailing", { coin: "BTC", trailPct: "5" }).ok).toBe(false);
+  });
+
+  it("rejects a missing coin", () => {
+    expect(validateParams("trailing", { trailPct: 5 }).ok).toBe(false);
+  });
+});

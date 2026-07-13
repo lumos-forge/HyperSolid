@@ -8,7 +8,7 @@ interface Row {
   id: string; owner: string; status: string; params: string;
   kind: string; next_run_at: number; filled_total_usdc: number;
   slices_done: number; triggered_at: number | null; created_at: number;
-  last_level: number | null; actions_done: number;
+  last_level: number | null; actions_done: number; trail_peak: number | null;
 }
 
 function toStrategy(row: Row): Strategy {
@@ -18,6 +18,7 @@ function toStrategy(row: Row): Strategy {
   if (row.kind === "tpsl") return { ...base, kind: "tpsl", params, triggeredAt: row.triggered_at ?? undefined };
   if (row.kind === "grid") return { ...base, kind: "grid", params, filledTotalUsdc: row.filled_total_usdc, actionsDone: row.actions_done, lastLevel: row.last_level ?? undefined };
   if (row.kind === "gridLimit") return { ...base, kind: "gridLimit", params, filledTotalUsdc: row.filled_total_usdc };
+  if (row.kind === "trailing") return { ...base, kind: "trailing", params, trailPeak: row.trail_peak ?? undefined };
   return { ...base, kind: "dca", params, nextRunAt: row.next_run_at, filledTotalUsdc: row.filled_total_usdc };
 }
 
@@ -36,6 +37,7 @@ function migrate(db: Database.Database): void {
   if (!cols.has("created_at")) db.exec("ALTER TABLE strategies ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
   if (!cols.has("last_level")) db.exec("ALTER TABLE strategies ADD COLUMN last_level INTEGER");
   if (!cols.has("actions_done")) db.exec("ALTER TABLE strategies ADD COLUMN actions_done INTEGER NOT NULL DEFAULT 0");
+  if (!cols.has("trail_peak")) db.exec("ALTER TABLE strategies ADD COLUMN trail_peak REAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS grid_orders (
       strategy_id TEXT NOT NULL,
@@ -69,7 +71,7 @@ export class SqliteStrategyStore implements StrategyStore {
   create(owner: string, kind: StrategyKind, params: StrategyParams): Strategy {
     const now = this.now();
     const id = randomUUID();
-    const scheduled = kind === "tpsl" || kind === "grid" || kind === "gridLimit" ? 0 : now;
+    const scheduled = kind === "tpsl" || kind === "grid" || kind === "gridLimit" || kind === "trailing" ? 0 : now;
     this.db
       .prepare(
         "INSERT INTO strategies (id, owner, status, params, kind, next_run_at, filled_total_usdc, slices_done, triggered_at, created_at, last_level, actions_done) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -125,6 +127,9 @@ export class SqliteStrategyStore implements StrategyStore {
   }
   addFilledUsdc(id: string, usdc: number): void {
     this.db.prepare("UPDATE strategies SET filled_total_usdc = filled_total_usdc + ? WHERE id = ?").run(usdc, id);
+  }
+  setTrailPeak(id: string, peak: number): void {
+    this.db.prepare("UPDATE strategies SET trail_peak = ? WHERE id = ?").run(peak, id);
   }
   remove(id: string): void {
     this.db.prepare("DELETE FROM grid_orders WHERE strategy_id = ?").run(id);

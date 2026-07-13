@@ -4,7 +4,8 @@ import { dueDca, dcaNextRunAt } from "../strategies/dca";
 import { dueTwap, twapSliceUsdc, twapIntervalMs } from "../strategies/twap";
 import { withinCaps, type RiskLimits } from "../risk/guards";
 import { tpslTriggered, closeSide } from "../strategies/tpsl";
-import type { DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams } from "../strategies/types";
+import { updateTrailPeak, trailingTriggered } from "../strategies/trailing";
+import type { DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams } from "../strategies/types";
 import { gridStep, bandIndex, gridAction, targetNetUsdc } from "../strategies/grid";
 import { rungCount, rungBuyPrice, rungSellPrice, rungSizeCoin, armable, rungIsShort, armableShort, rungShortSizeCoin, type RungState } from "../strategies/gridLimit";
 import type { RestingExecutor } from "../agent/restingExecutor";
@@ -143,6 +144,32 @@ export async function tick(
       const mark = await marks.resolveMark(p.coin);
       if (!Number.isFinite(mark) || mark <= 0) continue;
       if (!tpslTriggered(p, szi, mark)) continue;
+      const cloid = cloidFor(s.id, now);
+      const side = closeSide(szi);
+      const res = await placer.place({ owner: s.owner, coin: p.coin, sizeCoin: Math.abs(szi), cloid, side, reduceOnly: true });
+      if (res.ok) {
+        if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+          activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side, sz: res.filledSz, px: res.avgPx });
+        }
+        const covered = res.filledSz === undefined || res.filledSz + 1e-9 >= Math.abs(szi);
+        if (covered) store.recordTrigger(s.id, now);
+      }
+    }
+  }
+
+  // --- Trailing stop: reduce-only close on retrace from the favorable extreme ---
+  if (marks) {
+    for (const s of all) {
+      if (s.kind !== "trailing" || s.status !== "running") continue;
+      if (killSwitch) continue;
+      const p = s.params as TrailingParams;
+      const szi = await marks.resolvePosition(s.owner, p.coin);
+      if (szi === undefined || szi === 0) continue;
+      const mark = await marks.resolveMark(p.coin);
+      if (!Number.isFinite(mark) || mark <= 0) continue;
+      const peak = updateTrailPeak(szi, mark, s.trailPeak);
+      if (peak !== s.trailPeak) store.setTrailPeak(s.id, peak);
+      if (!trailingTriggered(p, szi, mark, peak)) continue;
       const cloid = cloidFor(s.id, now);
       const side = closeSide(szi);
       const res = await placer.place({ owner: s.owner, coin: p.coin, sizeCoin: Math.abs(szi), cloid, side, reduceOnly: true });

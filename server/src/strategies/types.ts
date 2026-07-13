@@ -1,4 +1,4 @@
-export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
+export type StrategyKind = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing";
 export type StrategyStatus = "running" | "paused" | "completed" | "canceling";
 
 /** Fields common to every strategy's params. */
@@ -26,6 +26,11 @@ export interface TpslParams extends StrategyParamsCommon {
   takeProfitPrice?: number;
   stopLossPrice?: number;
 }
+export interface TrailingParams extends StrategyParamsCommon {
+  coin: string;
+  /** Callback rate: retrace percent from the favorable extreme that triggers the close. 0 < trailPct < 100. */
+  trailPct: number;
+}
 export interface GridParams extends StrategyParamsCommon {
   coin: string;
   lowerPrice: number;
@@ -48,7 +53,7 @@ export interface GridLimitParams extends StrategyParamsCommon {
   /** longOnly (default): resting long grid. symmetric: two-sided long/short resting grid. */
   mode?: "longOnly" | "symmetric";
 }
-export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
+export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams | TrailingParams;
 
 interface StrategyBase {
   id: string;
@@ -63,6 +68,8 @@ interface StrategyBase {
   lastLevel?: number;
   /** Grid: monotonic count of executed grid actions (drives the cloid). */
   actionsDone?: number;
+  /** Trailing stop: the persisted favorable mark extreme (peak for long, trough for short). */
+  trailPeak?: number;
 }
 
 export type Strategy =
@@ -70,4 +77,5 @@ export type Strategy =
   | (StrategyBase & { kind: "twap"; params: TwapParams })
   | (StrategyBase & { kind: "tpsl"; params: TpslParams })
   | (StrategyBase & { kind: "grid"; params: GridParams })
-  | (StrategyBase & { kind: "gridLimit"; params: GridLimitParams });
+  | (StrategyBase & { kind: "gridLimit"; params: GridLimitParams })
+  | (StrategyBase & { kind: "trailing"; params: TrailingParams });

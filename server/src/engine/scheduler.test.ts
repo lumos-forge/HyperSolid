@@ -765,3 +765,63 @@ describe("gridLimit tick (symmetric)", () => {
     expect(exec.calls.filter((c: any) => c.side === "sell")).toHaveLength(0);
   });
 });
+
+describe("trailing stop", () => {
+  it("advances the peak while the mark rises, then closes on retrace and completes", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placed: any[] = [];
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.5, avgPx: 94 }; } };
+    const s = store.create("0xo", "trailing", { coin: "BTC", trailPct: 5 });
+    const rising = { resolveMark: async () => 100, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, rising);
+    expect(placed).toHaveLength(0);            // 100 not <= 95
+    expect(store.get(s.id)?.trailPeak).toBe(100);
+    const retrace = { resolveMark: async () => 94, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, retrace);
+    expect(placed[0]).toMatchObject({ coin: "BTC", side: "sell", reduceOnly: true, sizeCoin: 0.5 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("closes a short when the mark rises past the trough callback", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placed: any[] = [];
+    const placer = { place: async (r: any) => { placed.push(r); return { ok: true, filledSz: 0.5, avgPx: 106 }; } };
+    const s = store.create("0xo", "trailing", { coin: "BTC", trailPct: 5 });
+    const down = { resolveMark: async () => 100, resolvePosition: async () => -0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, down);
+    expect(placed).toHaveLength(0);            // 100 not >= 105
+    const up = { resolveMark: async () => 106, resolvePosition: async () => -0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, up);
+    expect(placed[0]).toMatchObject({ coin: "BTC", side: "buy", reduceOnly: true, sizeCoin: 0.5 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("does not close while the mark keeps rising (long)", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    store.create("0xo", "trailing", { coin: "BTC", trailPct: 5 });
+    const m1 = { resolveMark: async () => 100, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, m1);
+    const m2 = { resolveMark: async () => 120, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, m2);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+
+  it("skips when there is no position", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    store.create("0xo", "trailing", { coin: "BTC", trailPct: 5 });
+    const none = { resolveMark: async () => 50, resolvePosition: async () => undefined };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 0, undefined, none);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+
+  it("kill-switch blocks the trailing close", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = { place: jest.fn(async () => ({ ok: true })) };
+    store.create("0xo", "trailing", { coin: "BTC", trailPct: 5 });
+    const retrace = { resolveMark: async () => 80, resolvePosition: async () => 0.5 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, true, 0, undefined, retrace);
+    expect(placer.place).not.toHaveBeenCalled();
+  });
+});
