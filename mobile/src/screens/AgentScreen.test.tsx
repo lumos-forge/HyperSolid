@@ -157,6 +157,35 @@ describe("AgentScreen", () => {
     expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("trailing", expect.anything());
   });
 
+  it("switches to the conditional template and creates a conditional order", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-conditional")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-conditional"));
+    fireEvent.changeText(screen.getByTestId("conditional-coin"), "ETH");
+    fireEvent.press(screen.getByTestId("cond-side-sell"));
+    fireEvent.changeText(screen.getByTestId("cond-size"), "100");
+    fireEvent.changeText(screen.getByTestId("cond-trigger"), "3000");
+    fireEvent.press(screen.getByTestId("cond-dir-below"));
+    fireEvent.press(screen.getByTestId("cond-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("conditional", { coin: "ETH", side: "sell", sizeUsdc: 100, triggerPrice: 3000, triggerDirection: "below" }),
+    );
+  });
+
+  it("does not create a conditional order with a non-positive size", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-conditional")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-conditional"));
+    fireEvent.changeText(screen.getByTestId("conditional-coin"), "ETH");
+    fireEvent.changeText(screen.getByTestId("cond-size"), "0");
+    fireEvent.changeText(screen.getByTestId("cond-trigger"), "3000");
+    fireEvent.press(screen.getByTestId("cond-create"));
+    await waitFor(() => expect(screen.getByTestId("cond-create")).toBeTruthy());
+    expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("conditional", expect.anything());
+  });
+
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));

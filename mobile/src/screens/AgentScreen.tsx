@@ -11,7 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type Activity, type Rung } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type TrailingParams, type ConditionalParams, type Activity, type Rung } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
@@ -22,7 +22,7 @@ import type { LocalWalletService } from "../wallet/localWallet";
 import type { Account } from "viem";
 
 const AGENT_VALIDITY_MS = 90 * 24 * 3600 * 1000;
-type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing";
+type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing" | "conditional";
 
 function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -162,6 +162,10 @@ function StrategyPanel({
   const [gridPerLevel, setGridPerLevel] = useState("");
   const [gridMode, setGridMode] = useState<"longOnly" | "symmetric">("longOnly");
   const [trailPct, setTrailPct] = useState("");
+  const [condSide, setCondSide] = useState<"buy" | "sell">("buy");
+  const [condSize, setCondSize] = useState("");
+  const [condTrigger, setCondTrigger] = useState("");
+  const [condDir, setCondDir] = useState<"above" | "below">("above");
 
   const [glLower, setGlLower] = useState("");
   const [glUpper, setGlUpper] = useState("");
@@ -235,6 +239,13 @@ function StrategyPanel({
     setTrailPct("");
   }
 
+  async function onCreateConditional() {
+    const size = Number(condSize), trig = Number(condTrigger);
+    if (!(size > 0) || !(trig > 0)) { Alert.alert(t("agent.invalidParams"), t("agent.invalidConditional")); return; }
+    await ctrl.createConditional({ coin: coin.toUpperCase(), side: condSide, sizeUsdc: size, triggerPrice: trig, triggerDirection: condDir, ...(deadMan ? { deadMan: true } : {}) });
+    setCondSize(""); setCondTrigger("");
+  }
+
   return (
     <>
       <SurfaceCard theme={theme} testID="agent-card" style={styles.card}>
@@ -291,7 +302,7 @@ function StrategyPanel({
 
       <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.template")}</Text>
       <View style={styles.segment} testID="template-picker">
-        {(["dca", "twap", "tpsl", "grid", "gridLimit", "trailing"] as Template[]).map((k) => (
+        {(["dca", "twap", "tpsl", "grid", "gridLimit", "trailing", "conditional"] as Template[]).map((k) => (
           <Pressable
             key={k}
             testID={`template-${k}`}
@@ -306,7 +317,8 @@ function StrategyPanel({
                 : k === "tpsl" ? "agent.templateTpsl"
                 : k === "grid" ? "agent.templateGrid"
                 : k === "gridLimit" ? "agent.templateGridLimit"
-                : "agent.templateTrailing",
+                : k === "trailing" ? "agent.templateTrailing"
+                : "agent.templateConditional",
               )}
             </Text>
           </Pressable>
@@ -381,6 +393,40 @@ function StrategyPanel({
           <Field theme={theme} label={t("agent.trailPct")} value={trailPct} onChangeText={setTrailPct} keyboard testID="trailing-pct" />
           <Pressable onPress={onCreateTrailing} accessibilityRole="button" testID="trailing-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
             <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createTrailing")}</Text>
+          </Pressable>
+        </SurfaceCard>
+      )}
+
+      {template === "conditional" && (
+        <SurfaceCard theme={theme} rule={false} testID="new-conditional" style={styles.card}>
+          <Text style={[styles.title, { color: theme.text }]}>{t("agent.newConditional")}</Text>
+          <Field theme={theme} label={t("agent.coin")} value={coin} onChangeText={setCoin} autoCap testID="conditional-coin" />
+          <View style={styles.sideRow}>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.side")}</Text>
+            <View style={styles.sideBtns}>
+              {(["buy", "sell"] as const).map((sd) => (
+                <Pressable key={sd} testID={`cond-side-${sd}`} accessibilityRole="button" onPress={() => setCondSide(sd)}
+                  style={[styles.sideBtn, { borderColor: theme.line }, condSide === sd && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: condSide === sd ? theme.text : theme.muted }]}>{t(sd === "buy" ? "agent.buy" : "agent.sell")}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <Field theme={theme} label={t("agent.condSize")} value={condSize} onChangeText={setCondSize} keyboard testID="cond-size" />
+          <Field theme={theme} label={t("agent.triggerPrice")} value={condTrigger} onChangeText={setCondTrigger} keyboard testID="cond-trigger" />
+          <View style={styles.sideRow}>
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.triggerDirection")}</Text>
+            <View style={styles.sideBtns}>
+              {(["above", "below"] as const).map((d) => (
+                <Pressable key={d} testID={`cond-dir-${d}`} accessibilityRole="button" onPress={() => setCondDir(d)}
+                  style={[styles.sideBtn, { borderColor: theme.line }, condDir === d && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: condDir === d ? theme.text : theme.muted }]}>{t(d === "above" ? "agent.condAbove" : "agent.condBelow")}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <Pressable onPress={onCreateConditional} accessibilityRole="button" testID="cond-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
+            <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createConditional")}</Text>
           </Pressable>
         </SurfaceCard>
       )}
@@ -506,6 +552,8 @@ function StrategyRow({
     : strategy.type === "tpsl" ? t("agent.strategyTpsl", { coin: strategy.params.coin })
     : strategy.type === "grid" ? t("agent.strategyGrid", { coin: (strategy.params as GridParams).coin })
     : strategy.type === "gridLimit" ? t("agent.strategyGridLimit", { coin: (strategy.params as GridLimitParams).coin })
+    : strategy.type === "trailing" ? t("agent.strategyTrailing", { coin: (strategy.params as TrailingParams).coin })
+    : strategy.type === "conditional" ? t("agent.strategyConditional", { coin: (strategy.params as ConditionalParams).coin })
     : t("agent.strategyDca", { coin: (strategy.params as DcaParams).coin });
   const sub =
     strategy.type === "twap"
@@ -523,6 +571,10 @@ function StrategyRow({
         })
       : strategy.type === "gridLimit"
       ? t("agent.gridLimitProgress", { armed: String(strategy.armedCount ?? 0), holding: String(strategy.holdingCount ?? 0), filled: String(Math.round(strategy.filledTotalUsdc ?? 0)) })
+      : strategy.type === "trailing"
+      ? `${(strategy.params as TrailingParams).trailPct}%`
+      : strategy.type === "conditional"
+      ? `${t((strategy.params as ConditionalParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ConditionalParams).sizeUsdc} @ ${t((strategy.params as ConditionalParams).triggerDirection === "above" ? "agent.condAbove" : "agent.condBelow")} ${(strategy.params as ConditionalParams).triggerPrice}`
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";
