@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useT } from "../i18n/useT";
@@ -11,6 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
+import { formatCountdown } from "../lib/formatCountdown";
 import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type TrailingParams, type ConditionalParams, type ScheduledParams, type Activity, type Rung } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
@@ -138,6 +139,11 @@ function StrategyPanel({
 }) {
   const api = useMemo(() => new StrategyApi(baseUrl, token), [baseUrl, token]);
   const t = useT();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const approve = useMemo(() => {
     const svc = new ExchangeService(createExchangeClient(network, account), buildAssetIndex({ universe: [] }));
     return (req: { agentAddress: string; agentName?: string }) => svc.approveAgent(req);
@@ -301,7 +307,7 @@ function StrategyPanel({
       {ctrl.strategies.length === 0 ? (
         <Text style={[styles.hint, { color: theme.muted }]}>{t("agent.noStrategies")}</Text>
       ) : (
-        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} onToggle={() => void ctrl.toggle(s)} getRungs={(id) => api.getRungs(id)} />)
+        ctrl.strategies.map((s) => <StrategyRow key={s.id} theme={theme} strategy={s} now={now} onToggle={() => void ctrl.toggle(s)} getRungs={(id) => api.getRungs(id)} />)
       )}
 
       <Text style={[styles.eyebrow, { color: theme.faint }]}>{t("agent.recentActivity")}</Text>
@@ -567,9 +573,9 @@ function RungLine({ theme, id, r }: { theme: ThemeTokens; id: string; r: Rung })
 }
 
 function StrategyRow({
-  theme, strategy, onToggle, getRungs,
+  theme, strategy, now, onToggle, getRungs,
 }: {
-  theme: ThemeTokens; strategy: Strategy; onToggle: () => void; getRungs?: (id: string) => Promise<Rung[]>;
+  theme: ThemeTokens; strategy: Strategy; now: number; onToggle: () => void; getRungs?: (id: string) => Promise<Rung[]>;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -612,7 +618,15 @@ function StrategyRow({
       : strategy.type === "conditional"
       ? `${t((strategy.params as ConditionalParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ConditionalParams).sizeUsdc} @ ${t((strategy.params as ConditionalParams).triggerDirection === "above" ? "agent.condAbove" : "agent.condBelow")} ${(strategy.params as ConditionalParams).triggerPrice}`
       : strategy.type === "scheduled"
-      ? `${t((strategy.params as ScheduledParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ScheduledParams).sizeUsdc}`
+      ? (() => {
+          const p = strategy.params as ScheduledParams;
+          const base = `${t(p.side === "buy" ? "agent.buy" : "agent.sell")} ${p.sizeUsdc}`;
+          if (strategy.status !== "running") return base;
+          const remaining = p.runAt - now;
+          return remaining <= 0
+            ? `${base} · ${t("agent.schedImminent")}`
+            : `${base} · ${t("agent.schedCountdown", { time: formatCountdown(remaining) })}`;
+        })()
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";

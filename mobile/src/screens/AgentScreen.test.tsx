@@ -223,6 +223,27 @@ describe("AgentScreen", () => {
     expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("scheduled", expect.anything());
   });
 
+  it("shows a live countdown for a running scheduled strategy", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "sc1", type: "scheduled", status: "running", params: { coin: "ETH", side: "buy", sizeUsdc: 100, runAt: Date.now() + 2 * 3600000 + 90_000 } },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-sc1")).toBeTruthy());
+    expect(screen.getByText(/^Buy 100 · \d+h \d+m left$/)).toBeTruthy();
+  });
+
+  it("omits the countdown for a paused scheduled strategy", async () => {
+    mockApiFake.listStrategies.mockResolvedValue([
+      { id: "sc2", type: "scheduled", status: "paused", params: { coin: "ETH", side: "buy", sizeUsdc: 100, runAt: Date.now() + 2 * 3600000 } },
+    ]);
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("strategy-sc2")).toBeTruthy());
+    expect(screen.getByText("Buy 100")).toBeTruthy();
+    expect(screen.queryByText(/left/)).toBeNull();
+  });
+
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));
