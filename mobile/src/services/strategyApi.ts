@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from "../lib/fetchWithTimeout";
 
-export type StrategyType = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
+export type StrategyType = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing";
 
 export interface StrategyParamsCommon {
   /** Opt-in: while this strategy runs, arm the account-level scheduleCancel dead-man switch. */
@@ -16,6 +16,9 @@ export interface TwapParams extends StrategyParamsCommon {
 export interface TpslParams extends StrategyParamsCommon {
   coin: string; takeProfitPrice?: number; stopLossPrice?: number;
 }
+export interface TrailingParams extends StrategyParamsCommon {
+  coin: string; trailPct: number;
+}
 export interface GridParams extends StrategyParamsCommon {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
   mode?: "longOnly" | "symmetric";
@@ -24,7 +27,7 @@ export interface GridLimitParams extends StrategyParamsCommon {
   coin: string; lowerPrice: number; upperPrice: number; levels: number; perLevelUsdc: number;
   mode?: "longOnly" | "symmetric";
 }
-export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams;
+export type StrategyParams = DcaParams | TwapParams | TpslParams | GridParams | GridLimitParams | TrailingParams;
 
 export interface Rung {
   rung: number;

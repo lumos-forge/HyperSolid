@@ -132,6 +132,31 @@ describe("AgentScreen", () => {
     );
   });
 
+  it("switches to the trailing template and creates a trailing stop", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-trailing")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-trailing"));
+    fireEvent.changeText(screen.getByTestId("trailing-coin"), "ETH");
+    fireEvent.changeText(screen.getByTestId("trailing-pct"), "5");
+    fireEvent.press(screen.getByTestId("trailing-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith("trailing", { coin: "ETH", trailPct: 5 }),
+    );
+  });
+
+  it("does not create a trailing stop with an out-of-range callback rate", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-trailing")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-trailing"));
+    fireEvent.changeText(screen.getByTestId("trailing-coin"), "ETH");
+    fireEvent.changeText(screen.getByTestId("trailing-pct"), "150");
+    fireEvent.press(screen.getByTestId("trailing-create"));
+    await waitFor(() => expect(screen.getByTestId("trailing-create")).toBeTruthy());
+    expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("trailing", expect.anything());
+  });
+
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));

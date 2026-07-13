@@ -22,7 +22,7 @@ import type { LocalWalletService } from "../wallet/localWallet";
 import type { Account } from "viem";
 
 const AGENT_VALIDITY_MS = 90 * 24 * 3600 * 1000;
-type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit";
+type Template = "dca" | "twap" | "tpsl" | "grid" | "gridLimit" | "trailing";
 
 function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -161,6 +161,7 @@ function StrategyPanel({
   const [gridLevels, setGridLevels] = useState("6");
   const [gridPerLevel, setGridPerLevel] = useState("");
   const [gridMode, setGridMode] = useState<"longOnly" | "symmetric">("longOnly");
+  const [trailPct, setTrailPct] = useState("");
 
   const [glLower, setGlLower] = useState("");
   const [glUpper, setGlUpper] = useState("");
@@ -227,6 +228,13 @@ function StrategyPanel({
     setGlLower(""); setGlUpper(""); setGlPerLevel("");
   }
 
+  async function onCreateTrailing() {
+    const pct = Number(trailPct);
+    if (!(pct > 0) || !(pct < 100)) { Alert.alert(t("agent.invalidParams"), t("agent.invalidTrailing")); return; }
+    await ctrl.createTrailing({ coin: coin.toUpperCase(), trailPct: pct, ...(deadMan ? { deadMan: true } : {}) });
+    setTrailPct("");
+  }
+
   return (
     <>
       <SurfaceCard theme={theme} testID="agent-card" style={styles.card}>
@@ -283,7 +291,7 @@ function StrategyPanel({
 
       <Text style={[styles.fieldLabel, { color: theme.muted }]}>{t("agent.template")}</Text>
       <View style={styles.segment} testID="template-picker">
-        {(["dca", "twap", "tpsl", "grid", "gridLimit"] as Template[]).map((k) => (
+        {(["dca", "twap", "tpsl", "grid", "gridLimit", "trailing"] as Template[]).map((k) => (
           <Pressable
             key={k}
             testID={`template-${k}`}
@@ -297,7 +305,8 @@ function StrategyPanel({
                 : k === "twap" ? "agent.templateTwap"
                 : k === "tpsl" ? "agent.templateTpsl"
                 : k === "grid" ? "agent.templateGrid"
-                : "agent.templateGridLimit",
+                : k === "gridLimit" ? "agent.templateGridLimit"
+                : "agent.templateTrailing",
               )}
             </Text>
           </Pressable>
@@ -361,6 +370,17 @@ function StrategyPanel({
           <Field theme={theme} label={t("agent.stopLoss")} value={sl} onChangeText={setSl} keyboard testID="tpsl-sl" />
           <Pressable onPress={onCreateTpsl} accessibilityRole="button" testID="tpsl-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
             <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createTpsl")}</Text>
+          </Pressable>
+        </SurfaceCard>
+      )}
+
+      {template === "trailing" && (
+        <SurfaceCard theme={theme} rule={false} testID="new-trailing" style={styles.card}>
+          <Text style={[styles.title, { color: theme.text }]}>{t("agent.newTrailing")}</Text>
+          <Field theme={theme} label={t("agent.coin")} value={coin} onChangeText={setCoin} autoCap testID="trailing-coin" />
+          <Field theme={theme} label={t("agent.trailPct")} value={trailPct} onChangeText={setTrailPct} keyboard testID="trailing-pct" />
+          <Pressable onPress={onCreateTrailing} accessibilityRole="button" testID="trailing-create" style={[styles.cta, { backgroundColor: theme.brand }]}>
+            <Text style={[styles.ctaText, { color: theme.bg }]}>{t("agent.createTrailing")}</Text>
           </Pressable>
         </SurfaceCard>
       )}
