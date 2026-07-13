@@ -140,3 +140,23 @@ describe("validateParams trailing", () => {
     expect(validateParams("trailing", { trailPct: 5 }).ok).toBe(false);
   });
 });
+
+describe("validateParams conditional", () => {
+  it("accepts a valid conditional config (above buy)", () => {
+    const r = validateParams("conditional", { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" });
+    expect(r).toEqual({ ok: true, params: { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" } });
+  });
+
+  it("accepts a below sell with deadMan", () => {
+    const r = validateParams("conditional", { coin: "ETH", side: "sell", sizeUsdc: 50, triggerPrice: 2000, triggerDirection: "below", deadMan: true });
+    expect(r).toEqual({ ok: true, params: { coin: "ETH", side: "sell", sizeUsdc: 50, triggerPrice: 2000, triggerDirection: "below", deadMan: true } });
+  });
+
+  it("rejects a bad side / size / price / direction / coin", () => {
+    expect(validateParams("conditional", { coin: "BTC", side: "long", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" }).ok).toBe(false);
+    expect(validateParams("conditional", { coin: "BTC", side: "buy", sizeUsdc: 0, triggerPrice: 30000, triggerDirection: "above" }).ok).toBe(false);
+    expect(validateParams("conditional", { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 0, triggerDirection: "above" }).ok).toBe(false);
+    expect(validateParams("conditional", { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "sideways" }).ok).toBe(false);
+    expect(validateParams("conditional", { side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" }).ok).toBe(false);
+  });
+});

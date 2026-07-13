@@ -134,4 +134,14 @@ describe("gridLimit persistence (sqlite)", () => {
     store.setTrailPeak(s.id, 12345);
     expect(store.get(s.id)?.trailPeak).toBe(12345);
   });
+
+  it("round-trips a conditional strategy", () => {
+    const store = SqliteStrategyStore.open(":memory:", () => 1000);
+    const s = store.create("0xOwner", "conditional", { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" });
+    expect(store.get(s.id)).toMatchObject({
+      kind: "conditional",
+      status: "running",
+      params: { coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 30000, triggerDirection: "above" },
+    });
+  });
 });

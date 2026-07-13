@@ -825,3 +825,77 @@ describe("trailing stop", () => {
     expect(placer.place).not.toHaveBeenCalled();
   });
 });
+
+describe("conditional entry", () => {
+  const cond = (over: any = {}) => ({ coin: "BTC", side: "buy", sizeUsdc: 100, triggerPrice: 100, triggerDirection: "above", ...over });
+
+  it("opens a market position and completes when the mark crosses above", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    const s = store.create("0xo", "conditional", cond());
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(placer.calls[0]).toMatchObject({ coin: "BTC", side: "buy", reduceOnly: false, sizeUsdc: 100 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("fires a below-direction sell when the mark crosses down", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    const s = store.create("0xo", "conditional", cond({ side: "sell", triggerDirection: "below" }));
+    const marks = { resolveMark: async () => 95, resolvePosition: async () => 0 };
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(placer.calls[0]).toMatchObject({ coin: "BTC", side: "sell", reduceOnly: false, sizeUsdc: 100 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("does not fire before the trigger is crossed", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "conditional", cond());
+    const marks = { resolveMark: async () => 90, resolvePosition: async () => 0 };
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 0, undefined, marks);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("kill-switch blocks the conditional entry", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "conditional", cond());
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, true, 0, undefined, marks);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("respects the per-coin notional cap", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "conditional", cond({ sizeUsdc: 100 }));
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    await tick(store, placer, { maxNotionalUsdc: 1000, perCoinMaxNotionalUsdc: { BTC: 50 } }, false, 0, undefined, marks);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("respects the daily notional cap", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "conditional", cond({ sizeUsdc: 100 }));
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    const activity = { record: () => {}, notionalSince: () => 60 } as any;
+    await tick(store, placer, { maxNotionalUsdc: 1e9, dailyMaxNotionalUsdc: 100 }, false, 0, activity, marks);
+    expect(placer.calls).toHaveLength(0); // 60 + 100 > 100
+  });
+
+  it("uses a restart-stable cloid so a replay dedupes instead of double-opening", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const calls: any[] = [];
+    // Placement fails, so the strategy stays running and re-fires on the next tick.
+    const placer = { place: async (r: any) => { calls.push(r); return { ok: false }; } };
+    store.create("0xo", "conditional", cond());
+    const marks = { resolveMark: async () => 105, resolvePosition: async () => 0 };
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 111, undefined, marks);
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 222, undefined, marks); // different `now`
+    expect(calls).toHaveLength(2);
+    expect(calls[0].cloid).toBe(calls[1].cloid); // stable across ticks/restarts
+  });
+});
