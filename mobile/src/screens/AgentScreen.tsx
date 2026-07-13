@@ -11,7 +11,7 @@ import { SurfaceCard } from "../components/SurfaceCard";
 import { Toggle } from "../components/Toggle";
 import { fonts } from "../theme/fonts";
 import type { ThemeTokens } from "../theme/tokens";
-import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type Activity, type Rung } from "../services/strategyApi";
+import { StrategyApi, type Strategy, type DcaParams, type TwapParams, type TpslParams, type GridParams, type GridLimitParams, type TrailingParams, type ConditionalParams, type Activity, type Rung } from "../services/strategyApi";
 import { formatTimeHMS } from "../lib/hyperliquid/format";
 import { openStrategySession } from "../wallet/walletSession";
 import { ExchangeService } from "../services/exchange";
@@ -552,6 +552,8 @@ function StrategyRow({
     : strategy.type === "tpsl" ? t("agent.strategyTpsl", { coin: strategy.params.coin })
     : strategy.type === "grid" ? t("agent.strategyGrid", { coin: (strategy.params as GridParams).coin })
     : strategy.type === "gridLimit" ? t("agent.strategyGridLimit", { coin: (strategy.params as GridLimitParams).coin })
+    : strategy.type === "trailing" ? t("agent.strategyTrailing", { coin: (strategy.params as TrailingParams).coin })
+    : strategy.type === "conditional" ? t("agent.strategyConditional", { coin: (strategy.params as ConditionalParams).coin })
     : t("agent.strategyDca", { coin: (strategy.params as DcaParams).coin });
   const sub =
     strategy.type === "twap"
@@ -569,6 +571,10 @@ function StrategyRow({
         })
       : strategy.type === "gridLimit"
       ? t("agent.gridLimitProgress", { armed: String(strategy.armedCount ?? 0), holding: String(strategy.holdingCount ?? 0), filled: String(Math.round(strategy.filledTotalUsdc ?? 0)) })
+      : strategy.type === "trailing"
+      ? `${(strategy.params as TrailingParams).trailPct}%`
+      : strategy.type === "conditional"
+      ? `${t((strategy.params as ConditionalParams).side === "buy" ? "agent.buy" : "agent.sell")} ${(strategy.params as ConditionalParams).sizeUsdc} @ ${t((strategy.params as ConditionalParams).triggerDirection === "above" ? "agent.condAbove" : "agent.condBelow")} ${(strategy.params as ConditionalParams).triggerPrice}`
       : `$${(strategy.params as DcaParams).quoteAmountUsdc} / ${(strategy.params as DcaParams).intervalHours}h`;
   const completed = strategy.status === "completed";
   const canceling = strategy.status === "canceling";
