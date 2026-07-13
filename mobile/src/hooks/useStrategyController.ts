@@ -85,6 +85,11 @@ export function useStrategyController(api: StrategyApi, approveAgent: ApproveAge
     await refresh();
   }, [api, refresh]);
 
+  const cancel = useCallback(async (id: string) => {
+    await api.deleteStrategy(id);
+    await refresh();
+  }, [api, refresh]);
+
   const toggle = useCallback(
     async (s: Strategy) => {
       await api.setStrategyStatus(s.id, s.status === "running" ? "paused" : "running");
@@ -98,5 +103,5 @@ export function useStrategyController(api: StrategyApi, approveAgent: ApproveAge
     await refresh();
   }, [api, refresh]);
 
-  return { approved: status.approved, status, strategies, activity, busy, approveAgentFlow, revoke, createDca, createTwap, createTpsl, createGrid, createGridLimit, createTrailing, createConditional, createScheduled, toggle, killAll, refresh };
+  return { approved: status.approved, status, strategies, activity, busy, approveAgentFlow, revoke, createDca, createTwap, createTpsl, createGrid, createGridLimit, createTrailing, createConditional, createScheduled, toggle, killAll, cancel, refresh };
 }
