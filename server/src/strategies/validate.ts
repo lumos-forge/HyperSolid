@@ -1,4 +1,4 @@
-import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams } from "./types";
+import type { StrategyKind, StrategyParams, DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams } from "./types";
 
 type Result = { ok: true; params: StrategyParams } | { ok: false; error: string };
 
@@ -61,6 +61,11 @@ export function validateParams(kind: StrategyKind, params: unknown): Result {
     const mode = g.mode ?? "longOnly";
     if (mode !== "longOnly" && mode !== "symmetric") return { ok: false, error: "mode must be longOnly or symmetric" };
     return { ok: true, params: { coin, lowerPrice: g.lowerPrice, upperPrice: g.upperPrice, levels: g.levels, perLevelUsdc: g.perLevelUsdc, mode, ...(deadMan ? { deadMan: true } : {}) } };
+  }
+  if (kind === "trailing") {
+    const x = p as unknown as TrailingParams;
+    if (!positiveNumber(x.trailPct) || x.trailPct >= 100) return { ok: false, error: "trailPct must be between 0 and 100" };
+    return { ok: true, params: { coin, trailPct: x.trailPct, ...(deadMan ? { deadMan: true } : {}) } };
   }
   return { ok: false, error: "unknown strategy kind" };
 }
