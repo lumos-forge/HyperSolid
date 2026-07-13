@@ -5,7 +5,8 @@ import { dueTwap, twapSliceUsdc, twapIntervalMs } from "../strategies/twap";
 import { withinCaps, type RiskLimits } from "../risk/guards";
 import { tpslTriggered, closeSide } from "../strategies/tpsl";
 import { updateTrailPeak, trailingTriggered } from "../strategies/trailing";
-import type { DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams } from "../strategies/types";
+import { conditionalTriggered } from "../strategies/conditional";
+import type { DcaParams, TwapParams, TpslParams, GridParams, GridLimitParams, TrailingParams, ConditionalParams } from "../strategies/types";
 import { gridStep, bandIndex, gridAction, targetNetUsdc } from "../strategies/grid";
 import { rungCount, rungBuyPrice, rungSellPrice, rungSizeCoin, armable, rungIsShort, armableShort, rungShortSizeCoin, type RungState } from "../strategies/gridLimit";
 import type { RestingExecutor } from "../agent/restingExecutor";
@@ -179,6 +180,31 @@ export async function tick(
         }
         const covered = res.filledSz === undefined || res.filledSz + 1e-9 >= Math.abs(szi);
         if (covered) store.recordTrigger(s.id, now);
+      }
+    }
+  }
+
+  // --- Conditional: price-triggered market entry (one-shot) ---
+  if (marks) {
+    for (const s of all) {
+      if (s.kind !== "conditional" || s.status !== "running") continue;
+      const p = s.params as ConditionalParams;
+      const mark = await marks.resolveMark(p.coin);
+      if (!Number.isFinite(mark) || mark <= 0) continue;
+      if (!conditionalTriggered(p, mark)) continue;
+      const notionalUsdc = p.sizeUsdc;
+      if (!withinCaps({ notionalUsdc, killSwitch, coin: p.coin }, limits).ok) continue;
+      if (limits.dailyMaxNotionalUsdc !== undefined && activity?.notionalSince) {
+        const spentToday = activity.notionalSince(s.owner, dayStartUtcMs(now));
+        if (spentToday + notionalUsdc > limits.dailyMaxNotionalUsdc) continue;
+      }
+      const cloid = cloidFor(s.id, now);
+      const res = await placer.place({ owner: s.owner, coin: p.coin, sizeUsdc: notionalUsdc, cloid, side: p.side, reduceOnly: false });
+      if (res.ok) {
+        if (activity && res.filledSz !== undefined && res.avgPx !== undefined) {
+          activity.record({ strategyId: s.id, owner: s.owner, time: now, coin: p.coin, side: p.side, sz: res.filledSz, px: res.avgPx });
+        }
+        store.recordTrigger(s.id, now);
       }
     }
   }
