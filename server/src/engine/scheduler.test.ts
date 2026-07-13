@@ -899,3 +899,69 @@ describe("conditional entry", () => {
     expect(calls[0].cloid).toBe(calls[1].cloid); // stable across ticks/restarts
   });
 });
+
+describe("scheduled entry", () => {
+  const sched = (over: any = {}) => ({ coin: "BTC", side: "buy", sizeUsdc: 100, runAt: 5000, ...over });
+
+  it("opens a market position and completes once runAt has passed", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    const s = store.create("0xo", "scheduled", sched({ runAt: 5000 }));
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 5000);
+    expect(placer.calls[0]).toMatchObject({ coin: "BTC", side: "buy", reduceOnly: false, sizeUsdc: 100 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("fires a sell side too", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    const s = store.create("0xo", "scheduled", sched({ side: "sell", runAt: 5000 }));
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 6000);
+    expect(placer.calls[0]).toMatchObject({ coin: "BTC", side: "sell", reduceOnly: false, sizeUsdc: 100 });
+    expect(store.get(s.id)).toMatchObject({ status: "completed" });
+  });
+
+  it("does not fire before runAt", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "scheduled", sched({ runAt: 5000 }));
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, false, 4999);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("kill-switch blocks the scheduled entry", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "scheduled", sched({ runAt: 5000 }));
+    await tick(store, placer, { maxNotionalUsdc: 1e9 }, true, 5000);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("respects the per-coin notional cap", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "scheduled", sched({ sizeUsdc: 100, runAt: 5000 }));
+    await tick(store, placer, { maxNotionalUsdc: 1000, perCoinMaxNotionalUsdc: { BTC: 50 } }, false, 5000);
+    expect(placer.calls).toHaveLength(0);
+  });
+
+  it("respects the daily notional cap", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const placer = placerFake();
+    store.create("0xo", "scheduled", sched({ sizeUsdc: 100, runAt: 5000 }));
+    const activity = { record: () => {}, notionalSince: () => 60 } as any;
+    await tick(store, placer, { maxNotionalUsdc: 1e9, dailyMaxNotionalUsdc: 100 }, false, 5000, activity);
+    expect(placer.calls).toHaveLength(0); // 60 + 100 > 100
+  });
+
+  it("uses a restart-stable cloid so a replay dedupes instead of double-opening", async () => {
+    const store = new MemoryStrategyStore(() => 1000);
+    const calls: any[] = [];
+    const placer = { place: async (r: any) => { calls.push(r); return { ok: false }; } };
+    store.create("0xo", "scheduled", sched({ runAt: 5000 }));
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 5000);
+    await tick(store, placer as any, { maxNotionalUsdc: 1e9 }, false, 6000); // later `now`
+    expect(calls).toHaveLength(2);
+    expect(calls[0].cloid).toBe(calls[1].cloid);
+  });
+});
