@@ -26,6 +26,7 @@ import { useLockPrefsStore } from "./src/state/lockPrefsStore";
 import { usePushPrefsStore } from "./src/state/pushPrefsStore";
 import { useThemeStore } from "./src/state/themeStore";
 import { useLocaleStore } from "./src/state/localeStore";
+import { useRoutingStore } from "./src/state/routingStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
 import { reconcilePendingIntents } from "./src/services/ledgerRecovery";
 import { hydrateRuntimeConfig } from "./src/services/appConfig";
@@ -96,6 +97,7 @@ export default function App() {
     void useLocaleStore.getState().hydrate();
     void useEnvStore.getState().hydrate();
     void usePushPrefsStore.getState().hydrate();
+    void useRoutingStore.getState().hydrate();
     useAuthStore.getState().evaluate(
       () => manager.hasWallet(),
       () => pinStore.hasPin(),
