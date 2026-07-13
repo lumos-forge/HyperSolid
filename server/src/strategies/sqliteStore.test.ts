@@ -125,4 +125,13 @@ describe("gridLimit persistence (sqlite)", () => {
     expect(store.gridLimitRungs(s.id)).toEqual([]);
     store.close();
   });
+
+  it("round-trips a trailing strategy and persists trailPeak", () => {
+    const store = SqliteStrategyStore.open(":memory:", () => 1000);
+    const s = store.create("0xOwner", "trailing", { coin: "BTC", trailPct: 5 });
+    expect(store.get(s.id)).toMatchObject({ kind: "trailing", params: { coin: "BTC", trailPct: 5 }, status: "running" });
+    expect(store.get(s.id)?.trailPeak).toBeUndefined();
+    store.setTrailPeak(s.id, 12345);
+    expect(store.get(s.id)?.trailPeak).toBe(12345);
+  });
 });

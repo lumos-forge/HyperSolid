@@ -57,5 +57,6 @@ export class NotifyingStrategyStore implements StrategyStore {
   gridLimitRungs(id: string): RungState[] { return this.inner.gridLimitRungs(id); }
   setGridLimitRung(id: string, rung: RungState): void { this.inner.setGridLimitRung(id, rung); }
   addFilledUsdc(id: string, usdc: number): void { this.inner.addFilledUsdc(id, usdc); }
+  setTrailPeak(id: string, peak: number): void { this.inner.setTrailPeak(id, peak); }
   remove(id: string): void { this.inner.remove(id); }
 }

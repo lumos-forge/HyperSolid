@@ -21,6 +21,8 @@ export interface StrategyStore {
   setGridLimitRung(id: string, rung: RungState): void;
   /** Increment realized notional/pnl (used by gridLimit take-profit + generic accounting). */
   addFilledUsdc(id: string, usdc: number): void;
+  /** Trailing stop: persist the favorable mark extreme. */
+  setTrailPeak(id: string, peak: number): void;
   remove(id: string): void;
 }
 
@@ -96,6 +98,11 @@ export class MemoryStrategyStore implements StrategyStore {
   addFilledUsdc(id: string, usdc: number): void {
     const s = this.byId.get(id);
     if (s) s.filledTotalUsdc = (s.filledTotalUsdc ?? 0) + usdc;
+  }
+
+  setTrailPeak(id: string, peak: number): void {
+    const s = this.byId.get(id);
+    if (s) s.trailPeak = peak;
   }
 
   remove(id: string): void {
