@@ -1,7 +1,9 @@
 import { HttpTransport } from "@nktkas/hyperliquid";
 import { WebSocketTransport } from "@nktkas/hyperliquid";
+import { InfoClient } from "@nktkas/hyperliquid";
 import { createInfoClient, createExchangeClient } from "./client";
 import { createSubsClient, createTwapSubsClient } from "./client";
+import { RoutingHttpTransport } from "./routingHttpTransport";
 import { useRoutingStore } from "../../state/routingStore";
 import { useRoutingEnvStore } from "../../state/routingEnvStore";
 import { useRuntimeConfigStore } from "../../state/runtimeConfigStore";
@@ -27,10 +29,10 @@ beforeEach(() => {
 });
 
 describe("client routing", () => {
-  it("builds the info transport with a proxy apiUrl in proxy mode", () => {
+  it("gives the info client a RoutingHttpTransport", () => {
     createInfoClient("mainnet");
-    const opts = httpMock.mock.calls.at(-1)![0];
-    expect(POOL).toContain(opts.apiUrl);
+    const cfg = (InfoClient as unknown as jest.Mock).mock.calls.at(-1)![0];
+    expect(cfg.transport).toBeInstanceOf(RoutingHttpTransport);
   });
   it("keeps the exchange transport on the direct base", () => {
     createExchangeClient("mainnet", {});
