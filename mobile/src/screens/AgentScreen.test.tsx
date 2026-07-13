@@ -186,6 +186,43 @@ describe("AgentScreen", () => {
     expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("conditional", expect.anything());
   });
 
+  it("switches to the scheduled template and creates a scheduled order with a future runAt", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-scheduled")).toBeTruthy());
+    const before = Date.now();
+    fireEvent.press(screen.getByTestId("template-scheduled"));
+    fireEvent.changeText(screen.getByTestId("scheduled-coin"), "ETH");
+    fireEvent.press(screen.getByTestId("sched-side-buy"));
+    fireEvent.changeText(screen.getByTestId("sched-size"), "100");
+    fireEvent.changeText(screen.getByTestId("sched-delay"), "2");
+    fireEvent.press(screen.getByTestId("sched-create"));
+    await waitFor(() =>
+      expect(mockApiFake.createStrategy).toHaveBeenCalledWith(
+        "scheduled",
+        expect.objectContaining({ coin: "ETH", side: "buy", sizeUsdc: 100 }),
+      ),
+    );
+    const calls = mockApiFake.createStrategy.mock.calls as unknown as Array<[string, { runAt: number }]>;
+    const call = calls.find((c) => c[0] === "scheduled")!;
+    const runAt = call[1].runAt;
+    expect(runAt).toBeGreaterThanOrEqual(before + 2 * 3600000);
+    expect(runAt).toBeLessThanOrEqual(Date.now() + 2 * 3600000);
+  });
+
+  it("does not create a scheduled order with a non-positive delay", async () => {
+    render(<AgentScreen />);
+    fireEvent.press(screen.getByTestId("strategy-connect-btn"));
+    await waitFor(() => expect(screen.getByTestId("template-scheduled")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("template-scheduled"));
+    fireEvent.changeText(screen.getByTestId("scheduled-coin"), "ETH");
+    fireEvent.changeText(screen.getByTestId("sched-size"), "100");
+    fireEvent.changeText(screen.getByTestId("sched-delay"), "0");
+    fireEvent.press(screen.getByTestId("sched-create"));
+    await waitFor(() => expect(screen.getByTestId("sched-create")).toBeTruthy());
+    expect(mockApiFake.createStrategy).not.toHaveBeenCalledWith("scheduled", expect.anything());
+  });
+
   it("switches to the TP/SL template and creates a stop-only tpsl", async () => {
     render(<AgentScreen />);
     fireEvent.press(screen.getByTestId("strategy-connect-btn"));
