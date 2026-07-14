@@ -40,7 +40,81 @@ func (c constFencer) Fence() (uint64, bool) { return c.epoch, c.leader }
 // fencer (epoch 1), and the given clock (nil → real time). It reproduces the
 // pre-wiring in-memory nonce+cap behavior plus the fence gate.
 func leaderMux(ks *keystore.Keystore, policies *policy.Store, nowMs func() int64) http.Handler {
-	return newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, nowMs)
+	mgr := keystore.NewManager(ks, keystore.NewMemVault(), bytes.Repeat([]byte{0x2a}, 32))
+	return newMux(ks, mgr, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, nowMs)
+}
+
+func TestProvisionAndSignAndDelete(t *testing.T) {
+	ks := keystore.New()
+	policies := policy.NewStore()
+	srv := httptest.NewServer(leaderMux(ks, policies, nil))
+	defer srv.Close()
+
+	body := `{"keyId":"k1","ownerAddress":"0xowner","allowedKinds":["order"],"maxNotionalUsdc":1e12}`
+	res, err := http.Post(srv.URL+"/v1/keys", "application/json", strings.NewReader(body))
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("provision status = %v, %v", res.StatusCode, err)
+	}
+	var pr struct{ KeyID, AgentAddress string }
+	_ = json.NewDecoder(res.Body).Decode(&pr)
+	if pr.KeyID != "k1" || len(pr.AgentAddress) != 42 || pr.AgentAddress[:2] != "0x" {
+		t.Fatalf("bad provision response %+v", pr)
+	}
+
+	res2, _ := http.Post(srv.URL+"/v1/keys", "application/json", strings.NewReader(body))
+	var pr2 struct{ AgentAddress string }
+	_ = json.NewDecoder(res2.Body).Decode(&pr2)
+	if pr2.AgentAddress != pr.AgentAddress {
+		t.Fatalf("re-provision changed the address: %s -> %s", pr.AgentAddress, pr2.AgentAddress)
+	}
+
+	sign := func(kind string) int {
+		b := `{"keyId":"k1","kind":"` + kind + `","params":{},"cloid":"0x` + strings.Repeat("1", 32) + `","isTestnet":true}`
+		r, _ := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(b))
+		return r.StatusCode
+	}
+	if code := sign("cancel"); code != 403 {
+		t.Fatalf("disallowed kind should be 403, got %d", code)
+	}
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/keys/k1", nil)
+	dr, _ := http.DefaultClient.Do(req)
+	if dr.StatusCode != 204 {
+		t.Fatalf("delete status = %d", dr.StatusCode)
+	}
+	if code := sign("order"); code != 404 {
+		t.Fatalf("after delete, sign should be 404, got %d", code)
+	}
+}
+
+func TestProvisionKeyBadRequests(t *testing.T) {
+	srv := httptest.NewServer(leaderMux(keystore.New(), policy.NewStore(), nil))
+	defer srv.Close()
+	r, _ := http.Post(srv.URL+"/v1/keys", "application/json", strings.NewReader(`{"keyId":""}`))
+	if r.StatusCode != 400 {
+		t.Fatalf("empty keyId → %d", r.StatusCode)
+	}
+	r, _ = http.Post(srv.URL+"/v1/keys", "application/json", strings.NewReader(`{`))
+	if r.StatusCode != 400 {
+		t.Fatalf("bad json → %d", r.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/keys", nil)
+	r, _ = http.DefaultClient.Do(req)
+	if r.StatusCode != 405 {
+		t.Fatalf("GET /v1/keys → %d", r.StatusCode)
+	}
+}
+
+func TestProvisionNonLeader(t *testing.T) {
+	nowMs := func() int64 { return 0 }
+	mgr := keystore.NewManager(keystore.New(), keystore.NewMemVault(), bytes.Repeat([]byte{9}, 32))
+	mux := newMux(keystore.New(), mgr, policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: false}, nowMs)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	r, _ := http.Post(srv.URL+"/v1/keys", "application/json", strings.NewReader(`{"keyId":"k1"}`))
+	if r.StatusCode != 503 {
+		t.Fatalf("non-leader provision → %d, want 503", r.StatusCode)
+	}
 }
 
 func TestHealthz(t *testing.T) {
@@ -523,7 +597,7 @@ func TestSignL1NonLeader503(t *testing.T) {
 	policies := policy.NewStore()
 	policies.Set("k1", policy.Config{AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 1e12})
 	// A non-leader must refuse to sign (503) even for an otherwise-valid request.
-	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: false}, nil))
+	srv := httptest.NewServer(newMux(ks, keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policies, ledger.NewMem(), constFencer{epoch: 1, leader: false}, nil))
 	defer srv.Close()
 	body := `{"keyId":"k1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -559,7 +633,7 @@ func TestSignL1FencedConflict(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed fence: %v", err)
 	}
-	srv := httptest.NewServer(newMux(ks, policies, auth, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(ks, keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policies, auth, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 	body := `{"keyId":"k1","cloid":"req-c1","kind":"order","params":{"asset":0,"isBuy":true,"px":"50000","sz":"0.01","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))
@@ -1170,7 +1244,7 @@ func TestCancelOnlyKeyNotBlockedByAddressCapDrift(t *testing.T) {
 }
 
 func reconcileMux(led ledger.Ledger) http.Handler {
-	return newMux(keystore.New(), policy.NewStore(), led, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 })
+	return newMux(keystore.New(), keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policy.NewStore(), led, constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 })
 }
 
 func TestReconcileHappyPath(t *testing.T) {
@@ -1401,7 +1475,7 @@ func TestBuildHandlerStartsReconciler(t *testing.T) {
 }
 
 func TestMetricsEndpoint(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(keystore.New(), keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 
 	// Drive one request through an instrumented route so a series exists.
@@ -1428,7 +1502,7 @@ func TestMetricsEndpoint(t *testing.T) {
 }
 
 func TestMetricsExposesReconcileLeaderGauge(t *testing.T) {
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(keystore.New(), keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 
 	res, err := http.Get(srv.URL + "/metrics")
@@ -1459,7 +1533,7 @@ func TestSignRateLimitReturns429(t *testing.T) {
 		RatePerSec:      1,
 		RateBurst:       2, // burst 2 → under a fixed clock the 3rd request is 429
 	})
-	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(ks, keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 
 	post := func(cloid string) int {
@@ -1492,7 +1566,7 @@ func TestSignRateDisabledNotThrottled(t *testing.T) {
 		MaxNotionalUsdc: 1e12,
 		// RatePerSec defaults to 0 → rate limiting disabled.
 	})
-	srv := httptest.NewServer(newMux(ks, policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(ks, keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policies, ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 
 	for i := 0; i < 10; i++ {
@@ -1510,7 +1584,7 @@ func TestSignRateDisabledNotThrottled(t *testing.T) {
 
 func TestSignUnknownKeyNotRateLimited(t *testing.T) {
 	// Unknown key → 404 before the limiter (no bucket allocation for random keyIDs).
-	srv := httptest.NewServer(newMux(keystore.New(), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
+	srv := httptest.NewServer(newMux(keystore.New(), keystore.NewManager(keystore.New(), keystore.NewMemVault(), nil), policy.NewStore(), ledger.NewMem(), constFencer{epoch: 1, leader: true}, func() int64 { return 1700000000000 }))
 	defer srv.Close()
 	body := `{"keyId":"nope","cloid":"x","kind":"order","params":{"asset":0,"isBuy":true,"px":"1","sz":"1","reduceOnly":false,"tif":"Gtc","grouping":"na"},"isTestnet":false}`
 	res, err := http.Post(srv.URL+"/v1/sign/l1", "application/json", strings.NewReader(body))

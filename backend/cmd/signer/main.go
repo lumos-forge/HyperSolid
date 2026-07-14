@@ -465,7 +465,102 @@ func handleOrphans(led ledger.Reconciler) http.HandlerFunc {
 // newMux builds the service router (no side effects; testable). The digest
 // endpoints are keyless; /v1/sign/l1 uses the injected keystore, policy,
 // single-writer, fencer, and clock.
-func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
+type provisionKeyRequest struct {
+	KeyID                       string             `json:"keyId"`
+	OwnerAddress                string             `json:"ownerAddress"`
+	AllowedKinds                []string           `json:"allowedKinds"`
+	MaxNotionalUsdc             float64            `json:"maxNotionalUsdc"`
+	PerCoinMaxUsdc              map[string]float64 `json:"perCoinMaxUsdc"`
+	DailyMaxNotionalUsdc        float64            `json:"dailyMaxNotionalUsdc"`
+	RatePerSec                  float64            `json:"ratePerSec"`
+	RateBurst                   float64            `json:"rateBurst"`
+	IPRatePerSec                float64            `json:"ipRatePerSec"`
+	IPRateBurst                 float64            `json:"ipRateBurst"`
+	AddressDailyMaxNotionalUsdc float64            `json:"addressDailyMaxNotionalUsdc"`
+}
+
+type provisionKeyResponse struct {
+	KeyID        string `json:"keyId"`
+	AgentAddress string `json:"agentAddress"`
+}
+
+func policyConfigFromProvision(req provisionKeyRequest) policy.Config {
+	allowed := make(map[string]bool, len(req.AllowedKinds))
+	for _, k := range req.AllowedKinds {
+		allowed[k] = true
+	}
+	return policy.Config{
+		AllowedKinds:                allowed,
+		MaxNotionalUsdc:             req.MaxNotionalUsdc,
+		PerCoinMaxUsdc:              req.PerCoinMaxUsdc,
+		DailyMaxNotionalUsdc:        req.DailyMaxNotionalUsdc,
+		RatePerSec:                  req.RatePerSec,
+		RateBurst:                   req.RateBurst,
+		OwnerAddress:                req.OwnerAddress,
+		IPRatePerSec:                req.IPRatePerSec,
+		IPRateBurst:                 req.IPRateBurst,
+		AddressDailyMaxNotionalUsdc: req.AddressDailyMaxNotionalUsdc,
+	}
+}
+
+// handleProvisionKey provisions (idempotently) an agent key inside the signer and binds its
+// reject-first policy. Leader-gated. Never returns or logs private key material.
+func handleProvisionKey(mgr *keystore.Manager, policies *policy.Store, fencer Fencer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var req provisionKeyRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		if req.KeyID == "" {
+			writeErr(w, http.StatusBadRequest, "missing keyId")
+			return
+		}
+		if _, isLeader := fencer.Fence(); !isLeader {
+			writeErr(w, http.StatusServiceUnavailable, "not leader")
+			return
+		}
+		addr, ok := mgr.AgentAddress(req.KeyID)
+		if !ok {
+			var err error
+			addr, err = mgr.Provision(r.Context(), req.KeyID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, "provision failed")
+				return
+			}
+		}
+		policies.Set(req.KeyID, policyConfigFromProvision(req))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(provisionKeyResponse{KeyID: req.KeyID, AgentAddress: addr})
+	}
+}
+
+// handleDeleteKey zeroizes+deletes an agent key and unbinds its policy. Leader-gated, idempotent.
+func handleDeleteKey(mgr *keystore.Manager, policies *policy.Store, fencer Fencer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		keyID := r.PathValue("keyId")
+		if keyID == "" {
+			writeErr(w, http.StatusBadRequest, "missing keyId")
+			return
+		}
+		if _, isLeader := fencer.Fence(); !isLeader {
+			writeErr(w, http.StatusServiceUnavailable, "not leader")
+			return
+		}
+		if err := mgr.Remove(r.Context(), keyID); err != nil {
+			writeErr(w, http.StatusInternalServerError, "remove failed")
+			return
+		}
+		policies.Delete(keyID)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func newMux(ks *keystore.Keystore, mgr *keystore.Manager, policies *policy.Store, led ledger.Ledger, fencer Fencer, nowMs func() int64) http.Handler {
 	mux := http.NewServeMux()
 	route := func(name string, h http.HandlerFunc) http.HandlerFunc {
 		return tracing.Middleware(name, obs.Middleware(name, metrics.Middleware(name, h)))
@@ -483,6 +578,8 @@ func newMux(ks *keystore.Keystore, policies *policy.Store, led ledger.Ledger, fe
 	mux.HandleFunc("/v1/sign/l1", loggedRoute("sign_l1", handleSignL1(ks, policies, led, fencer, nowMs, keyLimiter, ipLimiter)))
 	mux.HandleFunc("/v1/reconcile", loggedRoute("reconcile", handleReconcile(led)))
 	mux.HandleFunc("/v1/orphans", loggedRoute("orphans", handleOrphans(led)))
+	mux.HandleFunc("/v1/keys", loggedRoute("provision_key", handleProvisionKey(mgr, policies, fencer)))
+	mux.HandleFunc("DELETE /v1/keys/{keyId}", loggedRoute("delete_key", handleDeleteKey(mgr, policies, fencer)))
 	mux.Handle("/metrics", metrics.Handler())
 	return mux
 }
@@ -621,11 +718,13 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 
 	var led ledger.Ledger
 	var fencer Fencer
+	var keyMgr *keystore.Manager
 	cleanup := func() {}
 
 	if cfg.databaseURL == "" {
 		led = ledger.NewMem()
 		fencer = staticFencer{epoch: 1}
+		keyMgr = keystore.NewManager(ks, keystore.NewMemVault(), cfg.signerKEK)
 	} else {
 		pool, err := pgxpool.New(ctx, cfg.databaseURL)
 		if err != nil {
@@ -652,7 +751,7 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 			pool.Close()
 			return nil, nil, fmt.Errorf("signer: keystore load: %w", err)
 		}
-		_ = keyManager // held for Phase 1b (provisioning endpoints)
+		keyMgr = keyManager
 		ld := leader.New(leasepg.New(pool), cfg.leaseName, cfg.holderID, cfg.leaseTTL)
 		leaderCtx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -694,7 +793,7 @@ func buildHandler(ctx context.Context, cfg config, ks *keystore.Keystore, polici
 		}
 	}
 
-	h := newMux(ks, policies, led, fencer, nowMs)
+	h := newMux(ks, keyMgr, policies, led, fencer, nowMs)
 	return h, cleanup, nil
 }
 
