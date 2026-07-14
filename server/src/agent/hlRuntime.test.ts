@@ -109,11 +109,12 @@ describe("makeClientFor builder wiring", () => {
     expect(builderFor).toHaveBeenCalledWith("0xo");
   });
 
-  it("does NOT apply the builder wrapper on the delegated (signer) path", async () => {
-    const builderFor = jest.fn(async () => undefined);
-    const signCalls: unknown[] = [];
+  it("applies the builder wrapper on the delegated (signer) path (injector consulted, builder signed)", async () => {
+    const BUILDER_ADDR = ("0x" + "d".repeat(40)) as `0x${string}`;
+    const builderFor = jest.fn(async () => ({ b: BUILDER_ADDR, f: 20 }));
+    const signCalls: Array<{ params: { builder?: unknown } }> = [];
     const signer = {
-      sign: async (r: unknown) => { signCalls.push(r); return { r: "0xr", s: "0xs", v: 27, nonce: 1, duplicate: false }; },
+      sign: async (r: { params: { builder?: unknown } }) => { signCalls.push(r); return { r: "0xr", s: "0xs", v: 27, nonce: 1, duplicate: false }; },
       reconcile: async () => undefined,
     } as unknown as SignerLike;
     const transport = { request: async () => ({}) } as unknown as HttpTransport;
@@ -121,7 +122,7 @@ describe("makeClientFor builder wiring", () => {
     const clientFor = makeClientFor(agents, transport, now, { signer, isTestnet: true }, { builderFor });
     const client = clientFor("0xo") as unknown as { order(p: unknown): Promise<unknown> };
     await client.order({ orders: [{ a: 0, b: true, p: "1", s: "1", r: false, t: { limit: { tif: "Ioc" } }, c: "0xc" }], grouping: "na" });
-    expect(builderFor).not.toHaveBeenCalled();
-    expect(signCalls).toHaveLength(1);
+    expect(builderFor).toHaveBeenCalledWith("0xo");
+    expect(signCalls[0].params.builder).toEqual({ b: BUILDER_ADDR, f: 20 });
   });
 });

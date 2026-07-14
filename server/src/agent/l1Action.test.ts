@@ -38,6 +38,25 @@ describe("actionFromKindParams", () => {
     expect(actionFromKindParams("updateLeverage", {})).toBeUndefined();
   });
 
+  it("appends the builder after grouping when present", () => {
+    const a = actionFromKindParams("order", {
+      asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Gtc", grouping: "na",
+      builder: { b: "0x1111111111111111111111111111111111111111", f: 20 },
+    }) as Record<string, unknown>;
+    expect(a).toEqual({
+      type: "order",
+      orders: [{ a: 0, b: true, p: "50000", s: "0.01", r: false, t: { limit: { tif: "Gtc" } } }],
+      grouping: "na",
+      builder: { b: "0x1111111111111111111111111111111111111111", f: 20 },
+    });
+    expect(Object.keys(a)).toEqual(["type", "orders", "grouping", "builder"]);
+  });
+
+  it("omits the builder when absent (unchanged action)", () => {
+    const a = actionFromKindParams("order", { asset: 0, isBuy: true, px: "1", sz: "1", reduceOnly: false, tif: "Ioc" }) as Record<string, unknown>;
+    expect("builder" in a).toBe(false);
+  });
+
   it("produces a stable, hashable action (createL1ActionHash is deterministic)", () => {
     const a = actionFromKindParams("order", { asset: 0, isBuy: true, px: "50", sz: "1", reduceOnly: false, tif: "Ioc", cloid: "0xdeadbeef" });
     const h1 = createL1ActionHash({ action: a as Record<string, unknown>, nonce: 1 });

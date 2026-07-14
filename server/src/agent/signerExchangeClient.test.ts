@@ -96,6 +96,24 @@ describe("makeSignerBackedExchangeClient.order", () => {
     const client = makeSignerBackedExchangeClient({ keyId: "k", signer, transport, isTestnet: false });
     await expect(client.order(ORDER_ARG)).resolves.toBe(filled);
   });
+
+  it("threads a builder into the sign params and the submitted action", async () => {
+    const { signer, signCalls } = fakeSigner();
+    const { transport, calls } = fakeTransport({ response: { data: { statuses: [{ resting: { oid: 1 } }] } } });
+    const client = makeSignerBackedExchangeClient({ keyId: "k", signer, transport, isTestnet: true });
+    const builder = { b: "0x1111111111111111111111111111111111111111" as `0x${string}`, f: 20 };
+    await client.order({ ...ORDER_ARG, builder });
+    expect((signCalls[0] as { params: { builder?: unknown } }).params.builder).toEqual(builder);
+    expect((calls[0].payload as { action: { builder?: unknown } }).action.builder).toEqual(builder);
+  });
+
+  it("omits the builder from the action when arg has none", async () => {
+    const { signer } = fakeSigner();
+    const { transport, calls } = fakeTransport({ response: { data: { statuses: [{ resting: { oid: 1 } }] } } });
+    const client = makeSignerBackedExchangeClient({ keyId: "k", signer, transport, isTestnet: true });
+    await client.order(ORDER_ARG);
+    expect("builder" in (calls[0].payload as { action: object }).action).toBe(false);
+  });
 });
 
 describe("makeSignerBackedExchangeClient.cancelByCloid", () => {

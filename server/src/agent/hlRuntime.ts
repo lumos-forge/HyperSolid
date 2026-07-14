@@ -60,12 +60,13 @@ export function makeClientFor(
     if (delegation) {
       const keyId = agents.keyIdFor(owner);
       if (keyId) {
-        const client = makeSignerBackedExchangeClient({
+        const signerClient = makeSignerBackedExchangeClient({
           keyId,
           signer: delegation.signer,
           transport: transport as unknown as ExchangeTransport,
           isTestnet: delegation.isTestnet,
         }) as unknown as RestingClientLike;
+        const client = builderInjector ? wrapClientWithBuilder(signerClient, owner, builderInjector) : signerClient;
         cache.set(owner, client);
         return client;
       }
