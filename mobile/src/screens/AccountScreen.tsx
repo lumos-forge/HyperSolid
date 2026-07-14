@@ -4,6 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { useToastStore } from "../state/toastStore";
 import { useTheme } from "../theme/useTheme";
 import { useWalletStore } from "../state/walletStore";
+import { useDepositIntentStore } from "../state/depositIntentStore";
 import { useAuthStore } from "../state/authStore";
 import { useEnvStore } from "../state/envStore";
 import { useT } from "../i18n/useT";
@@ -69,6 +70,7 @@ export function AccountScreen({
   const theme = useTheme();
   const mode = useWalletStore((s) => s.mode);
   const address = useWalletStore((s) => s.address);
+  const depositRequested = useDepositIntentStore((s) => s.requested);
   const wallet = useWalletStore((s) => s.wallet);
   const setLocalWallet = useWalletStore((s) => s.setLocalWallet);
   const setViewOnly = useWalletStore((s) => s.setViewOnly);
@@ -142,6 +144,14 @@ export function AccountScreen({
   }, [mode, address, services]);
 
   useEffect(() => reloadSummary(), [reloadSummary]);
+
+  // A deposit intent from another tab (Trade CTA) opens the deposit sheet directly — one-tap funding.
+  useEffect(() => {
+    if (depositRequested && mode === "local") {
+      setSheet("deposit");
+      useDepositIntentStore.getState().consume();
+    }
+  }, [depositRequested, mode]);
 
   // Deposit precheck (§B2b): when the deposit sheet opens, read the wallet's Arbitrum USDC (depositable)
   // and ETH (gas) balances via the server-delivered RPC. Cleared when the sheet closes / RPC absent.

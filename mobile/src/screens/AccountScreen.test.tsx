@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react-native";
 import { AccountScreen } from "./AccountScreen";
 import { useWalletStore } from "../state/walletStore";
+import { useDepositIntentStore } from "../state/depositIntentStore";
 import { useEnvStore } from "../state/envStore";
 import { useLocaleStore } from "../state/localeStore";
 import { useRuntimeConfigStore } from "../state/runtimeConfigStore";
@@ -53,6 +54,7 @@ describe("AccountScreen", () => {
     useEnvStore.setState({ network: "mainnet" });
     useLocaleStore.setState({ locale: "en" });
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
+    useDepositIntentStore.setState({ requested: false });
     fakeDeps.positions.loadPortfolio = jest.fn(async () => portfolio);
     fakeDeps.fundings.load = jest.fn(async () => fundingEvents);
     mockWithdraw.mockClear();
@@ -132,6 +134,14 @@ describe("AccountScreen", () => {
     await waitFor(() => expect(screen.getByTestId("fund-nudge")).toBeTruthy());
     fireEvent.press(screen.getByTestId("fund-nudge"));
     await waitFor(() => expect(screen.getByTestId("deposit-panel")).toBeTruthy());
+  });
+
+  it("opens the deposit sheet when a deposit intent is pending", async () => {
+    useDepositIntentStore.setState({ requested: true });
+    useWalletStore.setState({ mode: "local", wallet: {} as never, address: ADDR });
+    render(<AccountScreen deps={fakeDeps} />);
+    await waitFor(() => expect(screen.getByTestId("deposit-panel")).toBeTruthy());
+    expect(useDepositIntentStore.getState().requested).toBe(false); // consumed
   });
 
   it("hides the fund nudge once the wallet has a balance", async () => {

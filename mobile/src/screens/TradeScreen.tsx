@@ -12,6 +12,7 @@ import { useToastStore } from "../state/toastStore";
 import { builderConfig } from "../state/runtimeConfigStore";
 import { useBuilderApprovalStore } from "../state/builderApprovalStore";
 import { queryBuilderApproval } from "../services/builderApproval";
+import { useDepositIntentStore } from "../state/depositIntentStore";
 import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
 import { createExchangeClient, createPositionsInfoClient, createInfoClient } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
@@ -260,6 +261,12 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
     clearRetry();
     setPriceEdited(true);
     setPrice(v);
+  }
+
+  /** Route to the Account deposit sheet in one tap (set the cross-tab intent, then switch tabs). */
+  function goDeposit() {
+    useDepositIntentStore.getState().request();
+    navigation?.navigate("Account");
   }
 
   /** One-time, pre-first-order builder-fee approval. Fail-open: any decline/error places without a
@@ -678,13 +685,26 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
             accessibilityLabel={t("trade.deposit")}
             testID="deposit-shortcut"
             hitSlop={8}
-            onPress={() => navigation?.navigate("Account")}
+            onPress={goDeposit}
             style={[styles.depositBtn, { borderColor: theme.line }]}
           >
             <Icon name="plus" color={theme.brand} size={15} />
           </Pressable>
         </View>
       </View>
+
+      {mode === "local" && available === 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          testID="trade-no-funds-cta"
+          onPress={goDeposit}
+          style={[styles.noFundsCta, { borderColor: theme.brand, backgroundColor: withAlpha(theme.brand, 0.08) }]}
+        >
+          <Icon name="plus" color={theme.brand} size={15} />
+          <Text style={[styles.noFundsCtaText, { color: theme.text }]}>{t("trade.noFundsCta")}</Text>
+          <Icon name="chevronRight" color={theme.brand} size={15} strokeWidth={2} />
+        </Pressable>
+      ) : null}
 
       <Pressable
         testID="order-type"
@@ -1024,6 +1044,8 @@ const styles = StyleSheet.create({
   availValue: { fontFamily: fonts.mono.medium, fontSize: 13 },
   availRight: { flexDirection: "row", alignItems: "center" },
   depositBtn: { marginLeft: 8, width: 24, height: 24, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  noFundsCta: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 },
+  noFundsCtaText: { flex: 1, fontSize: 14, fontWeight: "600" },
   posContext: { fontFamily: fonts.mono.regular, fontSize: 11.5, marginTop: 6, marginBottom: 2 },
   maxLabel: { fontFamily: fonts.body.regular, fontSize: 11 },
   maxValue: { fontFamily: fonts.mono.medium, fontSize: 12 },
