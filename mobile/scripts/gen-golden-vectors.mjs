@@ -19,7 +19,9 @@ function buildAction(kind, p) {
   if (kind === "order") {
     const o = { a: p.asset, b: p.isBuy, p: p.px, s: p.sz, r: p.reduceOnly, t: { limit: { tif: p.tif } } };
     if (p.cloid) o.c = p.cloid;
-    return { type: "order", orders: [o], grouping: p.grouping ?? "na" };
+    const action = { type: "order", orders: [o], grouping: p.grouping ?? "na" };
+    if (p.builder) action.builder = { b: p.builder.b, f: p.builder.f };
+    return action;
   }
   if (kind === "cancel") return { type: "cancel", cancels: p.cancels.map((c) => ({ a: c.asset, o: c.oid })) };
   if (kind === "twapOrder") return { type: "twapOrder", twap: { a: p.asset, b: p.isBuy, s: p.sz, r: p.reduceOnly, m: p.minutes, t: p.randomize } };
@@ -52,6 +54,7 @@ const cases = [
   { name: "order-limit-gtc-mainnet", kind: "order", isTestnet: false, params: { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Gtc", grouping: "na" } },
   { name: "order-limit-ioc-testnet", kind: "order", isTestnet: true, params: { asset: 1, isBuy: false, px: "3000", sz: "0.5", reduceOnly: true, tif: "Ioc", grouping: "na" } },
   { name: "order-limit-cloid-mainnet", kind: "order", isTestnet: false, params: { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Gtc", grouping: "na", cloid: "0x00000000000000000000000000000001" } },
+  { name: "order-builder-mainnet", kind: "order", isTestnet: false, params: { asset: 0, isBuy: true, px: "50000", sz: "0.01", reduceOnly: false, tif: "Gtc", grouping: "na", builder: { b: "0x1111111111111111111111111111111111111111", f: 20 } } },
   { name: "cancel-mainnet", kind: "cancel", isTestnet: false, params: { cancels: [{ asset: 0, oid: 123 }] } },
   { name: "twapOrder-mainnet", kind: "twapOrder", isTestnet: false, params: { asset: 0, isBuy: true, sz: "0.02", reduceOnly: false, minutes: 30, randomize: true } },
   { name: "twapCancel-testnet", kind: "twapCancel", isTestnet: true, params: { asset: 0, twapId: 7 } },
