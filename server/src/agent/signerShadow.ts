@@ -1,4 +1,5 @@
 import { createL1ActionHash } from "@nktkas/hyperliquid/signing";
+import { actionFromKindParams } from "./l1Action";
 
 /** Fixed nonce for shadow comparison — the hash is nonce-dependent but nonce-arbitrary for encoding checks. */
 export const SHADOW_NONCE = 1;
@@ -20,23 +21,6 @@ export interface ShadowOpts {
   timeoutMs?: number;
   fetchImpl?: FetchLike;
   logger?: ShadowLogger;
-}
-
-/** Build the raw HL action object from a semantic kind + params (only `order` is mapped for now). */
-function actionFromKindParams(kind: string, params: unknown): Record<string, unknown> | undefined {
-  if (kind === "order") {
-    const p = params as {
-      asset: number; isBuy: boolean; px: string; sz: string; reduceOnly: boolean; tif: string; grouping?: string; cloid?: string;
-    };
-    const o: Record<string, unknown> = { a: p.asset, b: p.isBuy, p: p.px, s: p.sz, r: p.reduceOnly, t: { limit: { tif: p.tif } } };
-    if (p.cloid) o.c = p.cloid;
-    return { type: "order", orders: [o], grouping: p.grouping ?? "na" };
-  }
-  if (kind === "cancelByCloid") {
-    const p = params as { cancels: { asset: number; cloid: string }[] };
-    return { type: "cancelByCloid", cancels: p.cancels.map((c) => ({ asset: c.asset, cloid: c.cloid })) };
-  }
-  return undefined;
 }
 
 /**
