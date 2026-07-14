@@ -146,6 +146,17 @@ func (s *Store) Set(keyID string, cfg Config) {
 	}
 }
 
+// Delete removes the Config for keyID and clears any derived owner budget-conflict state.
+func (s *Store) Delete(keyID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerKey(s.byKey[keyID].OwnerAddress)
+	delete(s.byKey, keyID)
+	delete(s.keyOwnerIPConflict, keyID)
+	delete(s.keyOwnerAddrConflict, keyID)
+	s.recomputeOwnerConflictsLocked(owner)
+}
+
 // Get returns the Config for keyID, or the zero-value Config (default-deny) if unset.
 func (s *Store) Get(keyID string) Config {
 	s.mu.RLock()

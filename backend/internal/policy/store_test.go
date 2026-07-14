@@ -64,3 +64,16 @@ func TestOwnerBudgetConflictMaps(t *testing.T) {
 		t.Fatal("address-cap drift for same owner must be detected")
 	}
 }
+
+func TestStoreDelete(t *testing.T) {
+	s := NewStore()
+	s.Set("k1", Config{OwnerAddress: "0xowner", AllowedKinds: map[string]bool{"order": true}, MaxNotionalUsdc: 100})
+	if !s.Get("k1").AllowedKinds["order"] {
+		t.Fatal("precondition: order should be allowed")
+	}
+	s.Delete("k1")
+	if len(s.Get("k1").AllowedKinds) != 0 {
+		t.Fatalf("expected default-deny (empty) Config after Delete, got %+v", s.Get("k1"))
+	}
+	s.Delete("k1") // idempotent
+}
