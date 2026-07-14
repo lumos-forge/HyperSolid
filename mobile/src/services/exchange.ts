@@ -37,6 +37,15 @@ export interface ExchangeLike {
   updateLeverage(params: { asset: number; isCross: boolean; leverage: number }): Promise<unknown>;
   withdraw3(params: { destination: string; amount: string }): Promise<unknown>;
   approveAgent(params: { agentAddress: string; agentName?: string | null }): Promise<unknown>;
+  approveBuilderFee(params: { maxFeeRate: `${string}%`; builder: `0x${string}` }): Promise<unknown>;
+}
+
+/** Server-delivered builder config plus a live approval predicate; the service attaches the builder
+ *  only while approved (an unapproved user must not send a builder HL would reject). */
+export interface BuilderAttach {
+  address: `0x${string}`;
+  feeTenthBps: number;
+  isApproved: () => boolean;
 }
 
 export type SubmitResult =
@@ -58,6 +67,11 @@ export type ApproveAgentResult =
   | { ok: true; response?: unknown }
   | { ok: false; error: string; uncertain?: boolean };
 
+/** Result of approving the builder fee (main wallet signs). Uncertain receipt is never assumed ok. */
+export type ApproveBuilderFeeResult =
+  | { ok: true; response?: unknown }
+  | { ok: false; error: string; uncertain?: boolean };
+
 /** Placeholder for actions that don't carry a client order id (cancel-by-oid, leverage). */
 const NO_CLOID = "0x" as `0x${string}`;
 
@@ -73,10 +87,18 @@ export class ExchangeService {
     private client: ExchangeLike,
     private index: AssetIndex,
     private ledger: IntentLedger = new IntentLedger(),
+    private builder?: BuilderAttach,
   ) {}
 
+  /** The builder to attach right now, or undefined when unset/unapproved. */
+  private builderAttach(): { address: `0x${string}`; feeTenthBps: number } | undefined {
+    return this.builder && this.builder.isApproved()
+      ? { address: this.builder.address, feeTenthBps: this.builder.feeTenthBps }
+      : undefined;
+  }
+
   async placeOrder(req: OrderRequest): Promise<SubmitResult> {
-    const built = buildOrder(req, this.index);
+    const built = buildOrder({ ...req, builder: req.builder ?? this.builderAttach() }, this.index);
     if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
     return this.submitBuilt(built.params, built.cloid, {
       coin: req.coin,
@@ -92,9 +114,9 @@ export class ExchangeService {
    * dedupe, reconcile, uncertain-receipt retry) via `buildBracketOrder` — no real order at test time.
    */
   async placeBracket(req: BracketRequest): Promise<SubmitResult> {
-    const built = buildBracketOrder(req, this.index);
+    const entry = { ...req.entry, builder: req.entry.builder ?? this.builderAttach() };
+    const built = buildBracketOrder({ ...req, entry }, this.index);
     if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
-    const { entry } = req;
     return this.submitBuilt(built.params, built.cloid, {
       coin: entry.coin,
       side: entry.side,
@@ -105,7 +127,7 @@ export class ExchangeService {
 
   /** Scale (laddered) order — N limit orders across a price range, one signed `order` action. */
   async placeScale(req: ScaleRequest): Promise<SubmitResult> {
-    const built = buildScaleOrder(req, this.index);
+    const built = buildScaleOrder({ ...req, builder: req.builder ?? this.builderAttach() }, this.index);
     if (!built.ok) return { ok: false, error: rejectionMessage(built.rejection) };
     return this.submitBuilt(built.params, built.cloid, {
       coin: req.coin,
@@ -280,6 +302,19 @@ export class ExchangeService {
         agentAddress: req.agentAddress,
         agentName: req.agentName ?? null,
       });
+      return { ok: true, response };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e), uncertain: true };
+    }
+  }
+
+  /**
+   * Approve a builder to charge up to `maxFeeRate` (main-wallet signed). Idempotent (re-approving is
+   * safe). A thrown receipt is uncertain — never assumed ok — mirroring approveAgent/order honesty.
+   */
+  async approveBuilderFee(maxFeeRate: `${string}%`, builder: `0x${string}`): Promise<ApproveBuilderFeeResult> {
+    try {
+      const response = await this.client.approveBuilderFee({ maxFeeRate, builder });
       return { ok: true, response };
     } catch (e) {
       return { ok: false, error: errorMessage(e), uncertain: true };
