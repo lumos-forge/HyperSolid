@@ -70,6 +70,33 @@
     }
   },
   {
+    "name": "order-builder-mainnet",
+    "kind": "order",
+    "params": {
+      "asset": 0,
+      "isBuy": true,
+      "px": "50000",
+      "sz": "0.01",
+      "reduceOnly": false,
+      "tif": "Gtc",
+      "grouping": "na",
+      "builder": {
+        "b": "0x1111111111111111111111111111111111111111",
+        "f": 20
+      }
+    },
+    "nonce": 1700000000000,
+    "isTestnet": false,
+    "privKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "actionHash": "0x93f97e3838f8317bcb6f04a1a8c5e235c8489877c9ba3cc00576b68b7d826b93",
+    "agentDigest": "0x42a2348b7a64fca65dd83a5a650301e82ab38ccf0b8f27ae0afd3a677bf334a6",
+    "sig": {
+      "r": "0x3d80648c516bb699bad98d18eab60709c57014229045217454c32beb3db42c24",
+      "s": "0x5d3573225fe4fb566e7ed75a8d3d6386ee0916322665df03481063bb5561b4e5",
+      "v": 27
+    }
+  },
+  {
     "name": "cancel-mainnet",
     "kind": "cancel",
     "params": {

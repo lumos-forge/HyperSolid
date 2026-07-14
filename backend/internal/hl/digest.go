@@ -19,11 +19,19 @@ func ActionFromKind(kind string, params json.RawMessage) (Map, error) {
 			Tif        string `json:"tif"`
 			Grouping   string `json:"grouping"`
 			Cloid      string `json:"cloid"`
+			Builder    *struct {
+				B string `json:"b"`
+				F int64  `json:"f"`
+			} `json:"builder"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, err
 		}
-		return BuildOrderAction([]OrderInput{{Asset: p.Asset, IsBuy: p.IsBuy, Px: p.Px, Sz: p.Sz, ReduceOnly: p.ReduceOnly, Tif: p.Tif, Cloid: p.Cloid}}, p.Grouping), nil
+		var builder *BuilderInput
+		if p.Builder != nil {
+			builder = &BuilderInput{Address: p.Builder.B, FeeTenthBps: p.Builder.F}
+		}
+		return BuildOrderAction([]OrderInput{{Asset: p.Asset, IsBuy: p.IsBuy, Px: p.Px, Sz: p.Sz, ReduceOnly: p.ReduceOnly, Tif: p.Tif, Cloid: p.Cloid}}, p.Grouping, builder), nil
 	case "cancel":
 		var p struct {
 			Cancels []struct {

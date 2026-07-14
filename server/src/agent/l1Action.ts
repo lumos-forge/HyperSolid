@@ -15,6 +15,7 @@ export interface OrderParams {
   tif: string; // "Gtc" | "Ioc" | "Alo"
   grouping?: string; // default "na"
   cloid?: string;
+  builder?: { b: `0x${string}`; f: number };
 }
 
 /** Semantic params for a `cancelByCloid` action. */
@@ -36,7 +37,9 @@ export function actionFromKindParams(kind: string, params: unknown): Record<stri
     const p = params as OrderParams;
     const o: Record<string, unknown> = { a: p.asset, b: p.isBuy, p: p.px, s: p.sz, r: p.reduceOnly, t: { limit: { tif: p.tif } } };
     if (p.cloid) o.c = p.cloid;
-    return { type: "order", orders: [o], grouping: p.grouping ?? "na" };
+    const action: Record<string, unknown> = { type: "order", orders: [o], grouping: p.grouping ?? "na" };
+    if (p.builder) action.builder = { b: p.builder.b, f: p.builder.f };
+    return action;
   }
   if (kind === "cancelByCloid") {
     const p = params as CancelByCloidParams;

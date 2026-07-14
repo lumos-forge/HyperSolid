@@ -31,6 +31,7 @@ interface OrderTuple {
 interface OrderArg {
   orders: OrderTuple[];
   grouping?: string;
+  builder?: { b: `0x${string}`; f: number };
 }
 interface CancelByCloidArg {
   cancels: Array<{ asset: number; cloid: string }>;
@@ -79,7 +80,10 @@ export function makeSignerBackedExchangeClient(deps: SignerExchangeDeps) {
       const o = arg.orders[0];
       const grouping = arg.grouping ?? "na";
       const cloid = o.c ?? deriveCloid(`order:${o.a}:${o.b}:${o.p}:${o.s}:${o.r}:${o.t.limit.tif}:${grouping}`);
-      const params = { asset: o.a, isBuy: o.b, px: o.p, sz: o.s, reduceOnly: o.r, tif: o.t.limit.tif, grouping, cloid };
+      const params = {
+        asset: o.a, isBuy: o.b, px: o.p, sz: o.s, reduceOnly: o.r, tif: o.t.limit.tif, grouping, cloid,
+        ...(arg.builder ? { builder: arg.builder } : {}),
+      };
       const res = await signAndSubmit("order", params, cloid);
       void signer.reconcile(keyId, cloid, reconcileStatusFromRes(res)).catch(() => undefined);
       return res;

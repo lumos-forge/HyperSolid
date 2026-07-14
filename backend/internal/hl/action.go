@@ -29,13 +29,24 @@ func orderTuple(o OrderInput) Map {
 	return tuple
 }
 
+// BuilderInput is the optional action-level builder fee: an address paid a fee of FeeTenthBps (1/10 bps).
+type BuilderInput struct {
+	Address     string
+	FeeTenthBps int64
+}
+
 // BuildOrderAction builds the ordered msgpack Map for an `order` action (fields in HL byte order).
-func BuildOrderAction(orders []OrderInput, grouping string) Map {
+// The optional builder fee is appended last (`{b,f}`) and omitted entirely when nil (HL omit rule).
+func BuildOrderAction(orders []OrderInput, grouping string, builder *BuilderInput) Map {
 	arr := make([]any, len(orders))
 	for i, o := range orders {
 		arr[i] = orderTuple(o)
 	}
-	return Map{{"type", "order"}, {"orders", arr}, {"grouping", grouping}}
+	m := Map{{"type", "order"}, {"orders", arr}, {"grouping", grouping}}
+	if builder != nil {
+		m = append(m, KV{"builder", Map{{"b", builder.Address}, {"f", builder.FeeTenthBps}}})
+	}
+	return m
 }
 
 // BuildCancelAction builds the ordered Map for a `cancel` action.

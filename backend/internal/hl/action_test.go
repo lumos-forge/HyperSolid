@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildOrderAction(t *testing.T) {
-	got := BuildOrderAction([]OrderInput{{Asset: 0, IsBuy: true, Px: "50000", Sz: "0.01", ReduceOnly: false, Tif: "Gtc"}}, "na")
+	got := BuildOrderAction([]OrderInput{{Asset: 0, IsBuy: true, Px: "50000", Sz: "0.01", ReduceOnly: false, Tif: "Gtc"}}, "na", nil)
 	want := Map{
 		{"type", "order"},
 		{"orders", []any{Map{
@@ -21,12 +21,35 @@ func TestBuildOrderAction(t *testing.T) {
 }
 
 func TestBuildOrderActionWithCloid(t *testing.T) {
-	got := BuildOrderAction([]OrderInput{{Asset: 0, IsBuy: true, Px: "50000", Sz: "0.01", Tif: "Gtc", Cloid: "0x00000000000000000000000000000001"}}, "na")
+	got := BuildOrderAction([]OrderInput{{Asset: 0, IsBuy: true, Px: "50000", Sz: "0.01", Tif: "Gtc", Cloid: "0x00000000000000000000000000000001"}}, "na", nil)
 	orders := got[1].V.([]any)
 	tuple := orders[0].(Map)
 	last := tuple[len(tuple)-1]
 	if last.K != "c" || last.V.(string) != "0x00000000000000000000000000000001" {
 		t.Fatalf("expected trailing cloid field, got %#v", tuple)
+	}
+}
+
+func TestBuildOrderActionWithBuilder(t *testing.T) {
+	got := BuildOrderAction(
+		[]OrderInput{{Asset: 0, IsBuy: true, Px: "50000", Sz: "0.01", Tif: "Gtc"}},
+		"na",
+		&BuilderInput{Address: "0x1111111111111111111111111111111111111111", FeeTenthBps: 20},
+	)
+	last := got[len(got)-1]
+	if last.K != "builder" {
+		t.Fatalf("expected trailing builder field, got %#v", got)
+	}
+	b := last.V.(Map)
+	if b[0].K != "b" || b[0].V.(string) != "0x1111111111111111111111111111111111111111" || b[1].K != "f" || b[1].V.(int64) != 20 {
+		t.Fatalf("builder field mismatch: %#v", b)
+	}
+}
+
+func TestBuildOrderActionOmitsBuilderWhenNil(t *testing.T) {
+	got := BuildOrderAction([]OrderInput{{Asset: 0, IsBuy: true, Px: "1", Sz: "1", Tif: "Gtc"}}, "na", nil)
+	if got[len(got)-1].K != "grouping" {
+		t.Fatalf("expected no builder field when nil, got %#v", got)
 	}
 }
 
