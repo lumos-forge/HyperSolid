@@ -23,6 +23,7 @@ function fakeClient(): { client: ExchangeLike; order: jest.Mock } {
     withdraw3: jest.fn(),
     approveAgent: jest.fn(),
     approveBuilderFee: jest.fn(),
+    scheduleCancel: jest.fn(),
   };
   return { client, order };
 }
