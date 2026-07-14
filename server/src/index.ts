@@ -19,6 +19,7 @@ import { deadManAlertNotification, deadManRecoveredNotification } from "./push/n
 import type { StrategyStore } from "./strategies/store";
 import { appConfigFromEnv, geoHeadersFromEnv } from "./config/appConfig";
 import { makeClientFor, makeResolvers, makeTransport, makeInfoClient } from "./agent/hlRuntime";
+import { makeBuilderInjector, type BuilderInfoLike } from "./agent/builderInjector";
 import { makeHlPlacer } from "./agent/placer";
 import { makeShadowVerifier } from "./agent/signerShadow";
 import { makeRestingExecutor } from "./agent/restingExecutor";
@@ -106,11 +107,21 @@ export async function main(): Promise<void> {
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
   const resolvers = makeResolvers(info, 60_000, now);
+  const builderCfg = appConfigFromEnv(process.env).builder;
+  const builderInjector = builderCfg
+    ? makeBuilderInjector({
+        info: info as unknown as BuilderInfoLike,
+        address: builderCfg.address,
+        perpFeeTenthBps: builderCfg.perpFeeTenthBps,
+        now,
+      })
+    : undefined;
   const clientFor = makeClientFor(
     agents,
     transport,
     now,
     delegation ? { signer: delegation.signer, isTestnet } : undefined,
+    builderInjector,
   );
   const signerShadowUrl = process.env.SIGNER_SHADOW_URL;
   const shadowVerify = signerShadowUrl
