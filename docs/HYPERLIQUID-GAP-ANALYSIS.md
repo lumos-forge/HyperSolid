@@ -3,13 +3,14 @@
 日期：2026-06-17
 方法：并行抓取 Hyperliquid 官方文档（hyperliquid.gitbook.io/hyperliquid-docs）四大板块（行情/WS、交易机制、签名与钱包/限频、出入金与合规），逐项对照我们的 spec/plan（`session plan.md` + `docs/superpowers/plans/2026-06-17-hypersolid-markets-list.md`）。下方每条标注严重度与官方出处。
 
-> 结论先说：方案大方向（非托管、agent trade-only、两层授权、后端不在下单关键路径、geo-block）都成立。但有 **3 个商业/安全级遗漏**（builder code 收入、scheduleCancel 安全、agent 有效期处理）和**一批正确性级遗漏**（下单精度规则、asset ID 解析、限频具体预算、最小下单额、订单状态机、cloid 幂等），以及**出入金 onboarding** 这个"新用户无法起步"的硬缺口。
+> 结论先说：方案大方向（非托管、agent trade-only、两层授权、后端不在下单关键路径、geo-block）都成立。原列的 **3 个商业/安全级遗漏**中，**builder code 收入（A1）已全路径落地**（手动+引擎本地+引擎委托，配置门控，PR #111/#112/#113）、**scheduleCancel 安全（A2）引擎侧已落地且预算持久化**（#52/#53/#110）；agent 有效期处理（A3）仍需运行时检测重授权。**一批正确性级遗漏**（下单精度规则、asset ID 解析、限频具体预算、最小下单额、订单状态机、cloid 幂等）已在交易链路落地（`mobile/src/lib/hyperliquid/*`），余 **出入金 onboarding** 这个"新用户无法起步"的硬缺口（C2）。
 
 ---
 
 ## A. 严重（商业模式 / 资金安全）
 
-### A1. Builder Codes / builder fee —— 公开 App 的主要收入来源，方案完全没提 🚨
+### A1. Builder Codes / builder fee —— 公开 App 的主要收入来源 ✅ **已落地（配置门控）**
+- **状态**：收入闭环全路径落地（服务端配置门控，默认「暗发」直到 ops 填 `BUILDER_ADDRESS`/`BUILDER_PERP_FEE_TENTH_BPS`）：手动交易（mobile，PR #111：`/app-config` 下发 builder + 一次性 `approveBuilderFee` 授权门 + 单/bracket/scale 挂 builder，惰性 `maxBuilderFee` 检查、fail-open）；agentic 引擎·本地密钥路径（#112：`makeBuilderInjector` 按 owner 查 `maxBuilderFee` 门控 + 正/负向缓存 TTL + fail-open，`makeClientFor` 本地分支包装挂 builder）；agentic 引擎·委托/签名器路径（#113：Go `BuildOrderAction`/`ActionFromKind` 加可选 action 级 builder，golden 向量跨语言逐字节校验，`signerExchangeClient` + 委托分支复用同一 injector）。永续费率 0.02%（服务端可调至 0.1% 上限免重签）。**残留**：入金引导（见 C2）、builder 地址运营/领取流程仍属运维。
 - 机制（两步）：① 用户**主钱包**签 `approveBuilderFee`（设 maxFeeRate，如 "0.1%"）；② 之后每笔 `order` 带顶层 `builder: { b: <你的地址>, f: <费率> }`。
 - 单位坑：`f` 以**1/10 基点**计——`f=10` = 1bp = 0.01%。超过用户已授权的 maxFeeRate → 订单被拒。未授权时 `builder` 字段被**静默忽略=零收入**。
 - 资格：builder 地址需 **≥100 USDC 在 perp 账户** + "standard" abstraction 模式。上限：perps 0.1%、spot 1%。
@@ -17,7 +18,8 @@
 - 影响：必须在 onboarding 增加"approveBuilderFee"一步；下单链路加 builder 字段；运营要有 builder 地址余额与领取流程。
 - 出处：trading/builder-codes；for-developers/api/exchange-endpoint。
 
-### A2. scheduleCancel（Dead Man's Switch）—— 应升为通用安全原语，方案仅在 agentic 后端提了一句 🚨
+### A2. scheduleCancel（Dead Man's Switch）—— 应升为通用安全原语 ✅ **引擎侧已落地（预算持久化）**
+- **状态**：agentic 引擎侧落地——心跳每轮刷新 `time`、≤10/日触发预算、失败过渡式告警（#52/#53），且**预算已 SQLite 持久化（#110）**：`dead_man_budget(owner, day, count, armed_until)`，正/负缓存跨重启不丢，防崩溃循环/频繁部署重置计数而超 HL 真实 10/天限额致死手**静默失效**；AgentScreen 提供 per-策略死手开关。**残留**：手动交易端（在线用户）的通用 client-side 死手原语尚未做（属较低优先子缺口）。
 - 机制：`{ type:"scheduleCancel", time }`，`time` ≥ now+5s；到点**撤销全部挂单**；省略 time = 清除。每日最多 **10 次触发**（00:00 UTC 重置），刷新 time 不计次。可由 agent（L1）签名。
 - 关键风险：**只撤挂单，不平仓**——离线的大持仓仍暴露市场风险（需配合止损/减仓策略）。
 - 影响：客户端与后端都应：心跳每轮刷新 `time=now+30~60s`；重连后立即重建；预算 10 次/日。
@@ -119,9 +121,9 @@
 
 ## 对路线图的修正建议（按优先级）
 
-1. **新增 onboarding 步骤**：approveBuilderFee（收入）+ 入金引导页（含 5 USDC/Arbitrum 原生 USDC 强警示）。
-2. **交易阶段(Phase 3)必须前置三件套**：价格/数量精度校验工具、asset ID 解析表、订单状态/拒绝码映射；下单带 cloid + builder；最小 $10 校验。
-3. **安全原语**：scheduleCancel 心跳（客户端+后端通用）；mark 价做 PnL/触发、oracle 价做 funding。
+1. **新增 onboarding 步骤**：approveBuilderFee（收入）**✅ 已落地**（首单前惰性授权门 + 全路径挂 builder，PR #111–#113）；入金引导页（含 5 USDC/Arbitrum 原生 USDC 强警示）**仍待做**（C2）。
+2. **交易阶段(Phase 3)必须前置三件套**：价格/数量精度校验工具、asset ID 解析表、订单状态/拒绝码映射；下单带 cloid + builder；最小 $10 校验。**✅ 已落地**（`mobile/src/lib/hyperliquid/{assetId,format,order,buildOrder,cloid}.ts`；builder 见 A1）。
+3. **安全原语**：scheduleCancel 心跳（客户端+后端通用）—— **引擎侧✅ 已落地且预算持久化**（#52/#53/#110），手动端 client-side 通用原语待做；mark 价做 PnL/触发、oracle 价做 funding。
 4. **agentic 后端**：每进程独立 agent key + 原子 nonce + NTP；运行时检测 agent 失效并走主钱包重授权；绝不复用旧 agent key；限频预算（含"≤10 唯一用户" WS 上限的分片设计）。
 5. **合规**：受限辖区清单补全；提现"agent 不可提"写入审核材料；法律实体 + 牌照评估。
 6. **WS 适配层**：webData3 / userEvents channel="user" / fastAssetCtxs diff / bbo 轻量流 / 60s ping。
