@@ -243,6 +243,7 @@ export const messages = {
     "trade.currentPosition": "Position {size} {coin}",
     "trade.oneWay": "One-way",
     "trade.deposit": "Deposit",
+    "trade.noFundsCta": "Deposit to start trading",
     "trade.liqShort": "Liq. {price}",
 
     "lock.title": "HyperSolid locked",
@@ -774,6 +775,7 @@ export const messages = {
     "trade.currentPosition": "持仓 {size} {coin}",
     "trade.oneWay": "单向",
     "trade.deposit": "充值",
+    "trade.noFundsCta": "充值开始交易",
     "trade.liqShort": "强平 {price}",
 
     "lock.title": "HyperSolid 已锁定",

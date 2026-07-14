@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import { Alert } from "react-native";
 import { TradeScreen } from "./TradeScreen";
 import { useWalletStore } from "../state/walletStore";
+import { useDepositIntentStore } from "../state/depositIntentStore";
 import { useEnvStore } from "../state/envStore";
 import { useMarketStore } from "../state/marketStore";
 import { useTradeStore } from "../state/tradeStore";
@@ -72,6 +73,7 @@ describe("TradeScreen", () => {
     useMarketStore.setState({ tickers: [btc], loading: false, error: null });
     useTradeStore.setState({ selectedCoin: null, prefill: null });
     useWalletStore.setState({ mode: "none", wallet: null, address: null });
+    useDepositIntentStore.setState({ requested: false });
     useLedgerStore.setState({ ledger: null, scope: null, revision: 0 });
     useToastStore.setState({ message: null, kind: "info" });
     mockPlaceOrder.mockReset();
@@ -97,6 +99,15 @@ describe("TradeScreen", () => {
     const navigate = jest.fn();
     render(<TradeScreen navigation={{ navigate }} />);
     fireEvent.press(screen.getByTestId("gated-setup-wallet"));
+    expect(navigate).toHaveBeenCalledWith("Account");
+  });
+
+  it("the deposit shortcut requests a deposit intent and jumps to the Wallet tab", () => {
+    const navigate = jest.fn();
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen navigation={{ navigate }} />);
+    fireEvent.press(screen.getByTestId("deposit-shortcut"));
+    expect(useDepositIntentStore.getState().requested).toBe(true);
     expect(navigate).toHaveBeenCalledWith("Account");
   });
 
