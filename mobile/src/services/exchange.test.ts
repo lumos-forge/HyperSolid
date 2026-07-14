@@ -15,6 +15,7 @@ type FakeClient = ExchangeLike & {
   withdrawArg?: unknown;
   approveAgentArg?: unknown;
   approveBuilderFeeArg?: unknown;
+  scheduleCancelArg?: unknown;
 };
 
 function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
@@ -49,6 +50,10 @@ function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
     approveBuilderFee: jest.fn(async (p: unknown) => {
       self.approveBuilderFeeArg = p;
       return { status: "ok", response: { type: "default" } };
+    }),
+    scheduleCancel: jest.fn(async (p: unknown) => {
+      self.scheduleCancelArg = p;
+      return { status: "ok" };
     }),
   };
   return self;
@@ -525,5 +530,25 @@ describe("ExchangeService builder attachment", () => {
     const res = await svc.approveBuilderFee("0.1%", builderAddr);
     expect(res.ok).toBe(true);
     expect(client.approveBuilderFeeArg).toEqual({ maxFeeRate: "0.1%", builder: builderAddr });
+  });
+});
+
+describe("ExchangeService.scheduleCancel", () => {
+  it("arms with a time", async () => {
+    const client = fakeClient();
+    const res = await new ExchangeService(client, index).scheduleCancel(1_700_000_000_000);
+    expect(res.ok).toBe(true);
+    expect(client.scheduleCancelArg).toEqual({ time: 1_700_000_000_000 });
+  });
+  it("clears with no time", async () => {
+    const client = fakeClient();
+    await new ExchangeService(client, index).scheduleCancel();
+    expect(client.scheduleCancelArg).toEqual({});
+  });
+  it("reports an uncertain receipt on throw", async () => {
+    const client = fakeClient();
+    (client.scheduleCancel as jest.Mock).mockRejectedValueOnce(new Error("net"));
+    const res = await new ExchangeService(client, index).scheduleCancel(1);
+    expect(res).toMatchObject({ ok: false, uncertain: true });
   });
 });

@@ -38,6 +38,7 @@ export interface ExchangeLike {
   withdraw3(params: { destination: string; amount: string }): Promise<unknown>;
   approveAgent(params: { agentAddress: string; agentName?: string | null }): Promise<unknown>;
   approveBuilderFee(params: { maxFeeRate: `${string}%`; builder: `0x${string}` }): Promise<unknown>;
+  scheduleCancel(params: { time?: number }): Promise<unknown>;
 }
 
 /** Server-delivered builder config plus a live approval predicate; the service attaches the builder
@@ -69,6 +70,11 @@ export type ApproveAgentResult =
 
 /** Result of approving the builder fee (main wallet signs). Uncertain receipt is never assumed ok. */
 export type ApproveBuilderFeeResult =
+  | { ok: true; response?: unknown }
+  | { ok: false; error: string; uncertain?: boolean };
+
+/** Result of arming/clearing the dead-man scheduleCancel. Uncertain receipt is never assumed ok. */
+export type ScheduleCancelResult =
   | { ok: true; response?: unknown }
   | { ok: false; error: string; uncertain?: boolean };
 
@@ -315,6 +321,19 @@ export class ExchangeService {
   async approveBuilderFee(maxFeeRate: `${string}%`, builder: `0x${string}`): Promise<ApproveBuilderFeeResult> {
     try {
       const response = await this.client.approveBuilderFee({ maxFeeRate, builder });
+      return { ok: true, response };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e), uncertain: true };
+    }
+  }
+
+  /**
+   * Arm (with `time`) or clear (omit `time`) the account's HL scheduleCancel — the manual dead-man.
+   * Signed by the local wallet. A thrown receipt is uncertain (never assumed ok), so the caller retries.
+   */
+  async scheduleCancel(time?: number): Promise<ScheduleCancelResult> {
+    try {
+      const response = await this.client.scheduleCancel(time === undefined ? {} : { time });
       return { ok: true, response };
     } catch (e) {
       return { ok: false, error: errorMessage(e), uncertain: true };
