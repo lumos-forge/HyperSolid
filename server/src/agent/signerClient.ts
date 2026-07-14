@@ -8,6 +8,7 @@ export type SignerErrorCode =
   | "policy"
   | "notFound"
   | "cloidReuse"
+  | "invalidTransition"
   | "fenced"
   | "rateLimit"
   | "notLeader"
@@ -73,7 +74,11 @@ function codeFor(status: number, message: string): SignerErrorCode {
     case 404:
       return "notFound";
     case 409:
-      return message.includes("cloid") ? "cloidReuse" : "fenced";
+      // handleSignL1: "cloid reuse mismatch" (permanent) / "fenced" (leadership change, retryable).
+      // handleReconcile: "invalid transition" (permanent). Split by message so retry semantics differ.
+      if (message.includes("cloid")) return "cloidReuse";
+      if (message.includes("transition")) return "invalidTransition";
+      return "fenced";
     case 429:
       return "rateLimit";
     case 503:
@@ -100,7 +105,7 @@ export class SignerClient {
   }
 
   async deleteKey(keyId: string): Promise<void> {
-    await this.request<unknown>(`/v1/keys/${encodeURIComponent(keyId)}`, "DELETE");
+    await this.request<void>(`/v1/keys/${encodeURIComponent(keyId)}`, "DELETE", undefined, false);
   }
 
   sign(req: SignRequest): Promise<SignResult> {
@@ -108,10 +113,10 @@ export class SignerClient {
   }
 
   async reconcile(keyId: string, cloid: string, status: ReconcileStatus): Promise<void> {
-    await this.request<unknown>("/v1/reconcile", "POST", { keyId, cloid, status });
+    await this.request<void>("/v1/reconcile", "POST", { keyId, cloid, status }, false);
   }
 
-  private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
+  private async request<T>(path: string, method: string, body?: unknown, parseJson = true): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let res: { ok: boolean; status: number; json(): Promise<unknown> };
@@ -137,6 +142,9 @@ export class SignerClient {
       }
       throw new SignerError(res.status, codeFor(res.status, message), message);
     }
+    // Void endpoints (DELETE → 204 empty body; reconcile's body is ignored) must not parse JSON:
+    // calling res.json() on an empty body throws. Only typed responses parse.
+    if (!parseJson) return undefined as T;
     return (await res.json()) as T;
   }
 }

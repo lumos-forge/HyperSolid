@@ -6,7 +6,15 @@ function fakeFetch(handler: (url: string, init?: Init) => { ok: boolean; status:
   const f = async (url: string, init?: Init) => {
     calls.push({ url, init });
     const r = handler(url, init);
-    return { ok: r.ok, status: r.status, json: async () => r.body ?? {} };
+    return {
+      ok: r.ok,
+      status: r.status,
+      // Mimic real fetch: json() on an empty body throws (e.g. a 204 No Content).
+      json: async () => {
+        if (r.body === undefined) throw new SyntaxError("Unexpected end of JSON input");
+        return r.body;
+      },
+    };
   };
   return { f: f as never, calls };
 }
@@ -69,5 +77,11 @@ describe("SignerClient", () => {
     const c = new SignerClient("http://signer", f);
     await expect(c.reconcile("k1", "0xcloid", "submitted")).resolves.toBeUndefined();
     expect(calls[0].url).toBe("http://signer/v1/reconcile");
+  });
+
+  it("maps reconcile's 409 invalid transition to a non-retryable code", async () => {
+    const { f } = fakeFetch(() => ({ ok: false, status: 409, body: { error: "invalid transition" } }));
+    const c = new SignerClient("http://signer", f);
+    await expect(c.reconcile("k1", "0xcloid", "filled")).rejects.toMatchObject({ code: "invalidTransition", retryable: false, status: 409 });
   });
 });
