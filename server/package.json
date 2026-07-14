@@ -6,6 +6,7 @@
   "scripts": {
     "test": "jest",
     "typecheck": "tsc --noEmit",
+    "validate:delegation": "npm run build && node dist/scripts/validateDelegation.js",
     "build": "tsc",
     "start": "node dist/index.js"
   },
