@@ -142,7 +142,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.post("/agent/provision", async (req, reply) => {
     const owner = ownerOf(req, reply);
     if (!owner) return;
-    return deps.agents.provision(owner);
+    return await deps.agents.provision(owner);
   });
 
   app.post("/agent/confirm", async (req, reply) => {

@@ -1,7 +1,8 @@
 import { generatePrivateKey } from "viem/accounts";
 import { Auth } from "./auth/auth";
-import { AgentManager } from "./agent/agentManager";
+import { AgentManager, type DelegationDeps } from "./agent/agentManager";
 import { SqliteAgentStore } from "./agent/sqliteAgentStore";
+import { SignerClient } from "./agent/signerClient";
 import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
 import { NotifyingStrategyStore } from "./strategies/notifyingStrategyStore";
@@ -75,7 +76,22 @@ export async function main(): Promise<void> {
 
   const now = () => Date.now();
   const auth = new Auth({ secret: authSecret });
-  const agents = new AgentManager(SqliteAgentStore.open(dbPath, agentEncKey), generatePrivateKey);
+  // SIGNER_DELEGATION=1 moves agent-key custody to the Go signer: provisioning generates+persists the
+  // key there (bound to the same reject-first caps) and the engine holds only {keyId, agentAddress}.
+  // OFF by default → unchanged local-key behavior. Signing itself is flipped in a later PR.
+  const delegation: DelegationDeps | undefined =
+    process.env.SIGNER_DELEGATION === "1"
+      ? {
+          signer: new SignerClient(requireEnv("SIGNER_URL")),
+          caps: {
+            allowedKinds: ["order", "cancel", "cancelByCloid", "scheduleCancel"],
+            maxNotionalUsdc,
+            perCoinMaxUsdc: perCoinMaxNotionalUsdc,
+            dailyMaxNotionalUsdc,
+          },
+        }
+      : undefined;
+  const agents = new AgentManager(SqliteAgentStore.open(dbPath, agentEncKey), generatePrivateKey, delegation);
   const store: StrategyStore = SqliteStrategyStore.open(dbPath, now);
   const pushTokens = SqlitePushTokenStore.open(dbPath);
   const pushPrefs = SqlitePushPrefStore.open(dbPath);

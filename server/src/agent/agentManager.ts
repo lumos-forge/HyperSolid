@@ -1,10 +1,13 @@
 import { privateKeyToAccount } from "viem/accounts";
+import type { SignerClient, ProvisionKeyRequest } from "./signerClient";
 
-/** A provisioned agent: the trade-only keypair plus its approval state. The private key is a secret. */
+/** A provisioned agent: either a locally-held trade-only keypair (`privateKey`) OR a signer-held
+ *  key referenced by `keyId` (custody in the Go signer). Exactly one custody form is set. */
 export interface AgentRecord {
   owner: string;
   agentAddress: string;
-  privateKey: `0x${string}`;
+  privateKey?: `0x${string}`;
+  keyId?: string;
   approved: boolean;
   validUntil?: number;
 }
@@ -36,6 +39,23 @@ export interface AgentStatus {
   validUntil?: number;
 }
 
+/** Caps bound to the signer's reject-first policy at provision time (mirrors the engine guardrails). */
+export type ProvisionCaps = Pick<
+  ProvisionKeyRequest,
+  "allowedKinds" | "maxNotionalUsdc" | "perCoinMaxUsdc" | "dailyMaxNotionalUsdc"
+>;
+
+/** When present, provisioning delegates key custody to the Go signer instead of generating locally. */
+export interface DelegationDeps {
+  signer: SignerClient;
+  caps: ProvisionCaps;
+}
+
+/** The signer keyId for an owner's agent (stable per owner). */
+function deriveKeyId(owner: string): string {
+  return "agent:" + owner.toLowerCase();
+}
+
 /**
  * Custodies each owner's trade-only HL agent keypair. The app only ever learns the agent ADDRESS and
  * signs `approveAgent` on-device with its main key; the private key the server generates can trade but
@@ -47,11 +67,22 @@ export class AgentManager {
   constructor(
     private store: AgentStore,
     private genKey: () => `0x${string}`,
+    private delegation?: DelegationDeps,
   ) {}
 
-  provision(owner: string): { agentAddress: string } {
+  async provision(owner: string): Promise<{ agentAddress: string }> {
     const existing = this.store.get(owner);
     if (existing && !existing.approved) return { agentAddress: existing.agentAddress };
+    if (this.delegation) {
+      const keyId = deriveKeyId(owner);
+      const { agentAddress } = await this.delegation.signer.createKey({
+        keyId,
+        ownerAddress: owner,
+        ...this.delegation.caps,
+      });
+      this.store.set({ owner, agentAddress, keyId, approved: false });
+      return { agentAddress };
+    }
     const privateKey = this.genKey();
     const agentAddress = privateKeyToAccount(privateKey).address;
     this.store.set({ owner, agentAddress, privateKey, approved: false });
@@ -81,5 +112,10 @@ export class AgentManager {
   /** The agent private key for signing orders — server-internal only, never exposed over HTTP. */
   privateKeyFor(owner: string): `0x${string}` | undefined {
     return this.store.get(owner)?.privateKey;
+  }
+
+  /** The signer keyId when custody is delegated to the Go signer; undefined for local-key records. */
+  keyIdFor(owner: string): string | undefined {
+    return this.store.get(owner)?.keyId;
   }
 }
