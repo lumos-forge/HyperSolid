@@ -9,8 +9,11 @@ import { useTradeStore } from "../state/tradeStore";
 import { useLedgerStore } from "../state/ledgerStore";
 import { useExchangeStore } from "../state/exchangeStore";
 import { useToastStore } from "../state/toastStore";
+import { builderConfig } from "../state/runtimeConfigStore";
+import { useBuilderApprovalStore } from "../state/builderApprovalStore";
+import { queryBuilderApproval } from "../services/builderApproval";
 import { useUnconfirmedIntents } from "../hooks/useUnconfirmedIntents";
-import { createExchangeClient, createPositionsInfoClient } from "../lib/hyperliquid/client";
+import { createExchangeClient, createPositionsInfoClient, createInfoClient } from "../lib/hyperliquid/client";
 import { buildAssetIndex } from "../lib/hyperliquid/assetId";
 import { ScreenScaffold } from "../components/ScreenScaffold";
 import { NetworkWarning } from "../components/NetworkWarning";
@@ -165,8 +168,21 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
       useExchangeStore.getState().reset();
       return;
     }
-    useExchangeStore.getState().init(client, index, ledger ?? undefined);
+    const bc = builderConfig();
+    useExchangeStore.getState().init(
+      client,
+      index,
+      ledger ?? undefined,
+      bc
+        ? { address: bc.address, feeTenthBps: bc.perpFeeTenthBps, isApproved: () => useBuilderApprovalStore.getState().approved }
+        : undefined,
+    );
   }, [client, index, ledger]);
+
+  // A new wallet/network must re-gate the builder-fee approval (approval is per-user, on-chain).
+  useEffect(() => {
+    useBuilderApprovalStore.getState().reset();
+  }, [walletAddress, network]);
 
   const mid = ticker?.midPx ?? 0;
   const shape = orderTypeShape(orderType);
@@ -246,6 +262,44 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
     setPrice(v);
   }
 
+  /** One-time, pre-first-order builder-fee approval. Fail-open: any decline/error places without a
+   *  builder (the service only attaches when the store says approved) and does not re-nag this session. */
+  async function ensureBuilderApproval(): Promise<void> {
+    const bc = builderConfig();
+    if (!bc || !walletAddress) return;
+    const store = useBuilderApprovalStore.getState();
+    if (store.approved || store.suppressed) return;
+
+    const user = walletAddress as `0x${string}`;
+    const status = await queryBuilderApproval(createInfoClient(network), user, bc.address, bc.perpFeeTenthBps);
+    if (status === "approved") {
+      store.setApproved(true);
+      return;
+    }
+    if (status === "unknown") return; // place without a builder this time; retry next order
+
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(t("builderFee.approveTitle"), t("builderFee.approveBody"), [
+        { text: t("builderFee.notNow"), style: "cancel", onPress: () => resolve(false) },
+        { text: t("builderFee.approve"), onPress: () => resolve(true) },
+      ]);
+    });
+    if (!confirmed) {
+      store.suppress();
+      return;
+    }
+
+    const svc = useExchangeStore.getState().service;
+    const res = svc ? await svc.approveBuilderFee("0.1%", bc.address) : { ok: false as const };
+    if (res.ok) {
+      store.setApproved(true);
+      useToastStore.getState().show(t("builderFee.approved"), "success");
+    } else {
+      store.suppress();
+      useToastStore.getState().show(t("builderFee.approveFailed"), "info");
+    }
+  }
+
   // Place-order handler driven by the two HL-style buy/sell buttons (no separate side toggle). The
   // side is passed explicitly so a button submits its own side immediately (no stale state).
   async function onSubmit(orderSide: OrderSide) {
@@ -298,6 +352,11 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
       }
       return;
     }
+
+    // Builder-fee: ensure a one-time approval before the first fee-bearing order (fail-open — a
+    // decline/error just places without a builder). Covers scale + single + bracket (not TWAP above).
+    // Guarded so the no-config path stays synchronous (no microtask before client-side validation).
+    if (builderConfig()) await ensureBuilderApproval();
 
     // Scale: N laddered limit orders (one signed order action, cloid-deduped like a normal order).
     if (isScale) {

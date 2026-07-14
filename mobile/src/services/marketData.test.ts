@@ -13,6 +13,7 @@ const meta: MetaAndAssetCtxs = [
 
 class FakeInfo implements InfoLike {
   metaAndAssetCtxs = jest.fn(async (): Promise<MetaAndAssetCtxs> => meta);
+  maxBuilderFee = jest.fn(async (): Promise<number> => 0);
 }
 
 class FakeSubs implements SubsLike {
