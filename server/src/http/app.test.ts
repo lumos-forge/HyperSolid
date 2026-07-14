@@ -171,6 +171,15 @@ describe("HTTP app", () => {
     await app.close();
   });
 
+  it("serves a public /metrics in Prometheus text format", async () => {
+    const app = build();
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/plain");
+    expect(res.body).toContain("hypersolid_engine_tick_duration_seconds");
+    await app.close();
+  });
+
   it("serves public GET /app-config (the app's server-delivered runtime config)", async () => {
     const auth0 = new Auth({ secret: "s", genNonce: () => "n", nonceTtlMs: 1e9, sessionTtlMs: 1e9 });
     const agents = new AgentManager(new MemoryAgentStore(), () => AGENT_PK);

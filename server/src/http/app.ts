@@ -11,6 +11,7 @@ import type { QuietHoursStore } from "../push/pushQuietHoursStore";
 import type { AppConfigPayload } from "../config/appConfig";
 import { resolveGeo, type GeoHeaderConfig } from "./geo";
 import { rungCount, rungBuyPrice, rungSellPrice } from "../strategies/gridLimit";
+import { metricsText, metricsContentType } from "../obs/metrics";
 
 const EXPO_PUSH_TOKEN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 function isExpoPushToken(v: unknown): v is string {
@@ -102,6 +103,12 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   // --- health (public) ---
   app.get("/health", async () => ({ ok: true, version }));
+
+  // --- prometheus metrics (public; standard scrape endpoint) ---
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("Content-Type", metricsContentType);
+    return metricsText();
+  });
 
   // --- runtime config the app fetches at startup (public; values are non-secret keyed endpoints) ---
   const appConfig: AppConfigPayload =

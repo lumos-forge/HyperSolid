@@ -2,7 +2,7 @@ import { generatePrivateKey } from "viem/accounts";
 import { Auth } from "./auth/auth";
 import { AgentManager, type DelegationDeps } from "./agent/agentManager";
 import { SqliteAgentStore } from "./agent/sqliteAgentStore";
-import { SignerClient } from "./agent/signerClient";
+import { MeteredSignerClient } from "./agent/meteredSignerClient";
 import { deriveKey } from "./agent/secretBox";
 import { SqliteStrategyStore } from "./strategies/sqliteStore";
 import { NotifyingStrategyStore } from "./strategies/notifyingStrategyStore";
@@ -30,6 +30,7 @@ import { tick } from "./engine/scheduler";
 import { deadManHeartbeat, makeDeadManHealth, deadManClearAll, staleDeadManOwners } from "./engine/deadMan";
 import { SqliteDeadManBudgetStore } from "./engine/sqliteDeadManBudget";
 import { buildApp } from "./http/app";
+import { observeTick, incTick, setStrategies, incDeadManHealth } from "./obs/metrics";
 
 export const VERSION = "0.1.0";
 
@@ -84,7 +85,7 @@ export async function main(): Promise<void> {
   const delegation: DelegationDeps | undefined =
     process.env.SIGNER_DELEGATION === "1"
       ? {
-          signer: new SignerClient(requireEnv("SIGNER_URL")),
+          signer: new MeteredSignerClient(requireEnv("SIGNER_URL")),
           caps: {
             allowedKinds: ["order", "cancel", "cancelByCloid", "scheduleCancel"],
             maxNotionalUsdc,
@@ -160,6 +161,11 @@ export async function main(): Promise<void> {
   });
   const deadManBudget = SqliteDeadManBudgetStore.open(dbPath);
   const deadManHealth = makeDeadManHealth();
+  const strategyStatusCounts = (): Record<string, number> => {
+    const counts: Record<string, number> = { running: 0, paused: 0, completed: 0, canceling: 0 };
+    for (const s of store.listAll()) counts[s.status] = (counts[s.status] ?? 0) + 1;
+    return counts;
+  };
   const activeOwners = () => [...new Set(
     store.listAll()
       .filter((s) => s.status === "running" && (s.params as { deadMan?: boolean }).deadMan === true)
@@ -171,6 +177,7 @@ export async function main(): Promise<void> {
     await deadManClearAll({ activeOwners: () => stale, executor: deadManExecutor });
   }
   const timer = setInterval(() => {
+    const tickStart = Date.now();
     void tick(
       notifyingStore,
       placer,
@@ -182,10 +189,18 @@ export async function main(): Promise<void> {
       restingExec,
       ordersReader,
       userFillsReader,
-    ).catch((e) =>
-      // eslint-disable-next-line no-console
-      console.error("scheduler tick failed", e),
-    );
+    )
+      .then(() => {
+        observeTick((Date.now() - tickStart) / 1000);
+        incTick("ok");
+      })
+      .catch((e) => {
+        observeTick((Date.now() - tickStart) / 1000);
+        incTick("error");
+        // eslint-disable-next-line no-console
+        console.error("scheduler tick failed", e);
+      });
+    setStrategies(strategyStatusCounts());
     if (deadManEnabled) {
       void deadManHeartbeat({
         activeOwners,
@@ -196,10 +211,12 @@ export async function main(): Promise<void> {
         health: deadManHealth,
         onHealthEvent: (owner, ev) => {
           if (ev.kind === "alert") {
+            incDeadManHealth("alert");
             // eslint-disable-next-line no-console
             console.error(`dead-man arm failing for ${owner}: ${ev.consecutiveFailures} consecutive unprotected heartbeats`);
             void notifier.notify(owner, "alerts", (l) => deadManAlertNotification(ev, l)).catch(() => {});
           } else if (ev.kind === "recovered") {
+            incDeadManHealth("recovered");
             // eslint-disable-next-line no-console
             console.error(`dead-man arm recovered for ${owner}`);
             void notifier.notify(owner, "alerts", (l) => deadManRecoveredNotification(l)).catch(() => {});
