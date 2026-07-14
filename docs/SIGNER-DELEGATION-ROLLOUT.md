@@ -72,6 +72,13 @@ current TestFlight phase (no live-key import; spec Migration section). There is 
 
 ## Validation (testnet E2E — required before flipping default)
 
+**Automated pre-flip gate:** from `server/`, run `SIGNER_URL=https://<signer> npm run validate:delegation`
+— it checks signer health, canonical-action parity (engine `l1Action` vs the signer's `/v1/digest/l1`,
+incl. the builder fee field), and a provision→sign→ecrecover proof (the signature recovers to the
+reported agent address), printing a PASS/FAIL report + exit code. Add `--place` with an approved
+`VALIDATE_PLACE_KEYID` (and `HL_NETWORK` unset/testnet) to also run a fund-moving testnet order. Require a
+green run before the manual steps below.
+
 1. **Provision:** `POST /agent/provision` for a fresh owner → returns `{agentAddress}`. Confirm in the
    engine DB that the record has a `key_id` and an **empty** `enc_private_key` (no local key). Confirm the
    signer persisted the key (`GET`/logs) bound to the caps.
