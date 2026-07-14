@@ -161,6 +161,23 @@ describe("TradeScreen", () => {
     });
   });
 
+  it("ignores a second submit while the first is in flight (no duplicate order)", async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    mockPlaceOrder.mockImplementation(() => new Promise((r) => { resolveFirst = r; }));
+    useWalletStore.setState({ mode: "local", wallet: localWallet, address: "0xabc" });
+    render(<TradeScreen />);
+    fireEvent.changeText(screen.getByTestId("field-size"), "0.01");
+    fireEvent.changeText(screen.getByTestId("field-price"), "60000");
+    fireEvent.press(screen.getByTestId("submit-buy"));
+    await waitFor(() => expect(mockPlaceOrder).toHaveBeenCalledTimes(1));
+    // A second tap while the first order is still in flight must be ignored (re-entry guard) — each
+    // submit mints a fresh cloid, so a concurrent submit would place a genuine duplicate order.
+    fireEvent.press(screen.getByTestId("submit-buy"));
+    resolveFirst({ ok: true, cloid: ("0x" + "a".repeat(32)) as `0x${string}`, status: { kind: "resting", message: "ok" } });
+    await waitFor(() => expect(useToastStore.getState().message).toBe("Order placed"));
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+  });
+
   it("places a Stop Limit order with a trigger when selected", async () => {
     mockPlaceOrder.mockResolvedValue({
       ok: true,

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme/useTheme";
 import { useT } from "../i18n/useT";
@@ -301,8 +301,22 @@ export function TradeScreen({ navigation }: { navigation?: { navigate: (name: st
   }
 
   // Place-order handler driven by the two HL-style buy/sell buttons (no separate side toggle). The
-  // side is passed explicitly so a button submits its own side immediately (no stale state).
+  // side is passed explicitly so a button submits its own side immediately (no stale state). A
+  // re-entry guard wraps the whole flow (incl. the async builder-approval gate) so a second tap during
+  // any in-flight round-trip (approval query / signing / placement) can't launch a concurrent submit
+  // and place a duplicate order (each submit mints a fresh cloid, so ledger dedup wouldn't catch it).
+  const submittingRef = useRef(false);
   async function onSubmit(orderSide: OrderSide) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await onSubmitInner(orderSide);
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
+  async function onSubmitInner(orderSide: OrderSide) {
     if (!wallet || mode !== "local" || !index) return;
     const svc = useExchangeStore.getState().service;
     if (!svc) return;
