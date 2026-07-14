@@ -56,6 +56,21 @@ describe("makeBuilderInjector", () => {
     expect(f.calls).toBe(2);
   });
 
+  it("re-checks an approved owner after the positive TTL (revoked approval is dropped)", async () => {
+    let t = 0;
+    let rate = 100;
+    const f = fakeInfo(async () => rate);
+    const inj = makeBuilderInjector({ info: f.info, address: ADDR, perpFeeTenthBps: 20, now: () => t, positiveTtlMs: 1000 });
+    expect(await inj.builderFor(OWNER)).toEqual({ b: ADDR, f: 20 }); // query 1, approved
+    t = 500;
+    expect(await inj.builderFor(OWNER)).toEqual({ b: ADDR, f: 20 }); // cached, no query
+    expect(f.calls).toBe(1);
+    t = 1500; // past positive TTL
+    rate = 0; // owner revoked/reduced below the fee
+    expect(await inj.builderFor(OWNER)).toBeUndefined(); // query 2, now dropped (fail-open)
+    expect(f.calls).toBe(2);
+  });
+
   it("keys the cache case-insensitively", async () => {
     const f = fakeInfo(async () => 100);
     const inj = makeBuilderInjector({ info: f.info, address: ADDR, perpFeeTenthBps: 20 });
