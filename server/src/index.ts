@@ -105,7 +105,12 @@ export async function main(): Promise<void> {
   const transport = makeTransport(isTestnet);
   const info = makeInfoClient(transport);
   const resolvers = makeResolvers(info, 60_000, now);
-  const clientFor = makeClientFor(agents, transport, now);
+  const clientFor = makeClientFor(
+    agents,
+    transport,
+    now,
+    delegation ? { signer: delegation.signer, isTestnet } : undefined,
+  );
   const signerShadowUrl = process.env.SIGNER_SHADOW_URL;
   const shadowVerify = signerShadowUrl
     ? makeShadowVerifier({ url: signerShadowUrl, isTestnet })
