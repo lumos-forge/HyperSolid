@@ -15,6 +15,7 @@ import { OfflineBanner } from "./src/components/OfflineBanner";
 import { useNetworkStatus } from "./src/hooks/useNetworkStatus";
 import { fontMap } from "./src/theme/fontAssets";
 import { useLiveMarkets } from "./src/hooks/useLiveMarkets";
+import { useManualDeadMan } from "./src/hooks/useManualDeadMan";
 import { MarketDataService } from "./src/services/marketData";
 import { createInfoClient, createSubsClient, createOrderStatusInfoClient } from "./src/lib/hyperliquid/client";
 import { createSqlDb } from "./src/lib/storage/expoSqlDb";
@@ -27,6 +28,7 @@ import { usePushPrefsStore } from "./src/state/pushPrefsStore";
 import { useThemeStore } from "./src/state/themeStore";
 import { useLocaleStore } from "./src/state/localeStore";
 import { useRoutingStore } from "./src/state/routingStore";
+import { useDeadManStore } from "./src/state/deadManStore";
 import { useLedgerStore } from "./src/state/ledgerStore";
 import { reconcilePendingIntents } from "./src/services/ledgerRecovery";
 import { hydrateRuntimeConfig } from "./src/services/appConfig";
@@ -54,6 +56,7 @@ export default function App() {
   );
   useLiveMarkets(service);
   useAutoLock();
+  useManualDeadMan();
   useNetworkStatus();
 
   // Server-delivered runtime config (RPC keys etc. — never embedded in the bundle). Best-effort at
@@ -101,6 +104,7 @@ export default function App() {
 
   useEffect(() => {
     void useLockPrefsStore.getState().hydrate();
+    void useDeadManStore.getState().hydrate();
     void useThemeStore.getState().hydrate();
     void useLocaleStore.getState().hydrate();
     void useEnvStore.getState().hydrate();
