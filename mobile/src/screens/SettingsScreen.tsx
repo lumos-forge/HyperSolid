@@ -30,6 +30,7 @@ import { ScreenScaffold } from "../components/ScreenScaffold";
 import { SurfaceCard } from "../components/SurfaceCard";
 import { SectionLabel } from "../components/SectionLabel";
 import { SheetSelect } from "../components/SheetSelect";
+import { useDeadManStore, DEADMAN_TTL_OPTIONS, type DeadManTtl } from "../state/deadManStore";
 import { fonts } from "../theme/fonts";
 import { withAlpha } from "../theme/color";
 import type { ThemeName, ThemeTokens } from "../theme/tokens";
@@ -47,7 +48,7 @@ const APP_VERSION = (appJson as { expo?: { version?: string } }).expo?.version ?
 const PRIVACY_URL = "https://hypersolid.app/privacy";
 const TERMS_URL = "https://hypersolid.app/terms";
 
-type Picker = "none" | "network" | "theme" | "locale" | "autolock" | "qh_start" | "qh_end" | "routing";
+type Picker = "none" | "network" | "theme" | "locale" | "autolock" | "qh_start" | "qh_end" | "routing" | "deadManTtl";
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` }));
 
 /** Wallet settings sub-page (Wallet › gear): grouped app prefs + security + backup + sign-out. */
@@ -65,6 +66,8 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
   const routingMode = useRoutingStore((s) => s.mode);
   const setRoutingMode = useRoutingStore((s) => s.setMode);
   const biometricEnabled = useLockPrefsStore((s) => s.biometricEnabled);
+  const deadManEnabled = useDeadManStore((s) => s.enabled);
+  const deadManTtl = useDeadManStore((s) => s.ttlMinutes);
   const setBiometricEnabled = useLockPrefsStore((s) => s.setBiometricEnabled);
   const autoLockMinutes = useLockPrefsStore((s) => s.autoLockMinutes);
   const setAutoLockMinutes = useLockPrefsStore((s) => s.setAutoLockMinutes);
@@ -339,6 +342,10 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
             </>
           )}
           <SettingRow theme={theme} icon="lock" name={t("account.autoLock")} value={autoLockLabel(autoLockMinutes)} onPress={() => setPicker("autolock")} />
+          <SettingRow theme={theme} icon="shield" name={t("deadMan.title")} value={deadManEnabled ? t("deadMan.enabledOn") : t("deadMan.enabledOff")} onPress={() => useDeadManStore.getState().setEnabled(!deadManEnabled)} />
+          {deadManEnabled ? (
+            <SettingRow theme={theme} icon="lock" name={t("deadMan.ttl")} value={t("deadMan.ttlMinutes", { n: deadManTtl })} onPress={() => setPicker("deadManTtl")} />
+          ) : null}
           <SettingRow theme={theme} icon="key" name={t("account.changePin")} value="" onPress={openChangePin} />
 
           <SectionLabel theme={theme}>{t("settings.backup")}</SectionLabel>
@@ -406,6 +413,16 @@ export function SettingsScreen({ deps }: { deps?: SettingsScreenDeps } = {}) {
         sections={[{ options: AUTO_LOCK_OPTIONS.map((m) => ({ value: String(m), label: autoLockLabel(m) })) }]}
         theme={theme}
         testIDPrefix="autolock"
+      />
+      <SheetSelect<string>
+        visible={picker === "deadManTtl"}
+        onClose={() => setPicker("none")}
+        title={t("deadMan.ttl")}
+        value={String(deadManTtl)}
+        onSelect={(v) => { useDeadManStore.getState().setTtlMinutes(Number(v) as DeadManTtl); setPicker("none"); }}
+        sections={[{ options: DEADMAN_TTL_OPTIONS.map((m) => ({ value: String(m), label: t("deadMan.ttlMinutes", { n: m }) })) }]}
+        theme={theme}
+        testIDPrefix="deadman-ttl"
       />
       <SheetSelect<string>
         visible={picker === "qh_start"}
