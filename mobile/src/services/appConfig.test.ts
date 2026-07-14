@@ -56,4 +56,20 @@ describe("loadAppConfig", () => {
     const fetchImpl = jest.fn(async () => jsonResponse({ proxyPool: ["https://p0.example/", "https://p1.example"] })) as unknown as typeof fetch;
     expect((await loadAppConfig("https://api.example.com", fetchImpl)).proxyPool).toEqual(["https://p0.example", "https://p1.example"]);
   });
+
+  it("parses a valid builder config", async () => {
+    const addr = "0x" + "b".repeat(40);
+    const fetchImpl = jest.fn(async () => jsonResponse({ builder: { address: addr, perpFeeTenthBps: 20 } })) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", fetchImpl)).builder).toEqual({ address: addr, perpFeeTenthBps: 20 });
+  });
+
+  it("drops an invalid or absent builder config to null", async () => {
+    const addr = "0x" + "b".repeat(40);
+    const badAddr = jest.fn(async () => jsonResponse({ builder: { address: "0xbad", perpFeeTenthBps: 20 } })) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", badAddr)).builder).toBeNull();
+    const badFee = jest.fn(async () => jsonResponse({ builder: { address: addr, perpFeeTenthBps: 200 } })) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", badFee)).builder).toBeNull();
+    const absent = jest.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    expect((await loadAppConfig("https://api.example.com", absent)).builder).toBeNull();
+  });
 });

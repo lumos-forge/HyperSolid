@@ -8,6 +8,8 @@ export interface AppConfigPayload {
   arbitrumRpc: { mainnet: string | null; testnet: string | null };
   withdrawFeeUsdc: { mainnet: number | null; testnet: number | null };
   strategyApiBaseUrl: string | null;
+  /** Builder-code revenue config; omitted when unset (feature dark). perpFeeTenthBps in 1/10 bps. */
+  builder?: { address: `0x${string}`; perpFeeTenthBps: number };
   /** Caller geo derived per-request from a proxy header (added by the /app-config handler). */
   geo?: { country?: string; region?: string };
 }
@@ -18,8 +20,19 @@ function num(v: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Parse the builder config from env; returns undefined unless the address is 0x+40hex AND the fee is
+ *  an integer in [1, 100] (the perp cap). A misconfig disables the feature rather than risking rejects. */
+function builderFromEnv(env: NodeJS.ProcessEnv): { address: `0x${string}`; perpFeeTenthBps: number } | undefined {
+  const address = env.BUILDER_ADDRESS;
+  const fee = Number(env.BUILDER_PERP_FEE_TENTH_BPS);
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return undefined;
+  if (!Number.isInteger(fee) || fee < 1 || fee > 100) return undefined;
+  return { address: address as `0x${string}`, perpFeeTenthBps: fee };
+}
+
 /** Build the app-config payload from environment variables (defensive: missing/invalid → null). */
 export function appConfigFromEnv(env: NodeJS.ProcessEnv): AppConfigPayload {
+  const builder = builderFromEnv(env);
   return {
     arbitrumRpc: {
       mainnet: env.ARBITRUM_RPC_MAINNET ?? null,
@@ -30,6 +43,7 @@ export function appConfigFromEnv(env: NodeJS.ProcessEnv): AppConfigPayload {
       testnet: num(env.WITHDRAW_FEE_USDC_TESTNET),
     },
     strategyApiBaseUrl: env.STRATEGY_API_BASE_URL ?? null,
+    ...(builder ? { builder } : {}),
   };
 }
 
