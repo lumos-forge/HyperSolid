@@ -26,7 +26,8 @@ import { makeOpenOrdersReader } from "./agent/openOrdersReader";
 import { makeUserFillsReader } from "./agent/userFillsReader";
 import { makeDeadManExecutor, type DeadManClientLike } from "./agent/deadManExecutor";
 import { tick } from "./engine/scheduler";
-import { makeDeadManBudget, deadManHeartbeat, makeDeadManHealth, deadManClearAll, staleDeadManOwners } from "./engine/deadMan";
+import { deadManHeartbeat, makeDeadManHealth, deadManClearAll, staleDeadManOwners } from "./engine/deadMan";
+import { SqliteDeadManBudgetStore } from "./engine/sqliteDeadManBudget";
 import { buildApp } from "./http/app";
 
 export const VERSION = "0.1.0";
@@ -146,7 +147,7 @@ export async function main(): Promise<void> {
     clientFor: clientFor as unknown as (owner: string) => DeadManClientLike | undefined,
     shadowVerify,
   });
-  const deadManBudget = makeDeadManBudget();
+  const deadManBudget = SqliteDeadManBudgetStore.open(dbPath);
   const deadManHealth = makeDeadManHealth();
   const activeOwners = () => [...new Set(
     store.listAll()

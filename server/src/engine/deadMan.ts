@@ -15,30 +15,40 @@ export interface DeadManBudget {
   record(owner: string, nowMs: number, time: number, counts: boolean): void;
 }
 
-interface OwnerState {
+/** Per-owner dead-man arm budget: the UTC day, that day's counting-arm count, and the armed-until time
+ *  (ms). Persisted so the 10/day budget survives restarts. */
+export interface OwnerBudget {
   day: number;
   count: number;
   armedUntil: number;
 }
 
+/** Pure decision from the owner's prior budget (or undefined) at nowMs: a free refresh (still-future
+ *  schedule), a counting new-arm, or skip when the day's budget is exhausted. Shared by every backend. */
+export function decideBudget(prev: OwnerBudget | undefined, nowMs: number, ttlMs: number): DeadManDecision {
+  const time = nowMs + ttlMs;
+  const day = Math.floor(nowMs / DAY_MS);
+  const count = prev && prev.day === day ? prev.count : 0;
+  const armedUntil = prev ? prev.armedUntil : 0;
+  if (armedUntil > nowMs) return { skip: false, time, counts: false };
+  if (count >= DEADMAN_MAX_PER_DAY) return { skip: true };
+  return { skip: false, time, counts: true };
+}
+
+/** Pure state transition for a SUCCESSFUL send: armedUntil=time; increment the day's counter iff counts
+ *  (resetting the counter on a new UTC day). Shared by every backend. */
+export function nextBudget(prev: OwnerBudget | undefined, nowMs: number, time: number, counts: boolean): OwnerBudget {
+  const day = Math.floor(nowMs / DAY_MS);
+  const base = prev && prev.day === day ? prev.count : 0;
+  return { day, count: base + (counts ? 1 : 0), armedUntil: time };
+}
+
 export function makeDeadManBudget(): DeadManBudget {
-  const state = new Map<string, OwnerState>();
+  const state = new Map<string, OwnerBudget>();
   return {
-    decide(owner: string, nowMs: number, ttlMs: number): DeadManDecision {
-      const time = nowMs + ttlMs;
-      const day = Math.floor(nowMs / DAY_MS);
-      const prev = state.get(owner);
-      const count = prev && prev.day === day ? prev.count : 0;
-      const armedUntil = prev ? prev.armedUntil : 0;
-      if (armedUntil > nowMs) return { skip: false, time, counts: false };
-      if (count >= DEADMAN_MAX_PER_DAY) return { skip: true };
-      return { skip: false, time, counts: true };
-    },
-    record(owner: string, nowMs: number, time: number, counts: boolean): void {
-      const day = Math.floor(nowMs / DAY_MS);
-      const prev = state.get(owner);
-      const base = prev && prev.day === day ? prev.count : 0;
-      state.set(owner, { day, count: base + (counts ? 1 : 0), armedUntil: time });
+    decide: (owner, nowMs, ttlMs) => decideBudget(state.get(owner), nowMs, ttlMs),
+    record: (owner, nowMs, time, counts) => {
+      state.set(owner, nextBudget(state.get(owner), nowMs, time, counts));
     },
   };
 }
