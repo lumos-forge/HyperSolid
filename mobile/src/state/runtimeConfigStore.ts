@@ -12,6 +12,8 @@ export interface AppRuntimeConfig {
   geo: { country?: string; region?: string } | null;
   /** Server-delivered M8 proxy base URLs (Cloudflare Workers pool); empty until delivered. */
   proxyPool: string[];
+  /** Server-delivered builder-code config; null until delivered / when disabled. perpFeeTenthBps in 1/10 bps. */
+  builder: { address: `0x${string}`; perpFeeTenthBps: number } | null;
 }
 
 interface RuntimeConfigState extends AppRuntimeConfig {
@@ -31,6 +33,7 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>((set) => ({
   strategyApiBaseUrl: null,
   geo: null,
   proxyPool: [],
+  builder: null,
   setConfig: (cfg) =>
     set({
       arbitrumRpc: cfg.arbitrumRpc,
@@ -38,6 +41,7 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>((set) => ({
       strategyApiBaseUrl: cfg.strategyApiBaseUrl,
       geo: cfg.geo,
       proxyPool: cfg.proxyPool,
+      builder: cfg.builder,
     }),
 }));
 
@@ -49,4 +53,9 @@ export function arbitrumRpcFor(network: Network): string | null {
 /** The withdraw fee (USDC) for a network — server-delivered when available, else the default. */
 export function withdrawFeeFor(network: Network): number {
   return useRuntimeConfigStore.getState().withdrawFeeUsdc[network] ?? DEFAULT_WITHDRAW_FEE_USDC;
+}
+
+/** The server-delivered builder config, or null when absent/disabled. */
+export function builderConfig(): { address: `0x${string}`; perpFeeTenthBps: number } | null {
+  return useRuntimeConfigStore.getState().builder;
 }

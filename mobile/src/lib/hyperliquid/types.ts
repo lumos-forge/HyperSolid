@@ -39,6 +39,8 @@ export interface Subscription {
 // Minimal client interfaces so services can be tested with fakes.
 export interface InfoLike {
   metaAndAssetCtxs(): Promise<MetaAndAssetCtxs>;
+  /** Approved builder fee rate (tenth-bps) for a user+builder; 0 when not approved. */
+  maxBuilderFee(params: { user: `0x${string}`; builder: `0x${string}` }): Promise<number>;
 }
 export interface SubsLike {
   allMids(listener: (data: { mids: Mids }) => void): Promise<Subscription>;

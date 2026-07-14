@@ -14,6 +14,7 @@ type FakeClient = ExchangeLike & {
   modifyArg?: { oid: number | `0x${string}`; order: { a: number } };
   withdrawArg?: unknown;
   approveAgentArg?: unknown;
+  approveBuilderFeeArg?: unknown;
 };
 
 function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
@@ -43,6 +44,10 @@ function fakeClient(orderImpl?: () => Promise<unknown>): FakeClient {
     }),
     approveAgent: jest.fn(async (p: unknown) => {
       self.approveAgentArg = p;
+      return { status: "ok", response: { type: "default" } };
+    }),
+    approveBuilderFee: jest.fn(async (p: unknown) => {
+      self.approveBuilderFeeArg = p;
       return { status: "ok", response: { type: "default" } };
     }),
   };
@@ -473,5 +478,52 @@ describe("cancelTwap", () => {
     const svc = new ExchangeService(client, index);
     const r = await svc.cancelTwap("BTC", 42);
     expect(r).toMatchObject({ ok: false, uncertain: true });
+  });
+});
+
+describe("ExchangeService builder attachment", () => {
+  const builderAddr = ("0x" + "c".repeat(40)) as `0x${string}`;
+  const attach = (approved: boolean) => ({ address: builderAddr, feeTenthBps: 20, isApproved: () => approved });
+  const builderOf = (client: FakeClient) => (client.orderArg as { builder?: { b: string; f: number } }).builder;
+
+  it("attaches the builder to placeOrder when approved", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index, new IntentLedger(), attach(true));
+    await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(builderOf(client)).toEqual({ b: builderAddr, f: 20 });
+  });
+
+  it("does NOT attach the builder when not approved", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index, new IntentLedger(), attach(false));
+    await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(builderOf(client)).toBeUndefined();
+  });
+
+  it("does NOT attach when no builder config is set (unchanged behavior)", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    await svc.placeOrder({ coin: "BTC", side: "buy", size: 0.01, price: 60000 });
+    expect(builderOf(client)).toBeUndefined();
+  });
+
+  it("attaches to placeBracket and placeScale when approved", async () => {
+    const bracketClient = fakeClient();
+    const bracketSvc = new ExchangeService(bracketClient, index, new IntentLedger(), attach(true));
+    await bracketSvc.placeBracket({ entry: { coin: "BTC", side: "buy", size: 0.01, price: 60000 } });
+    expect(builderOf(bracketClient)).toEqual({ b: builderAddr, f: 20 });
+
+    const scaleClient = fakeClient();
+    const scaleSvc = new ExchangeService(scaleClient, index, new IntentLedger(), attach(true));
+    await scaleSvc.placeScale({ coin: "BTC", side: "buy", totalSize: 0.02, startPx: 60000, endPx: 59000, count: 2 });
+    expect(builderOf(scaleClient)).toEqual({ b: builderAddr, f: 20 });
+  });
+
+  it("approveBuilderFee forwards maxFeeRate + builder and returns ok", async () => {
+    const client = fakeClient();
+    const svc = new ExchangeService(client, index);
+    const res = await svc.approveBuilderFee("0.1%", builderAddr);
+    expect(res.ok).toBe(true);
+    expect(client.approveBuilderFeeArg).toEqual({ maxFeeRate: "0.1%", builder: builderAddr });
   });
 });

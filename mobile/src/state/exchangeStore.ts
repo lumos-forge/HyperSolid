@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AssetIndex } from "../lib/hyperliquid/assetId";
 import type { IntentLedger } from "../lib/hyperliquid/intentLedger";
-import { ExchangeService, type ExchangeLike } from "../services/exchange";
+import { ExchangeService, type ExchangeLike, type BuilderAttach } from "../services/exchange";
 
 /**
  * Holds the app's single long-lived {@link ExchangeService}. The service is a thin orchestrator;
@@ -11,12 +11,12 @@ import { ExchangeService, type ExchangeLike } from "../services/exchange";
  */
 interface ExchangeState {
   service: ExchangeService | null;
-  init(client: ExchangeLike, index: AssetIndex, ledger?: IntentLedger): void;
+  init(client: ExchangeLike, index: AssetIndex, ledger?: IntentLedger, builder?: BuilderAttach): void;
   reset(): void;
 }
 
 export const useExchangeStore = create<ExchangeState>((set) => ({
   service: null,
-  init: (client, index, ledger) => set({ service: new ExchangeService(client, index, ledger) }),
+  init: (client, index, ledger, builder) => set({ service: new ExchangeService(client, index, ledger, builder) }),
   reset: () => set({ service: null }),
 }));

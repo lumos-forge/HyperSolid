@@ -26,6 +26,25 @@ describe("appConfigFromEnv", () => {
   });
 });
 
+describe("appConfigFromEnv builder", () => {
+  const ADDR = "0x" + "a".repeat(40);
+  it("includes a valid builder config", () => {
+    const cfg = appConfigFromEnv({ BUILDER_ADDRESS: ADDR, BUILDER_PERP_FEE_TENTH_BPS: "20" });
+    expect(cfg.builder).toEqual({ address: ADDR, perpFeeTenthBps: 20 });
+  });
+  it("omits builder when the address is invalid", () => {
+    expect(appConfigFromEnv({ BUILDER_ADDRESS: "0xnope", BUILDER_PERP_FEE_TENTH_BPS: "20" }).builder).toBeUndefined();
+  });
+  it("omits builder when the fee is out of [1,100] or non-integer", () => {
+    expect(appConfigFromEnv({ BUILDER_ADDRESS: ADDR, BUILDER_PERP_FEE_TENTH_BPS: "0" }).builder).toBeUndefined();
+    expect(appConfigFromEnv({ BUILDER_ADDRESS: ADDR, BUILDER_PERP_FEE_TENTH_BPS: "101" }).builder).toBeUndefined();
+    expect(appConfigFromEnv({ BUILDER_ADDRESS: ADDR, BUILDER_PERP_FEE_TENTH_BPS: "1.5" }).builder).toBeUndefined();
+  });
+  it("omits builder when unset", () => {
+    expect(appConfigFromEnv({}).builder).toBeUndefined();
+  });
+});
+
 describe("geoHeadersFromEnv", () => {
   it("defaults to the Cloudflare headers", () => {
     expect(geoHeadersFromEnv({})).toEqual({ countryHeader: "cf-ipcountry", regionHeader: "cf-region" });
