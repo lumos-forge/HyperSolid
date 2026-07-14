@@ -6,14 +6,17 @@ interface Row {
   owner: string;
   agent_address: string;
   enc_private_key: string;
+  key_id: string | null;
   approved: number;
   valid_until: number | null;
 }
 
 /**
- * Durable `AgentStore` over SQLite with the private key **encrypted at rest** (AES-256-GCM via
- * secretBox). Agents survive restarts so the scheduler keeps trading after a reboot without forcing
- * re-approval; the raw key only ever exists decrypted in memory. Owner matching is case-insensitive.
+ * Durable `AgentStore` over SQLite. Supports **dual custody**: legacy records hold the trade-only
+ * private key **encrypted at rest** (AES-256-GCM via secretBox); delegated records hold only a signer
+ * `key_id` (custody lives in the Go signer) with an empty `enc_private_key`. Agents survive restarts so
+ * the scheduler keeps trading after a reboot without re-approval; any raw key only ever exists decrypted
+ * in memory. Owner matching is case-insensitive.
  */
 export class SqliteAgentStore implements AgentStore {
   private constructor(
@@ -33,6 +36,12 @@ export class SqliteAgentStore implements AgentStore {
         valid_until INTEGER
       );
     `);
+    // Dual-custody migration: add key_id for signer-custody records. Guarded so it's idempotent and
+    // safe on pre-existing DBs (SQLite can't ADD COLUMN IF NOT EXISTS).
+    const cols = db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "key_id")) {
+      db.exec("ALTER TABLE agents ADD COLUMN key_id TEXT");
+    }
     return new SqliteAgentStore(db, encKey);
   }
 
@@ -42,7 +51,8 @@ export class SqliteAgentStore implements AgentStore {
     return {
       owner: row.owner,
       agentAddress: row.agent_address,
-      privateKey: open(row.enc_private_key, this.encKey) as `0x${string}`,
+      privateKey: row.enc_private_key ? (open(row.enc_private_key, this.encKey) as `0x${string}`) : undefined,
+      keyId: row.key_id ?? undefined,
       approved: row.approved === 1,
       validUntil: row.valid_until ?? undefined,
     };
@@ -51,18 +61,20 @@ export class SqliteAgentStore implements AgentStore {
   set(rec: AgentRecord): void {
     this.db
       .prepare(
-        `INSERT INTO agents (owner, agent_address, enc_private_key, approved, valid_until)
-         VALUES (@owner, @agentAddress, @enc, @approved, @validUntil)
+        `INSERT INTO agents (owner, agent_address, enc_private_key, key_id, approved, valid_until)
+         VALUES (@owner, @agentAddress, @enc, @keyId, @approved, @validUntil)
          ON CONFLICT(owner) DO UPDATE SET
            agent_address = excluded.agent_address,
            enc_private_key = excluded.enc_private_key,
+           key_id = excluded.key_id,
            approved = excluded.approved,
            valid_until = excluded.valid_until`,
       )
       .run({
         owner: rec.owner.toLowerCase(),
         agentAddress: rec.agentAddress,
-        enc: seal(rec.privateKey, this.encKey),
+        enc: rec.privateKey ? seal(rec.privateKey, this.encKey) : "",
+        keyId: rec.keyId ?? null,
         approved: rec.approved ? 1 : 0,
         validUntil: rec.validUntil ?? null,
       });

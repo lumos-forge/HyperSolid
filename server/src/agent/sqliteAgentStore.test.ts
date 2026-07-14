@@ -62,4 +62,23 @@ describe("SqliteAgentStore", () => {
     expect(store.get("0xowner")!.agentAddress).toBe("0xnew");
     expect(store.get("0xowner")!.approved).toBe(true);
   });
+
+  it("round-trips a signer-custody record (keyId, no private key stored)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hs-agent-"));
+    const file = join(dir, "agents.db");
+    try {
+      const store = SqliteAgentStore.open(file, KEY);
+      store.set({ owner: "0xOwner", agentAddress: "0xagent", keyId: "agent:0xowner", approved: true, validUntil: 12345 });
+      const got = store.get("0xowner")!;
+      expect(got.keyId).toBe("agent:0xowner");
+      expect(got.privateKey).toBeUndefined();
+      // enc_private_key is an empty sentinel, never a ciphertext, for delegated records.
+      const raw = new Database(file).prepare("SELECT enc_private_key FROM agents").get() as { enc_private_key: string };
+      expect(raw.enc_private_key).toBe("");
+      // survives reopen
+      expect(SqliteAgentStore.open(file, KEY).get("0xowner")!.keyId).toBe("agent:0xowner");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
